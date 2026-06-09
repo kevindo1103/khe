@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: <YYYY-MM-DD> (v0.1 — draft, awaiting docs-editor session fold) — MVP BRD v0.1 reference*
+*Last updated: 2026-06-09 (v0.1 — draft, awaiting docs-editor session fold) — MVP BRD v0.1 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,7 +9,7 @@
 
 ## Project context
 
-**Reference:** `docs/MVP_BRD_Khe_v0.1.md`
+**Reference:** `docs/MVP_BRD_Khe_v0.1.md` *(current file: `MVP_BRD_Khe.md` at root — ERP_Docs to move + version on first fold)*
 
 **MVP scope (M0 → M3):** Ingest + retrieve + deadline. KHÔNG soạn HĐ tự động (drafting), KHÔNG review rủi ro, KHÔNG ký số (integrate sau), KHÔNG đa thị trường (VN-first), KHÔNG marketplace template.
 
@@ -33,7 +33,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **KHÔNG sửa trực tiếp** file trong `docs/` hoặc root `*.md`.
   - Ngoại lệ: được phép thêm ghi chú vận hành vào `CLAUDE.md` (bug pattern, fix mới).
 - Sau bất kỳ thay đổi nào ảnh hưởng tới **business rule, schema, API, UI, deploy info, hoặc known bug**,
-  **comment vào DOCS_INBOX issue** (pinned, label `docs-inbox`) theo template:
+  **comment vào DOCS_INBOX issue [#1](https://github.com/kevindo1103/khe/issues/1)** (pinned, label `docs-inbox`) theo template:
   ```
   ### <YYYY-MM-DD> — <session / branch>
   - **PR / trigger:** #<số PR> → `<base branch>`
@@ -99,7 +99,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **Status labels:** `status:planned` → `status:in-progress` → `status:review` → `status:done-staging` → close
 - **Bước 0 mỗi session kickoff:** list `for:<my-team>` open issues
 - **Bước 1 mỗi session:** đọc `docs/teams/<myteam>_STATE.md`
-- **Post-merge:** comment **DOCS_INBOX** issue trong 24h
+- **Post-merge:** comment **[DOCS_INBOX #1](https://github.com/kevindo1103/khe/issues/1)** issue trong 24h
 
 ### Branch Naming (BẮT BUỘC)
 
@@ -302,7 +302,7 @@ Pattern (mirror Bingxue):
 | Partner | Một firm; role xuyên tenant | BRD §6 |
 | FM-XX | Failure Mode (recurring process bug) | This file Common Bug Patterns |
 | INC-XX | Incident (specific bad event with root cause) | This file Common Bug Patterns |
-| DOCS_INBOX | Pinned GitHub issue for canonical docs relay | This file Docs Ownership |
+| DOCS_INBOX | Pinned GitHub issue for canonical docs relay — [#1](https://github.com/kevindo1103/khe/issues/1) | This file Docs Ownership |
 
 ---
 
