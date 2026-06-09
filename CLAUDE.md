@@ -68,7 +68,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | 5 | **ERP_PWA_Chat** | **Windsurf_PWA** | `frontend/src/pwa/**` — Chat-first SME UI (primary user experience), mobile-first PWA. |
 | 6 | **ERP_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
 | 7 | **ERP_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
-| 8 | **ERP_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Zalo ZNS OA integration, env secrets, OCR/LLM API key rotation, monitoring. |
+| 8 | **ERP_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Telegram bot integration, env secrets, OCR/LLM API key rotation, monitoring. |
 | 9 | **ERP_AI** (Khế-specific) | — *(single-owner Phase 1)* | OCR + LLM extraction tuning, prompt engineering, model selection per Term/Field, accuracy monitoring (M-3 ≥90%). |
 | 10 | **ERP_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
 
@@ -106,7 +106,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 **Pattern (feature/fix branch):** `claude/<type>-<scope>-<short-desc>[-<random>]`
 
 - **type:** `feat` · `fix` · `chore` · `docs` · `infra` · `hotfix` · `test` · `design` · `compliance`
-- **scope:** module/area — `ingest` · `extraction` · `obligation` · `reminders` · `chat` · `firm` · `auth` · `tenant` · `ai` · `legal` · `zalo` · `infra`
+- **scope:** module/area — `ingest` · `extraction` · `obligation` · `reminders` · `chat` · `firm` · `auth` · `tenant` · `ai` · `legal` · `telegram` · `infra`
 
 **Long-lived branches:**
 - `main` — production canonical
@@ -116,7 +116,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 **Ví dụ đúng:**
 - `claude/feat-extraction-pdf-pipeline-A1b2c`
-- `claude/fix-reminders-zalo-template-X9y8z`
+- `claude/fix-reminders-telegram-retry-X9y8z`
 - `windsurf/feat-backend-obligation-engine`
 - `claude/compliance-nd13-consent-audit`
 
@@ -180,7 +180,7 @@ Proposed (mirror SpurX reuse per BRD A-1):
 - **Frontend Admin:** React + Vite + Tailwind CSS, React Router v6
 - **PWA Chat:** Same React + Vite stack, mobile-first PWA
 - **OCR + LLM:** TBD — FPT.AI / Google Document AI / GPT-4 Vision / Claude API (Sprint 0 decision)
-- **Reminders:** Zalo ZNS via OA + email fallback
+- **Reminders:** Telegram bot (telebot / python-telegram-bot) + email fallback
 - **Infra:** VPS Ubuntu, systemd + nginx, GitHub Actions CI/CD
 
 ---
@@ -207,7 +207,7 @@ Pattern (mirror Bingxue):
 - Seed script `scripts/seed_local.py` — idempotent wipe + alembic upgrade + fixtures
 - Login default: admin/admin123 or staff/staff123 (local only)
 - Env files: `backend/.env.local` + `frontend/.env.local`, both gitignored
-- Scope: ~70-80% fix UI/logic/CRUD. Staging needed for: scheduler / OCR / Zalo / multi-tenant integration.
+- Scope: ~70-80% fix UI/logic/CRUD. Staging needed for: scheduler / OCR / Telegram / multi-tenant integration.
 
 ---
 
@@ -216,7 +216,7 @@ Pattern (mirror Bingxue):
 - JWT `Depends(get_current_user)` BẮT BUỘC trên mọi endpoint sửa data
 - Endpoints SME-side phải verify `tenant_id` match JWT
 - Firm portal endpoints phải verify consent (FR-FP-03)
-- KHÔNG log: passwords, JWT secrets, Zalo OA tokens, OCR/LLM API keys
+- KHÔNG log: passwords, JWT secrets, Telegram bot tokens, OCR/LLM API keys
 - SQL: chỉ ORM, không raw SQL với f-string
 - **NĐ 13/2023 DLCN compliance hooks:** mọi PII processing phải log purpose + consent reference
 - **Tenant isolation:** mọi query MUST filter by tenant_id, NEVER `SessionLocal()` directly
@@ -233,7 +233,7 @@ Pattern (mirror Bingxue):
 
 **D-03 (P-3):** "Ngựa thành Troy" — dẫn bằng ingest + retrieve + deadline. Drafting/review là upsell sau.
 
-**D-04 (P-4):** Tích hợp, đừng tự build. Ký số, hóa đơn ĐT, kênh nhắc Zalo → bên thứ ba.
+**D-04 (P-4):** Tích hợp, đừng tự build. Ký số, hóa đơn ĐT, kênh nhắc Telegram → bên thứ ba.
 
 **D-05 (P-5):** Đa loại document trong KIẾN TRÚC, sắc trong SEED. Lõi general; seed F&B/bán lẻ.
 
@@ -310,7 +310,7 @@ Pattern (mirror Bingxue):
 
 ```
 feat(ingest): add PDF upload + OCR queue
-fix(reminders): retry on Zalo ZNS 5xx
+fix(reminders): retry on Telegram delivery 5xx
 chore(infra): rotate OCR API key
 docs(brd): clarify Obligation lifecycle states
 compliance(nd13): add purpose-of-processing log

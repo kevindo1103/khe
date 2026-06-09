@@ -1,25 +1,26 @@
 # PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-09 | v0.1*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-09 | v0.2*
 
 ---
 
 ## Active Sprint Context
 
 **Current phase:** Sprint 0 bootstrap (pre-sprint)  
-**Sprint 0 goal:** Repo + CI/CD skeleton, multi-tenant pattern, Zalo OA submitted, OCR/LLM provider selected, 1 firm LOI.
+**Sprint 0 goal:** Repo + CI/CD skeleton, multi-tenant pattern, Telegram bot wired, OCR/LLM provider selected, 1 firm LOI.
 
 ---
 
 ## Open Decisions (Draft — awaiting user ratify)
 
-| ID | Decision | Status | Date drafted |
+| ID | Decision | Status | Date |
 |---|---|---|---|
 | DEC-001 | Stack ratification (FastAPI + SQLite multi-tenant per BRD A-1) | Draft | 2026-06-09 |
 | DEC-002 | OCR + LLM provider selection | Draft | 2026-06-09 |
 | DEC-003 | Hosting provider + data residency (NFR-3, NĐ 13/2023) | Draft | 2026-06-09 |
 | DEC-004 | Naming "Khế" finalization (R-7, trademark check) | Draft | 2026-06-09 |
 | DEC-005 | Sprint cadence — weekly (mirror Bingxue) or slower | Draft | 2026-06-09 |
+| DEC-006 | Reminder channel: **Telegram bot** (telebot / python-telegram-bot) replaces Zalo ZNS | **Ratified** by user 2026-06-09 |
 
 ---
 
@@ -27,11 +28,12 @@
 
 | Blocker | Risk | Action needed | Owner |
 |---|---|---|---|
-| Zalo ZNS OA registration | 4-6 week lead time per BRD A-3 | Start IMMEDIATELY | User (Kevin) |
 | Firm design-partner LOI | Need 1 signed firm before Sprint 1 | Identify + contact target firm | User (Kevin) |
 | OCR + LLM provider | Budget + accuracy benchmark decision | Select provider, get API keys | Sprint 0 |
 | Hosting + data residency | NĐ 13/2023 VN data center requirement | Confirm VPS provider + region | Sprint 0 |
 | Naming finalization | R-7 trademark risk before launch | Trademark check | Pre-launch |
+
+*(Zalo OA registration removed — no longer needed. Telegram bot requires only a bot token from @BotFather, no approval process.)*
 
 ---
 
@@ -72,6 +74,7 @@
 - [x] `claude/edit-git-docs-Khe01` branch created
 - [x] `claude/pm-assistant` branch exists
 - [x] `docs/teams/pm_assistant_STATE.md` created (this file)
+- [x] DEC-006 ratified: Telegram replaces Zalo ZNS
 - [ ] ERP_Docs session spawned on `claude/edit-git-docs-Khe01`
 - [ ] GitHub topology labels created (manual — see note below)
 - [ ] PROJECT_PLAN v0.1 drafted
