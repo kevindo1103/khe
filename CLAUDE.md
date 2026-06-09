@@ -9,7 +9,7 @@
 
 ## Project context
 
-**Reference:** `docs/MVP_BRD_Khe_v0.1.md` *(current file: `MVP_BRD_Khe.md` at root — ERP_Docs to move + version on first fold)*
+**Reference:** `docs/MVP_BRD_Khe_v0.1.md` *(current file: `MVP_BRD_Khe.md` at root — KHE_Docs to move + version on first fold)*
 
 **MVP scope (M0 → M3):** Ingest + retrieve + deadline. KHÔNG soạn HĐ tự động (drafting), KHÔNG review rủi ro, KHÔNG ký số (integrate sau), KHÔNG đa thị trường (VN-first), KHÔNG marketplace template.
 
@@ -55,22 +55,22 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 ---
 
-## Session Topology (10 sessions: 6 lead + 4 dev pairs — Khế Day 1)
+## Session Topology (10 sessions — Khế Day 1)
 
 ### Pair table
 
 | # | Lead (Claude Code) | Middle Dev (Windsurf) | Scope |
 |---|---|---|---|
-| 1 | **ERP_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
-| 2 | **ERP_PM_Assistant** | — *(single-owner, long-lived)* | Branch `claude/pm-assistant`. Read-only mọi nơi. WRITE: GitHub issue comments + `docs/teams/pm_assistant_STATE.md` only. Cross-team triage, draft PM decisions, coordinate sessions. KHÔNG phải PM thật — draft + user ratify. |
-| 3 | **ERP_Backend** | **Windsurf_Backend** | TOÀN BỘ `backend/**` — FastAPI, modules (ingest, extraction, obligation, reminders, firm_portal, auth, audit), alembic, scheduler. Multi-tenant: master.db + per-tenant pattern (reuse SpurX A-1). |
-| 4 | **ERP_Frontend_Admin** | **Windsurf_Frontend** | `frontend/src/pages/{admin,firm,public}/**` — SME admin web UI + firm partner portal. |
-| 5 | **ERP_PWA_Chat** | **Windsurf_PWA** | `frontend/src/pwa/**` — Chat-first SME UI (primary user experience), mobile-first PWA. |
-| 6 | **ERP_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
-| 7 | **ERP_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
-| 8 | **ERP_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Telegram bot integration, env secrets, OCR/LLM API key rotation, monitoring. |
-| 9 | **ERP_AI** (Khế-specific) | — *(single-owner Phase 1)* | OCR + LLM extraction tuning, prompt engineering, model selection per Term/Field, accuracy monitoring (M-3 ≥90%). |
-| 10 | **ERP_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
+| 1 | **KHE_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
+| 2 | **KHE_PM_Assistant** | — *(single-owner, long-lived)* | Branch `claude/pm-assistant`. Read-only mọi nơi. WRITE: GitHub issue comments + `docs/teams/pm_assistant_STATE.md` only. Cross-team triage, draft PM decisions, coordinate sessions. KHÔNG phải PM thật — draft + user ratify. |
+| 3 | **KHE_Backend** | **Windsurf_Backend** | TOÀN BỘ `backend/**` — FastAPI, modules (ingest, extraction, obligation, reminders, firm_portal, auth, audit), alembic, scheduler. Multi-tenant: master.db + per-tenant pattern (reuse SpurX A-1). |
+| 4 | **KHE_Frontend_Admin** | **Windsurf_Frontend** | `frontend/src/pages/{admin,firm,public}/**` — SME admin web UI + firm partner portal. |
+| 5 | **KHE_PWA_Chat** | **Windsurf_PWA** | `frontend/src/pwa/**` — Chat-first SME UI (primary user experience), mobile-first PWA. |
+| 6 | **KHE_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
+| 7 | **KHE_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
+| 8 | **KHE_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Telegram bot integration, env secrets, OCR/LLM API key rotation, monitoring. |
+| 9 | **KHE_AI** (Khế-specific) | — *(single-owner Phase 1)* | `VisionExtractionProvider` interface — Gemini 2.0 Flash + Claude Haiku/Sonnet Vision. No separate OCR step. Sprint 0 benchmark on 15 PII-scrubbed samples. Accuracy target M-3 ≥90%. US-hosted Phase 1 per DEC-010. |
+| 10 | **KHE_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
 
 ### Lead/Dev workflow (BẮT BUỘC)
 
@@ -82,8 +82,8 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 ### Cross-session rules
 
 - **Trùng file giữa 2 session** → coordinate qua PM, KHÔNG tự merge.
-- **Infra-only files** — `.github/workflows/**`, deploy scripts: CHỈ ERP_Infra được sửa.
-- **Backend schema change** → ERP_Backend lead MUST comment DOCS_INBOX để frontend sessions biết.
+- **Infra-only files** — `.github/workflows/**`, deploy scripts: CHỈ KHE_Infra được sửa.
+- **Backend schema change** → KHE_Backend lead MUST comment DOCS_INBOX để frontend sessions biết.
 - **Deploy** chỉ qua GitHub Actions CI/CD. KHÔNG SSH/SFTP trực tiếp VPS bypass quality gate. Exception: documented hotpatch playbook.
 - **PR phải qua quality gate** (`pr-quality-gate.yml`): `npm run build` (frontend), `python -c "import main"` (backend), schema diff check.
 
@@ -112,10 +112,10 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - `main` — production canonical
 - `staging` — pre-prod test environment
 - `claude/edit-git-docs-Khe01` — docs canonical lane
-- `claude/pm-assistant` — PM_Assistant role
+- `claude/pm-assistant` — KHE_PM_Assistant role
 
 **Ví dụ đúng:**
-- `claude/feat-extraction-pdf-pipeline-A1b2c`
+- `claude/feat-extraction-vision-provider-A1b2`
 - `claude/fix-reminders-telegram-retry-X9y8z`
 - `windsurf/feat-backend-obligation-engine`
 - `claude/compliance-nd13-consent-audit`
@@ -149,7 +149,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 ### 5. Deploy
 - Merge fix vào `main` → GitHub Actions auto deploy
 - **KHÔNG** SSH/paramiko/SFTP trực tiếp — bypass CI quality gate
-- Exception: documented hotpatch playbook khi prod down + Backend lead approve
+- Exception: documented hotpatch playbook khi prod down + KHE_Backend lead approve
 
 ### 6. Confirm on staging
 - Verify API response với `curl`
@@ -173,13 +173,12 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 ## Stack
 
-**TBD — to be ratified Sprint 0.**
+**Ratified Sprint 0 (partial). Remaining TBD.**
 
-Proposed (mirror SpurX reuse per BRD A-1):
 - **Backend:** FastAPI + SQLAlchemy + APScheduler, Python 3.11+, SQLite multi-tenant (master.db + per-tenant)
 - **Frontend Admin:** React + Vite + Tailwind CSS, React Router v6
 - **PWA Chat:** Same React + Vite stack, mobile-first PWA
-- **OCR + LLM:** TBD — FPT.AI / Google Document AI / GPT-4 Vision / Claude API (Sprint 0 decision)
+- **OCR + LLM:** Single `VisionExtractionProvider` interface — Gemini 2.0 Flash primary (~150đ/doc) + Claude Haiku fallback (~300đ/doc if accuracy <90%). No separate OCR step. Sprint 0 benchmark on 15 PII-scrubbed samples. (DEC-002 ratified 2026-06-09)
 - **Reminders:** Telegram bot (telebot / python-telegram-bot) + email fallback
 - **Infra:** VPS Ubuntu, systemd + nginx, GitHub Actions CI/CD
 
@@ -219,6 +218,7 @@ Pattern (mirror Bingxue):
 - KHÔNG log: passwords, JWT secrets, Telegram bot tokens, OCR/LLM API keys
 - SQL: chỉ ORM, không raw SQL với f-string
 - **NĐ 13/2023 DLCN compliance hooks:** mọi PII processing phải log purpose + consent reference
+- **NĐ 13/2023 Phase 1 hosting:** US-hosted LLM API (Gemini Flash / Claude Haiku) acceptable với explicit consent + audit log. Phase 2+ re-evaluate self-host khi volume justify. (DEC-010)
 - **Tenant isolation:** mọi query MUST filter by tenant_id, NEVER `SessionLocal()` directly
 
 ---
@@ -276,6 +276,26 @@ Pattern (mirror Bingxue):
 
 ---
 
+## Vision Extraction Architecture (KHE_AI scope)
+
+**Single `VisionExtractionProvider` interface — no separate OCR step.**
+
+```python
+class VisionExtractionProvider(Protocol):
+    async def extract(self, image_bytes: bytes, doc_type: str) -> ExtractionResult: ...
+```
+
+**Providers (Sprint 0 benchmark):**
+- `GeminiFlashProvider` — primary, ~150đ/doc
+- `ClaudeHaikuProvider` — fallback if accuracy <90%, ~300đ/doc
+- `ClaudeSonnetProvider` — fallback for complex/handwritten docs
+
+**Selection logic:** Run benchmark Sprint 0. Lock primary/fallback config before Sprint 1.
+
+**NĐ 13/2023 Phase 1:** Documents sent to US-hosted API must have explicit SME consent logged before first extraction. Consent reference stored in `events` table.
+
+---
+
 ## Anti-Patterns
 
 - N+1 queries → dùng `joinedload` hoặc `selectinload`
@@ -286,6 +306,7 @@ Pattern (mirror Bingxue):
 - `SessionLocal()` direct (use `get_tenant_session(tid)`)
 - AI generating legal content (P-1 violation)
 - Skipping `## Plan` 1-5 lines confirm trước khi code
+- Separate OCR + LLM pipeline (use `VisionExtractionProvider` single call)
 
 ---
 
@@ -300,6 +321,7 @@ Pattern (mirror Bingxue):
 | Event (Ledger) | Append-only ghi mọi thay đổi trạng thái | BRD §6 |
 | Tenant | Một SME (cô lập dữ liệu) | BRD §6 |
 | Partner | Một firm; role xuyên tenant | BRD §6 |
+| VisionExtractionProvider | Single-call OCR+classify+extract interface (no separate OCR) | This file Vision Extraction Architecture |
 | FM-XX | Failure Mode (recurring process bug) | This file Common Bug Patterns |
 | INC-XX | Incident (specific bad event with root cause) | This file Common Bug Patterns |
 | DOCS_INBOX | Pinned GitHub issue for canonical docs relay — [#1](https://github.com/kevindo1103/khe/issues/1) | This file Docs Ownership |
@@ -309,13 +331,13 @@ Pattern (mirror Bingxue):
 ## Commit Format
 
 ```
-feat(ingest): add PDF upload + OCR queue
+feat(ingest): add PDF upload + vision extraction queue
 fix(reminders): retry on Telegram delivery 5xx
-chore(infra): rotate OCR API key
+chore(infra): rotate Gemini API key
 docs(brd): clarify Obligation lifecycle states
 compliance(nd13): add purpose-of-processing log
 ```
 
 ---
 
-*v0.1 — initial draft for docs-editor session to fold. PM_Assistant proposes; ERP_Docs ratifies after first DOCS_INBOX cycle.*
+*v0.1 — initial draft for docs-editor session to fold. KHE_PM_Assistant proposes; KHE_Docs ratifies after first DOCS_INBOX cycle.*
