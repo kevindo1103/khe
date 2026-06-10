@@ -24,12 +24,20 @@ Paste relevant file into a fresh Claude Code session to spawn that role.
 - **Bootstrap order** — numbered, specific files
 - **Claim verification** — `git log --oneline -1` required với mọi merge/push claim
 
-## Active decisions (2026-06-09)
+## Active decisions (2026-06-10)
 - **DEC-002:** `VisionExtractionProvider` — Gemini Flash + Claude Haiku fallback
-- **DEC-006:** Telegram bot (no Zalo)
+- **DEC-006:** Telegram bot (no Zalo) — re-confirmed 2026-06-10
 - **DEC-007:** Sprint 0 parallel with M0
 - **DEC-009:** Session prefix KHE_ (not ERP_)
 - **DEC-010:** NĐ 13/2023 Phase 1 — US-hosted OK with consent + audit log
+- **DEC-011:** B2B2B — firm trả per-client, SME free Phase 1
+- **DEC-012:** Concierge onboarding 20 SME đầu (không bắt tự upload)
+- **DEC-013:** 2-firm pilot (đại lý thuế + law firm), 10 SME mỗi firm, 90 ngày
+- **DEC-014:** Positioning "ngôi nhà cho hợp đồng sau khi ký" (hậu sóng NĐ 337)
+- **DEC-015:** Kill/pivot signals trong BRD v0.2
+- **DEC-016:** OPEN — freemium paywall lever (Telegram giữ, ZNS bỏ)
+
+*Strategy v2 chi tiết: `docs/teams/pm_assistant_STATE.md` §Strategy v2*
 
 ## Issues
 - [#1](https://github.com/kevindo1103/khe/issues/1) DOCS_INBOX (3 pending)
