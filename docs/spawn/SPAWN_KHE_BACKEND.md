@@ -103,6 +103,8 @@
 
 Branch: `claude/feat-backend-scaffold-<random4>`
 
+**Context Sprint 1+ (DEC-011/012 — strategy v2):** bulk-ingest (batch upload + extraction queue) là ưu tiên cao Sprint 1 vì concierge onboarding. Firm portal billing per-client là GĐ1 sau scaffold. Sprint 0 scope KHÔNG đổi.
+
 ---
 
 ## Claim verification (BẮT BUỘC)
