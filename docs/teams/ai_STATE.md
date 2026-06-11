@@ -4,7 +4,7 @@
 > `docs/teams/ai_STATE.md`, `docs/benchmark_*.md` (via DOCS_INBOX).
 > Branch: `claude/feat-ai-vision-extraction-3k3gup`.
 
-_Last updated: 2026-06-10_
+_Last updated: 2026-06-11 (live-test on H_MB_6.pdf)_
 
 ## Decisions in force
 - **DEC-002** — single `VisionExtractionProvider.extract()` interface; NO separate
@@ -32,13 +32,62 @@ _Last updated: 2026-06-10_
 - [x] `docs/benchmark_vision_extraction_v0.1.md` (methodology + targets; results pending).
 
 ## Blocked / pending
-- **Live benchmark numbers** — needs API keys + 15 PII-scrubbed Bingxue HĐ samples
-  (not available in dev container). Harness ready; run per benchmark doc §4.
-  → `blocker:waiting-dependency` (samples + keys).
+- **Live benchmark numbers (full 15-sample run)** — needs:
+  1. 15 HĐ thật F&B/bán lẻ (PM decision 2026-06-11: **không dùng synthetic**, chờ
+     bộ thật để số liệu có giá trị quyết định).
+  2. Gemini quota — billing đang process (PM screenshot 2026-06-11). Claude OK.
+  3. PII scrub trước khi đưa vào fixtures (NĐ 13/2023).
+  → `blocker:waiting-dependency` (samples + Gemini billing).
+- **Long PDFs (>~100 trang, >~32MB)** — file FIDIC 193pp/18.8MB vượt Claude inline
+  + Gemini inline limit. Cần File API path (deferred to Sprint 1; F&B SME contracts
+  thường ngắn → low priority).
+
+## Live test 2026-06-11 — H_MB_6.pdf (HĐ mua bán BĐS, 59pp scan)
+First end-to-end run with real provider keys. Pipeline verified on a **scanned
+(no text layer) PDF** — single vision call (DEC-002), no separate OCR step.
+
+| Metric | Haiku | Sonnet |
+|---|---|---|
+| doc_type | hd_nha_cung_cap (wrong — hallucinated MVP type) | khac (truthful — doc is out of MVP scope) |
+| doi_tac | ✅ correct | ✅ correct |
+| ngay_hieu_luc | 2021-07-11 ✅ | 2021-07-11 ✅ |
+| thoi_han_hd | "36 tháng" | "36 tháng kể từ ngày Bên Bán ký biên bản nghiệm thu…" (full context) |
+| ngay_het_han / gia_tri_hd | None (D-08 ✅ — no guessing) | None (D-08 ✅) |
+| Latency | 32.5s | **9.1s** (3.5× faster, counter-intuitive) |
+| Cost | 560đ | 1,693đ (3×) |
+
+Notes:
+- File **out of MVP seed** (HĐ mua bán căn hộ chung cư, không thuộc F&B/bán lẻ
+  thuê/NCC/lao động). Used only as pipeline-verification, not benchmark sample.
+- **Sonnet faster than Haiku on long scans** — surprising. Re-measure on 5–10
+  more samples in Sprint 1; if pattern holds, Sonnet role in DEC-002 may broaden
+  from "complex/handwritten" to "complex OR long-scan".
+- Both providers respected D-08 (return None, never fabricate).
+
+## DOCS_INBOX note — TO POST AFTER MERGE
+Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
+
+```
+### 2026-06-11 — KHE_AI / claude/feat-ai-vision-extraction-3k3gup
+- **PR / trigger:** TBD → main (post-merge)
+- **Đã đụng:** backend/modules/extraction/** (scope-only), docs/benchmark_*, docs/teams/ai_STATE.md
+- **Thay đổi:** Live-test trên HĐ thật cho thấy **HĐ VN thường ghi
+  `ngày hiệu lực + thời hạn`, không ghi thẳng `ngày hết hạn`**. Trong sample
+  H_MB_6: model trả `ngay_het_han=None` (đúng D-08, không bịa) nhưng
+  `thoi_han_hd="36 tháng"` + `ngay_hieu_luc=2021-07-11` ⇒ engine có thể suy ra.
+- **Docs cần cập nhật:**
+  - BRD §6 (Term/Field) — clarify: `ngày hết hạn` có thể derived = `ngày hiệu lực
+    + thời hạn` ở tầng Obligation, không bắt buộc bóc trực tiếp từ Document.
+  - SRS / Obligation engine spec — FR-OB-01: thêm rule "if ngay_het_han is null
+    AND ngay_hieu_luc + thoi_han_hd both present ⇒ derive ngay_het_han".
+- **Ambiguity / cần PM xác nhận:** xử lý `thoi_han_hd` dạng phi-số ("không xác
+  định thời hạn", "kể từ khi nghiệm thu") — engine không derive được; cần định
+  nghĩa: skip (no obligation) vs flag-for-human?
+```
 
 ## Next
-- Run live benchmark → fill `docs/benchmark_vision_extraction_v0.1.md` §5/§6.
-- If results change architecture spec → report DOCS_INBOX (#1).
+- Wait for 15 real F&B/bán lẻ HĐ + Gemini billing → run full 3-provider benchmark.
+- Post DOCS_INBOX note above after Sprint-0 PR merges.
 - Coordinate with KHE_Backend on the ingest call site that invokes `extract()` +
   logs `consent_reference` (interface change → via PM first).
 
