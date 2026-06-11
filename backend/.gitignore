@@ -1,4 +1,5 @@
 *.db
+*.db-*
 tenants/
 .env*
 __pycache__/

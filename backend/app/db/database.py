@@ -1,7 +1,7 @@
 import threading
 from pathlib import Path
 
-from fastapi import Request
+from fastapi import HTTPException, Request, status
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -58,9 +58,15 @@ def get_tenant_session(tenant_id: str) -> Session:
 
 def get_db(request: Request = None):
     """FastAPI dependency — returns a tenant-scoped DB session."""
-    tenant_id = settings.DEFAULT_TENANT_ID
-    if request is not None:
-        tenant_id = getattr(request.state, "tenant_id", settings.DEFAULT_TENANT_ID)
+    tenant_id = getattr(request.state, "tenant_id", None) if request is not None else None
+    if tenant_id is None:
+        if settings.ENVIRONMENT == "development":
+            tenant_id = settings.DEFAULT_TENANT_ID
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Tenant context missing — ensure get_current_user is declared before get_db",
+            )
     db = sessionmaker(
         autocommit=False, autoflush=False,
         bind=_get_tenant_engine(tenant_id),
