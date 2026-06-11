@@ -17,11 +17,20 @@
 |---|---|---|---|
 | FastAPI + multi-tenant DB skeleton | #2 / #4 (PR #6) | Windsurf_Backend | ✅ `done` — merged to lead branch `7236ff6`, all 5 exit criteria lead-verified |
 
-### Pre-main blockers (must land before lead branch → `main`)
+### Promote path (ratified 2026-06-11): `lead → staging → main`
+
+| Step | Status |
+|---|---|
+| 1. Infra sync `staging ← main` (staging stale + no CI workflows) | **BLOCKED on Infra #15** (`blocker:waiting-dependency`) |
+| 2. PR `claude/feat-backend-scaffold-nm2942` → `staging` (CI gate runs) | waiting on step 1 |
+| 3. Verify on staging → promote `staging → main` | waiting |
+| 4. DOCS_INBOX (#1) report within 24h of main merge | waiting |
+
+### Pre-main blockers — RESOLVED
 
 | Task | Issue | Status |
 |---|---|---|
-| Fix `get_db()` env-gated fallback (CRITICAL #9) + passlib removal + ERP branding | #11 | `planned` → Windsurf |
+| Fix `get_db()` env-gated fallback (CRITICAL #9) + passlib removal + ERP branding | #11 / PR #12 | ✅ merged `a950595`, #9+#11 closed |
 
 ### Sprint 1 carry-over (from PR #6 review — DO in feature work, not scaffold)
 
