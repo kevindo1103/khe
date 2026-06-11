@@ -1,0 +1,110 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+    types: [opened, synchronize, reopened]
+
+jobs:
+  branch-pattern-check:
+    name: Branch Pattern Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify branch naming convention
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "PR branch: $BRANCH"
+          if echo "$BRANCH" | grep -qE '^(claude|windsurf)/'; then
+            echo "✅ Branch pattern OK: $BRANCH"
+          else
+            echo "❌ Branch '$BRANCH' does not match required pattern: claude/* or windsurf/*"
+            echo "   Rename your branch before opening a PR."
+            exit 1
+          fi
+
+  backend-check:
+    name: Backend Import Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if backend exists
+        id: backend_exists
+        run: |
+          if [ -d "backend" ] && [ -f "backend/main.py" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  backend/ not found — skipping backend checks"
+          fi
+
+      - name: Set up Python
+        if: steps.backend_exists.outputs.exists == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        if: steps.backend_exists.outputs.exists == 'true'
+        run: |
+          cd backend
+          pip install -r requirements.txt --quiet
+
+      - name: Backend import check
+        if: steps.backend_exists.outputs.exists == 'true'
+        run: |
+          cd backend
+          python -c "import main"
+          echo "✅ backend import OK"
+
+      - name: Alembic single-head check
+        if: steps.backend_exists.outputs.exists == 'true'
+        run: |
+          cd backend
+          HEAD_COUNT=$(alembic heads | grep -c "(head)" || true)
+          echo "Alembic heads: $HEAD_COUNT"
+          if [ "$HEAD_COUNT" -eq 1 ]; then
+            echo "✅ Single alembic head OK"
+          else
+            echo "❌ Expected 1 alembic head, got $HEAD_COUNT — resolve migration branch conflict"
+            exit 1
+          fi
+
+  frontend-check:
+    name: Frontend Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if frontend exists
+        id: frontend_exists
+        run: |
+          if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  frontend/ not found — skipping frontend checks"
+          fi
+
+      - name: Set up Node
+        if: steps.frontend_exists.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: steps.frontend_exists.outputs.exists == 'true'
+        run: |
+          cd frontend
+          npm ci --quiet
+
+      - name: Frontend build check
+        if: steps.frontend_exists.outputs.exists == 'true'
+        run: |
+          cd frontend
+          npm run build
+          echo "✅ frontend build OK"
