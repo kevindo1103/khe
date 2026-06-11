@@ -55,6 +55,8 @@ def _print(result: ExtractionResult) -> None:
 
 async def _main_async(args) -> None:
     provider = _instantiate(args.provider)
+    if args.model:
+        provider.model = args.model  # quick eval override; not the committed default
     image_bytes = Path(args.file).read_bytes()
     result = await provider.extract(image_bytes, args.doc_type)
     if args.json:
@@ -69,6 +71,7 @@ def main() -> None:
     p.add_argument("--provider", default="gemini_flash", choices=list(_REGISTRY))
     p.add_argument("--doc-type", default="auto",
                    help="hd_thue_mat_bang | hd_nha_cung_cap | hd_lao_dong | auto")
+    p.add_argument("--model", default=None, help="override provider's default model id")
     p.add_argument("--json", action="store_true", help="dump full ExtractionResult JSON")
     args = p.parse_args()
     asyncio.run(_main_async(args))

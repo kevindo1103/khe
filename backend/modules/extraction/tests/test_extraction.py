@@ -66,7 +66,7 @@ def _result(fields: dict[str, str | None], *, latency=1000.0, cost=120.0, warn=F
         fields={k: ExtractedField(value=fields.get(k), confidence=0.95, needs_review=False)
                 for k in CANONICAL_FIELDS},
         provider="gemini_flash",
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         latency_ms=latency,
         cost_vnd=cost,
         warnings=["boom"] if warn else [],
@@ -90,7 +90,7 @@ def test_scoring_accuracy_and_aggregates() -> None:
          "gia_tri_hd": "999", "thoi_han_hd": "6 thang"},
         latency=1200.0, cost=140.0,
     )
-    ps = score("gemini_flash", "gemini-2.0-flash", [(good, truth), (bad, truth)])
+    ps = score("gemini_flash", "gemini-2.5-flash", [(good, truth), (bad, truth)])
 
     assert ps.samples == 2
     assert ps.fields["ngay_het_han"].scored == 2 and ps.fields["ngay_het_han"].correct == 1
@@ -117,7 +117,7 @@ def test_percentile_single_and_multi() -> None:
 
 def test_render_report_smoke() -> None:
     ps = score(
-        "gemini_flash", "gemini-2.0-flash",
+        "gemini_flash", "gemini-2.5-flash",
         [(_result({"ngay_het_han": "2026-12-31"}), {"ngay_het_han": "2026-12-31"})],
     )
     md = render_report([ps], ["a note"], Path("manifest.json"))

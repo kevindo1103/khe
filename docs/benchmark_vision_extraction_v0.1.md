@@ -15,7 +15,7 @@ Candidates:
 
 | Provider | Role | Model | Pricing (USD /1M tok) |
 |---|---|---|---|
-| `gemini_flash` | primary (~150đ/doc) | `gemini-2.0-flash` | $0.10 in / $0.40 out |
+| `gemini_flash` | primary (~150đ/doc) | `gemini-2.5-flash` | ~$0.30 in / $2.50 out (approx — verify) |
 | `claude_haiku` | fallback when accuracy <90% (~300đ/doc) | `claude-haiku-4-5` | $1.00 in / $5.00 out |
 | `claude_sonnet` | complex / handwritten | `claude-sonnet-4-6` | $3.00 in / $15.00 out |
 
@@ -79,7 +79,7 @@ Run the harness to populate. Template the runner emits:
 
 | Provider | Model | p50 (ms) | p95 (ms) | Cost/doc (đ) | Meets targets? |
 |---|---|---|---|---|---|
-| gemini_flash | `gemini-2.0-flash` | _pending_ | _pending_ | _pending_ | _pending_ |
+| gemini_flash | `gemini-2.5-flash` | _pending_ | _pending_ | _pending_ | _pending_ |
 | claude_haiku | `claude-haiku-4-5` | _pending_ | _pending_ | _pending_ | _pending_ |
 | claude_sonnet | `claude-sonnet-4-6` | _pending_ | _pending_ | _pending_ | _pending_ |
 

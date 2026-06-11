@@ -20,7 +20,7 @@ schemas.py        ExtractionResult, ExtractedField, ContractExtractionLLM, DocTy
 provider.py       VisionExtractionProvider Protocol (the DEC-002 interface)
 prompts.py        VN read-only extraction prompts (shared → fair benchmark)
 providers/
-  gemini_flash.py  primary  (~150đ/doc) — gemini-2.0-flash
+  gemini_flash.py  primary  (~150đ/doc) — gemini-2.5-flash
   claude_haiku.py  fallback (~300đ/doc) — claude-haiku-4-5
   claude_sonnet.py complex/handwritten — claude-sonnet-4-6
   base.py / _claude.py  shared helpers

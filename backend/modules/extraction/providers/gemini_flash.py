@@ -1,10 +1,12 @@
 """GeminiFlashProvider — primary extractor (~150đ/doc target).
 
-Gemini 2.0 Flash via google-genai. Single `generate_content` call with the image
+Gemini 2.5 Flash via google-genai. Single `generate_content` call with the image
 inline + structured output (response_schema=ContractExtractionLLM) → response.parsed.
+(gemini-2.0-flash was retired by Google — returns 404.)
 
-Pricing (Gemini 2.0 Flash, image/text): ~$0.10 in / $0.40 out per 1M tokens.
-Update the constants if Google revises pricing.
+Pricing is approximate (~$0.30 in / $2.50 out per 1M, GA) and must be verified
+before locking the benchmark cost verdict. gemini-2.5-flash-lite (~$0.10/$0.40) is
+the cheaper option closest to the 150đ/doc target.
 """
 
 from __future__ import annotations
@@ -19,9 +21,11 @@ from .base import cost_vnd, empty_result, sniff_mime, to_result
 
 class GeminiFlashProvider:
     name = "gemini_flash"
-    model = "gemini-2.0-flash"
-    in_usd_per_mtok = 0.10
-    out_usd_per_mtok = 0.40
+    # gemini-2.0-flash retired by Google (404). Current GA Flash with vision.
+    # Cheaper alternative for the ~150đ target: gemini-2.5-flash-lite ($0.10/$0.40).
+    model = "gemini-2.5-flash"
+    in_usd_per_mtok = 0.30   # approx GA pricing — verify before locking cost verdict
+    out_usd_per_mtok = 2.50
 
     def __init__(self, api_key: str | None = None) -> None:
         # Lazy import — keep package importable without the SDK installed.

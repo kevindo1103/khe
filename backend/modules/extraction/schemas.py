@@ -120,7 +120,7 @@ class ExtractionResult(BaseModel):
     fields: dict[str, ExtractedField] = Field(default_factory=dict)
 
     provider: str = ""             # e.g. "gemini_flash"
-    model: str = ""                # e.g. "gemini-2.0-flash"
+    model: str = ""                # e.g. "gemini-2.5-flash"
     latency_ms: float = 0.0
     usage: TokenUsage = Field(default_factory=TokenUsage)
     cost_vnd: float = 0.0

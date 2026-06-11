@@ -16,7 +16,7 @@ _Last updated: 2026-06-11 (live-test on H_MB_6.pdf)_
 ## Provider lineup
 | Provider | Role | Model | ~Cost/doc target |
 |---|---|---|---|
-| GeminiFlashProvider | primary | `gemini-2.0-flash` | 150đ |
+| GeminiFlashProvider | primary | `gemini-2.5-flash` | 150đ |
 | ClaudeHaikuProvider | fallback (<90% accuracy) | `claude-haiku-4-5` | 300đ |
 | ClaudeSonnetProvider | complex / handwritten | `claude-sonnet-4-6` | — |
 
@@ -55,6 +55,24 @@ First end-to-end run with real provider keys. Pipeline verified on a **scanned
 | ngay_het_han / gia_tri_hd | None (D-08 ✅ — no guessing) | None (D-08 ✅) |
 | Latency | 32.5s | **9.1s** (3.5× faster, counter-intuitive) |
 | Cost | 560đ | 1,693đ (3×) |
+
+Gemini added 2026-06-11 (after billing active; gemini-2.0-flash retired → using
+`gemini-2.5-flash`):
+
+| Metric | Gemini 2.5 Flash |
+|---|---|
+| doc_type | khac (1.00) ✅ truthful |
+| doi_tac / ngay_hieu_luc / thoi_han_hd | ✅ all correct (1.00) |
+| dieu_khoan_thanh_toan | ✅ **full clause — both Claude models MISSED this** |
+| ngay_het_han / gia_tri_hd | None (same as Claude) |
+| Input tokens | **3,652** (vs Claude ~20,577 — 5.6× fewer) |
+| Cost | **59đ** (vs Haiku 560đ / Sonnet 1,693đ — ~10× cheaper) |
+| Latency | 14.6s |
+
+→ Gemini Flash extracted MORE than Claude at 1/10 cost on this doc — supports
+DEC-002 (Gemini primary, Claude fallback). NOTE: 59đ uses approx 2.5-flash pricing
+($0.30/$2.50) — **verify official pricing before locking verdict**; gemini-2.5-flash-lite
+($0.10/$0.40) is cheaper if needed to hit 150đ.
 
 Notes:
 - File **out of MVP seed** (HĐ mua bán căn hộ chung cư, không thuộc F&B/bán lẻ
