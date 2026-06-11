@@ -13,10 +13,11 @@ jobs:
         run: |
           BRANCH="${{ github.head_ref }}"
           echo "PR branch: $BRANCH"
-          if echo "$BRANCH" | grep -qE '^(claude|windsurf)/'; then
+          if echo "$BRANCH" | grep -qE '^(claude|windsurf)/' || \
+             echo "$BRANCH" | grep -qE '^(main|staging|claude/edit-git-docs-Khe01|claude/pm-assistant)$'; then
             echo "✅ Branch pattern OK: $BRANCH"
           else
-            echo "❌ Branch '$BRANCH' does not match required pattern: claude/* or windsurf/*"
+            echo "❌ Branch '$BRANCH' does not match required pattern: claude/* or windsurf/* or long-lived branch"
             echo "   Rename your branch before opening a PR."
             exit 1
           fi
