@@ -17,6 +17,14 @@
 
 ---
 
+## Changelog
+
+| Phiên bản | Ngày | Tác giả | Thay đổi |
+|---|---|---|---|
+| v0.1 | 2026-06-09 | Kevin (PM) / ERP_PM_Assistant | Initial draft. Scope MVP ingest + retrieve + deadline. Topology 10 sessions. D-rules P-1..P-5. |
+
+---
+
 ## 1. Executive summary
 
 Thị trường CLM hiện tại (HighQ, Icertis, Ironclad…) được thiết kế *cho phòng pháp chế / luật sư*. SME ở VN **đa số không có người làm pháp chế hay hành chính hợp đồng**, nên cả lớp sản phẩm đó lệch khỏi thực tế của họ. Khế lấp khe này: một lớp chat đơn giản đứng trên một **lõi tất định** lo template, deadline, nghĩa vụ và lưu vết.
