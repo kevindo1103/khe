@@ -37,7 +37,13 @@ class _ClaudeVisionProvider:
             raise RuntimeError(
                 "anthropic SDK not installed — `pip install anthropic` to use Claude providers."
             ) from exc
-        self._client = AsyncAnthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        # CLAUDE_API_KEY is the canonical secret name (KHE_Infra). Fall back to
+        # ANTHROPIC_API_KEY (the SDK default / local convenience). Never logged.
+        self._client = AsyncAnthropic(
+            api_key=api_key
+            or os.environ.get("CLAUDE_API_KEY")
+            or os.environ.get("ANTHROPIC_API_KEY")
+        )
 
     async def extract(self, image_bytes: bytes, doc_type: str = "auto") -> ExtractionResult:
         mime = sniff_mime(image_bytes)

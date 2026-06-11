@@ -51,7 +51,7 @@ Maps to BRD M-3 (`ngày hết hạn` extraction ≥90%).
 
 ```bash
 export GEMINI_API_KEY=...        # or GOOGLE_API_KEY
-export ANTHROPIC_API_KEY=...
+export CLAUDE_API_KEY=...
 # Drop 15 scrubbed images in fixtures/data/, fill fixtures/manifest.json ground truth, then:
 python -m backend.modules.extraction.benchmark.runner \
     --manifest backend/modules/extraction/benchmark/fixtures/manifest.json \

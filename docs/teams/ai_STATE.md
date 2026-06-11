@@ -42,6 +42,14 @@ _Last updated: 2026-06-10_
 - Coordinate with KHE_Backend on the ingest call site that invokes `extract()` +
   logs `consent_reference` (interface change → via PM first).
 
+## Env / secrets (relay KHE_Infra, 2026-06-11)
+- GitHub Actions secrets set in repo: **`GEMINI_API_KEY`** (primary) and
+  **`CLAUDE_API_KEY`** (fallback). Injected at runtime via deploy-main/staging.yml.
+- Code reads `os.environ["GEMINI_API_KEY"]` / `os.environ["CLAUDE_API_KEY"]`
+  (Claude provider falls back to `ANTHROPIC_API_KEY` for local/SDK default). Never log/hardcode.
+- Local dev: add both to `backend/.env.local` (gitignored).
+
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results.
+- relay KHE_Infra (2026-06-11) — secret names confirmed; provider key lookup aligned to `CLAUDE_API_KEY`.

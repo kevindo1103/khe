@@ -6,7 +6,7 @@ whether extraction works on a real PDF before assembling the 15-sample set.
 
 Usage:
     export GEMINI_API_KEY=...        # for --provider gemini_flash
-    # or: export ANTHROPIC_API_KEY=...   for claude_haiku / claude_sonnet
+    # or: export CLAUDE_API_KEY=...      for claude_haiku / claude_sonnet
     python -m backend.modules.extraction.probe \\
         --file /path/to/contract.pdf --provider gemini_flash --doc-type auto
 

@@ -21,7 +21,7 @@ Manifest JSON shape (see fixtures/manifest.example.json):
     }
 
 Usage:
-    export GEMINI_API_KEY=... ANTHROPIC_API_KEY=...
+    export GEMINI_API_KEY=... CLAUDE_API_KEY=...
     python -m backend.modules.extraction.benchmark.runner \\
         --manifest backend/modules/extraction/benchmark/fixtures/manifest.json \\
         --providers gemini_flash,claude_haiku,claude_sonnet \\
