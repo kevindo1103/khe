@@ -15,7 +15,7 @@ Candidates:
 
 | Provider | Role | Model | Pricing (USD /1M tok) |
 |---|---|---|---|
-| `gemini_flash` | primary (~150đ/doc) | `gemini-2.5-flash` | ~$0.30 in / $2.50 out (approx — verify) |
+| `gemini_flash` | primary (~150đ/doc) | `gemini-2.5-flash` | $0.30 in / $2.50 out (verified 2026-06-11) |
 | `claude_haiku` | fallback when accuracy <90% (~300đ/doc) | `claude-haiku-4-5` | $1.00 in / $5.00 out |
 | `claude_sonnet` | complex / handwritten | `claude-sonnet-4-6` | $3.00 in / $15.00 out |
 

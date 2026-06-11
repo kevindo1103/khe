@@ -70,9 +70,9 @@ Gemini added 2026-06-11 (after billing active; gemini-2.0-flash retired → usin
 | Latency | 14.6s |
 
 → Gemini Flash extracted MORE than Claude at 1/10 cost on this doc — supports
-DEC-002 (Gemini primary, Claude fallback). NOTE: 59đ uses approx 2.5-flash pricing
-($0.30/$2.50) — **verify official pricing before locking verdict**; gemini-2.5-flash-lite
-($0.10/$0.40) is cheaper if needed to hit 150đ.
+DEC-002 (Gemini primary, Claude fallback). Pricing **verified 2026-06-11**:
+gemini-2.5-flash $0.30/$2.50, gemini-2.5-flash-lite $0.10/$0.40 per 1M. So 59đ is
+accurate; even 2.5-flash sits well under the 150đ primary target (lite ≈14đ).
 
 Notes:
 - File **out of MVP seed** (HĐ mua bán căn hộ chung cư, không thuộc F&B/bán lẻ
