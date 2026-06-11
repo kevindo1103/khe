@@ -3,7 +3,7 @@
 > Lead coordination + sprint state for the `backend/**` scope.
 > Kept under `backend/` (in-scope) per scope-lock — `docs/teams/` is ERP_Docs-owned.
 
-*Last updated: 2026-06-11 — Sprint 0 scaffold merged*
+*Last updated: 2026-06-11 — Sprint 0 fully closed (Infra #20 resolved via PR #21)*
 
 ---
 
@@ -32,7 +32,7 @@
 - `pull_request` workflow runs YAML from **HEAD branch**, not base → promote `staging→main` needs gate fix present on `staging` first. Forward-merged main→staging (`2c74c00`) to unblock. Infra gate fix = #20/#21.
 - Bug pattern: removing `passlib[bcrypt]` dropped transitive `bcrypt` (code uses native import) → declared `bcrypt>=4.0.0` directly.
 
-**Still open (Infra #20, not backend):** `deploy-staging` + `deploy-main` fail on un-provisioned VPS dir (`/opt/khe/backend-*`). Deploy ops only — does not affect code on `main`.
+**Infra #20 — ✅ RESOLVED (PR #21):** VPS dirs provisioned, deploy ops restored. Gate exemption for long-lived branches added to `pr-quality-gate.yml`.
 
 ### Pre-main blockers — RESOLVED
 
