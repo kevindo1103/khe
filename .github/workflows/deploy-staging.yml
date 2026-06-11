@@ -54,6 +54,10 @@ jobs:
             echo "⚠️  VPS_HOST secret not set — skipping VPS deploy (set secret to enable)"
             exit 0
           fi
+          if [ ! -d "backend" ]; then
+            echo "⚠️  backend/ not found — skipping VPS deploy"
+            exit 0
+          fi
 
           mkdir -p ~/.ssh
           echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
