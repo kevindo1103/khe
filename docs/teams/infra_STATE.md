@@ -84,6 +84,7 @@ User=deploy
 WorkingDirectory=/opt/khe/backend
 EnvironmentFile=/opt/khe/backend/.env
 ExecStart=/opt/khe/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+# .env is written by deploy-main.yml on every deploy (GEMINI_API_KEY, CLAUDE_API_KEY, JWT_SECRET, TELEGRAM_BOT_TOKEN)
 Restart=always
 RestartSec=5
 
