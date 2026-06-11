@@ -34,7 +34,7 @@ class Tenant(MasterBase):
 
 
 class TenantUser(MasterBase):
-    """Users who can log in to a specific tenant's ERP."""
+    """Users who can log in to a specific tenant's Khế portal."""
     __tablename__ = "tenant_users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
