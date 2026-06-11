@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: <YYYY-MM-DD> (v0.1 — draft, awaiting docs-editor session fold) — MVP BRD v0.1 reference*
+*Last updated: 2026-06-11 (v0.2 — fold Sprint 0 entries 1-11 from DOCS_INBOX) — MVP BRD v0.2 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,13 +9,13 @@
 
 ## Project context
 
-**Reference:** `docs/MVP_BRD_Khe_v0.1.md`
+**References:** `docs/MVP_BRD_Khe_v0.1.md` (v0.2) · `docs/SRS_v0.1.md` · `docs/GLOSSARY_v0.1.md` · `docs/PROJECT_PLAN_v0.1.md`
 
 **MVP scope (M0 → M3):** Ingest + retrieve + deadline. KHÔNG soạn HĐ tự động (drafting), KHÔNG review rủi ro, KHÔNG ký số (integrate sau), KHÔNG đa thị trường (VN-first), KHÔNG marketplace template.
 
 **Vertical seed:** F&B / bán lẻ (HĐ thuê mặt bằng + HĐ nhà cung cấp + HĐ lao động). Architecture phải general nhưng seed sắc theo vertical.
 
-**Distribution:** Law firm + tax agent (đại lý thuế) làm channel — họ vốn là "phòng pháp lý thuê ngoài" SME đã có. Tầng deadline reminder ĐẺ việc cho firm thay vì cướp việc.
+**Distribution + Revenue (DEC-011 B2B2B):** Law firm + đại lý thuế là **khách hàng trả tiền** (Phase 1, ~50-100k VND/client/năm) **VÀ** kênh phân phối — không chỉ channel. SME end-user **FREE** Phase 1. Tầng deadline reminder ĐẺ việc cho firm thay vì cướp việc; firm bundle Khế vào gói dịch vụ tháng cho SME. Pivot ở GĐ2 (lawyer-in-loop drafting/review): SME-pays + firm rev share. **2-firm pilot (DEC-013):** 1 đại lý thuế + 1 law firm song song, 90-day evaluation. **Concierge onboarding (DEC-012):** 20 SME đầu được số hóa tận nơi — bỏ ma sát upload.
 
 **Catalysts:**
 - NĐ 337/2025 (hợp đồng lao động điện tử) hiệu lực 01/01/2026
@@ -168,46 +168,67 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | **React Hooks useCallback TDZ** | Page load ReferenceError "Cannot access X before initialization" | Define dependent callbacks BEFORE dependent ones in source order |
 | **SQLite same-thread deadlock** | `database is locked` 10s sau busy_timeout | Outer session holds write lock + inner session tries to write same thread → blocked. Commit outer BEFORE inner opens session. |
 | **Cross-env data alignment** | UI shows different identifier than source system (e.g., POS receipt #232, system #1) | Single source of truth — use canonical ID across all layers. Verify pre-prod smoke. |
+| **`pkg[extra]` removal drops transitive import** | `import main` fails on clean env / CI dù pass local; vd gỡ `passlib[bcrypt]` làm mất `bcrypt` mà code dùng `import bcrypt` (PR #12 case) | Declare TRỰC TIẾP mọi package mà code import — không dựa vào `[extra]` của package khác để pull transitive. |
+| **`pull_request` workflow reads HEAD branch YAML, không phải base** | Fix workflow trên `main` không apply ngay cho PR `staging → main`; gate cũ vẫn chạy từ `staging` HEAD | Forward-merge fix workflow vào tất cả long-lived branches (vd `main → staging`) TRƯỚC khi mở promote PR. Tránh hotfix workflow chỉ trên main. |
+| **rsync exit code 11 = target dir chưa tồn tại trên VPS** | Deploy workflow fail với `rsync error: errno 11` | Bootstrap `mkdir -p /opt/khe/backend{,-staging}` trên VPS qua SSH step TRƯỚC rsync. Đã wired in `deploy-*.yml` Sprint 0. |
 
 ---
 
-## Stack
+## Stack (ratified Sprint 0)
 
-**TBD — to be ratified Sprint 0.**
-
-Proposed (mirror SpurX reuse per BRD A-1):
-- **Backend:** FastAPI + SQLAlchemy + APScheduler, Python 3.11+, SQLite multi-tenant (master.db + per-tenant)
-- **Frontend Admin:** React + Vite + Tailwind CSS, React Router v6
-- **PWA Chat:** Same React + Vite stack, mobile-first PWA
-- **OCR + LLM:** TBD — FPT.AI / Google Document AI / GPT-4 Vision / Claude API (Sprint 0 decision)
-- **Reminders:** Zalo ZNS via OA + email fallback
+- **Backend:** FastAPI + SQLAlchemy + APScheduler, Python 3.11+, SQLite multi-tenant (`master.db` + `tenants/<slug>.db`)
+- **Auth:** `bcrypt` **direct** (KHÔNG `passlib[bcrypt]` — xem bug pattern) + `python-jose` cho JWT
+- **Frontend Admin:** React + Vite + Tailwind CSS, React Router v6 *(Sprint 1+ provision)*
+- **PWA Chat:** Same React + Vite stack, mobile-first PWA *(Sprint 1+ provision)*
+- **Vision extraction (DEC-002):** `VisionExtractionProvider` Protocol, 1-call vision (no separate OCR). Providers: Gemini 2.5 Flash (primary, ~59đ/doc) + Claude Haiku 4.5 (fallback, ~560đ/doc) + Claude Sonnet 4.6 (complex, ~1693đ/doc)
+- **Reminders (DEC-006):** Telegram bot via `python-telegram-bot` (env vars `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`) — fallback email. *(Zalo ZNS deprecated for MVP — blocker OA registration.)*
 - **Infra:** VPS Ubuntu, systemd + nginx, GitHub Actions CI/CD
 
 ---
 
-## Deploy
+## Deploy (ratified Sprint 0)
 
-**TBD — to be defined Sprint 0.**
+**All deploy via GitHub Actions CI/CD — KHÔNG SSH/paramiko/SFTP trực tiếp VPS** (bypass quality gate). Exception duy nhất: documented hotpatch playbook khi prod down + Backend lead approve.
 
-Pattern (mirror Bingxue):
-- All deploy via GitHub Actions CI/CD — KHÔNG SSH/paramiko trực tiếp
-- Branch flow: feature → staging → main (auto-deploy each)
-- PR quality gate: build + import check + schema diff
-- Manual via `workflow_dispatch`
-- Alembic via deploy workflow only, not direct VPS
+### Branch flow
+
+`feature` → `staging` → `main`. Mỗi push đến `staging`/`main` trigger auto-deploy workflow tương ứng.
+
+### Workflows (`.github/workflows/`)
+
+| File | Trigger | Hành động |
+|---|---|---|
+| `pr-quality-gate.yml` | mọi PR | Branch name pattern check (long-lived branches exempt) + backend `python -c "import main"` + alembic single-head + frontend build |
+| `deploy-staging.yml` | push `staging` | Bootstrap VPS dirs → rsync `backend/` → ghi `.env` secrets via SSH stdin (masked) → `systemctl restart khe-backend-staging` |
+| `deploy-main.yml` | push `main` | Same as staging với target `khe-backend` + Telegram notify ✅/❌ |
+
+### VPS layout
+
+1 VPS dùng chung:
+- Staging: `/opt/khe/backend-staging`, port **8001**, service `khe-backend-staging`
+- Production: `/opt/khe/backend`, port **8000**, service `khe-backend`
+- Systemd `EnvironmentFile=` load `.env` (secrets injected at deploy)
+
+### Secrets (GitHub repository secrets)
+
+`JWT_SECRET`, `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`. Two environments: `staging` + `production`.
+
+### Alembic
+
+Master.db migrations via deploy workflow only (not direct VPS). Per-tenant migration loop is Sprint 1 carry-over (currently `create_all` for skeleton).
 
 ---
 
 ## Local development
 
-**TBD — to be defined Sprint 0.**
+**TBD — Sprint 1 sẽ ratify khi frontend session spawn.**
 
 Pattern (mirror Bingxue):
 - `npm run dev` from project root → backend (uvicorn 8000) + frontend (Vite 5173) hot-reload
 - Seed script `scripts/seed_local.py` — idempotent wipe + alembic upgrade + fixtures
 - Login default: admin/admin123 or staff/staff123 (local only)
 - Env files: `backend/.env.local` + `frontend/.env.local`, both gitignored
-- Scope: ~70-80% fix UI/logic/CRUD. Staging needed for: scheduler / OCR / Zalo / multi-tenant integration.
+- Scope: ~70-80% fix UI/logic/CRUD. Staging needed for: scheduler / vision provider / Telegram / multi-tenant integration.
 
 ---
 
@@ -216,7 +237,7 @@ Pattern (mirror Bingxue):
 - JWT `Depends(get_current_user)` BẮT BUỘC trên mọi endpoint sửa data
 - Endpoints SME-side phải verify `tenant_id` match JWT
 - Firm portal endpoints phải verify consent (FR-FP-03)
-- KHÔNG log: passwords, JWT secrets, Zalo OA tokens, OCR/LLM API keys
+- KHÔNG log: passwords, JWT secrets, Telegram bot tokens, vision provider API keys (Gemini / Claude)
 - SQL: chỉ ORM, không raw SQL với f-string
 - **NĐ 13/2023 DLCN compliance hooks:** mọi PII processing phải log purpose + consent reference
 - **Tenant isolation:** mọi query MUST filter by tenant_id, NEVER `SessionLocal()` directly
@@ -318,4 +339,4 @@ compliance(nd13): add purpose-of-processing log
 
 ---
 
-*v0.1 — initial draft for docs-editor session to fold. PM_Assistant proposes; ERP_Docs ratifies after first DOCS_INBOX cycle.*
+*v0.2 — folded Sprint 0 DOCS_INBOX entries 1-11 (Strategy v2 / DEC-006 Telegram / Backend scaffold / Infra CI/CD / AI extraction insight). Cascade: BRD v0.2 → SRS v0.1 → Glossary v0.1 → PROJECT_PLAN v0.1 → CLAUDE.md v0.2.*
