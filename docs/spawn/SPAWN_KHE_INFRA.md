@@ -52,7 +52,7 @@
 1. `pr-quality-gate.yml`: `python -c "import main"` (backend) + `npm run build` (frontend) + schema diff check
 2. `deploy-staging.yml`: auto-trigger trên push to `staging` branch
 3. `deploy-main.yml`: auto-trigger trên push to `main`
-4. GitHub Actions secrets: `TELEGRAM_BOT_TOKEN` · `GEMINI_API_KEY` · `CLAUDE_API_KEY` · `JWT_SECRET`
+4. GitHub Actions secrets: `JWT_SECRET` · `GEMINI_API_KEY` · `CLAUDE_API_KEY` · `TELEGRAM_BOT_TOKEN` · `TELEGRAM_CHAT_ID`
 5. Hotpatch SSH playbook: document trong `docs/teams/infra_STATE.md` (cần Backend lead approve trước khi sử dụng)
 
 ---
@@ -60,10 +60,11 @@
 ## Secrets (BẮT BUỘC)
 
 KHÔNG log secrets bất kỳ đâu trong workflow YAML hay deploy scripts:
-- `TELEGRAM_BOT_TOKEN` — Telegram bot (DEC-006)
-- `GEMINI_API_KEY` — GeminiFlashProvider
-- `CLAUDE_API_KEY` — ClaudeHaikuProvider fallback
 - `JWT_SECRET` — auth tokens
+- `GEMINI_API_KEY` — GeminiFlashProvider primary (lấy tại aistudio.google.com)
+- `CLAUDE_API_KEY` — ClaudeHaikuProvider fallback (lấy tại console.anthropic.com)
+- `TELEGRAM_BOT_TOKEN` — Telegram bot token (DEC-006, lấy từ @BotFather)
+- `TELEGRAM_CHAT_ID` — chat/group ID nhận reminder notifications
 
 ---
 
