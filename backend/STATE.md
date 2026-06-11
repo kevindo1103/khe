@@ -23,14 +23,16 @@
 |---|---|
 | 1. Infra sync `staging ← main` | ✅ done (Infra #15 closed) |
 | 2. PR `lead → staging` (#16) — CI gate runs | ✅ merged `a05fc1f` (6 checks green) |
-| 3. PR `staging → main` (#19) | **BLOCKED** — branch-pattern gate false-positive (head=staging), relayed Infra #20 |
-| 4. DOCS_INBOX (#1) report within 24h of main merge | waiting on step 3 |
+| 3. PR `staging → main` (#19) | ✅ **MERGED `cf6d022`** — all 3 gate checks green |
+| 4. DOCS_INBOX (#1) report within 24h of main merge | ✅ posted 2026-06-11 |
 
-**#19 blockers (both Infra scope — backend code all green):**
-- 🔴 `pr-quality-gate` branch-pattern check rejects `head=staging` → Infra #20 (fix gate to exempt long-lived heads)
-- 🔴 `deploy-staging` fail: `/opt/khe/backend-staging` not provisioned on VPS → Infra #20
-- Decision (user 2026-06-11): **wait for Infra gate fix, then re-run CI on #19 + merge** (no admin bypass)
-- After Infra fixes workflow on `main`: re-trigger #19 checks (re-run jobs / no-op push to staging), merge when green.
+**Sprint 0 backend scaffold = COMPLETE on `main` (`cf6d022`).**
+
+**CI/promote learnings (folded to DOCS_INBOX #1):**
+- `pull_request` workflow runs YAML from **HEAD branch**, not base → promote `staging→main` needs gate fix present on `staging` first. Forward-merged main→staging (`2c74c00`) to unblock. Infra gate fix = #20/#21.
+- Bug pattern: removing `passlib[bcrypt]` dropped transitive `bcrypt` (code uses native import) → declared `bcrypt>=4.0.0` directly.
+
+**Still open (Infra #20, not backend):** `deploy-staging` + `deploy-main` fail on un-provisioned VPS dir (`/opt/khe/backend-*`). Deploy ops only — does not affect code on `main`.
 
 ### Pre-main blockers — RESOLVED
 
