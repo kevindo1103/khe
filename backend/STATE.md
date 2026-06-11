@@ -17,6 +17,12 @@
 |---|---|---|---|
 | FastAPI + multi-tenant DB skeleton | #2 / #4 (PR #6) | Windsurf_Backend | ✅ `done` — merged to lead branch `7236ff6`, all 5 exit criteria lead-verified |
 
+### Pre-main blockers (must land before lead branch → `main`)
+
+| Task | Issue | Status |
+|---|---|---|
+| Fix `get_db()` env-gated fallback (CRITICAL #9) + passlib removal + ERP branding | #11 | `planned` → Windsurf |
+
 ### Sprint 1 carry-over (from PR #6 review — DO in feature work, not scaffold)
 
 1. **`get_db` tenant isolation** — couple `get_db` to `get_current_user` so tenant is derived strictly from the authenticated user (current scaffold falls back to `DEFAULT_TENANT_ID`).
