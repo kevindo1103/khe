@@ -1,20 +1,36 @@
 # KHE_Infra — Session State
 
-_Last updated: 2026-06-11 | Branch: claude/infra-ci-quality-gate_
+_Last updated: 2026-06-11 | Sprint 0 COMPLETE_
 
 ---
 
-## Current Sprint: Sprint 0
+## Current Sprint: Sprint 0 — DONE ✅
 
 ### Status
 
 | Item | Status | Notes |
 |---|---|---|
-| `pr-quality-gate.yml` | ✅ Done | Triggers on PR → main/staging. Branch pattern + backend import + alembic single-head + frontend build. |
-| `deploy-staging.yml` | ✅ Done | Push to `staging` → quality gate → rsync + systemctl restart. Needs VPS secrets. |
-| `deploy-main.yml` | ✅ Done | Push to `main` → quality gate → rsync + systemctl restart + Telegram notify. Needs VPS secrets. |
-| GitHub Actions secrets | ⏳ Pending | User must add in repo Settings → Secrets (see below). |
-| Hotpatch playbook | ✅ Done (below) | Documented under §Hotpatch Playbook. |
+| `pr-quality-gate.yml` | ✅ Done | All PRs (not just main/staging). Branch pattern + backend import + alembic single-head + frontend build. Long-lived branches exempted. |
+| `deploy-staging.yml` | ✅ Done | Push to `staging` → gate → bootstrap VPS dirs → rsync → write .env → systemctl restart. |
+| `deploy-main.yml` | ✅ Done | Push to `main` → gate → bootstrap VPS dirs → rsync → write .env → systemctl restart → Telegram notify. |
+| GitHub Actions secrets | ✅ Done | 8 secrets set: JWT_SECRET, GEMINI_API_KEY, CLAUDE_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, VPS_HOST, VPS_USER, VPS_SSH_KEY. |
+| GitHub Environments | ✅ Done | `staging` + `production` created. |
+| API key injection to VPS | ✅ Done | GEMINI_API_KEY, CLAUDE_API_KEY, JWT_SECRET, TELEGRAM_BOT_TOKEN written to `.env` on VPS via SSH stdin pipe on every deploy. |
+| VPS dir bootstrap | ✅ Done | `mkdir -p` + `python3 -m venv` before first rsync — idempotent. |
+| Telegram notify | ✅ Live | ✅/❌ messages firing on production deploy. |
+| Hotpatch playbook | ✅ Done | Documented below. |
+| `staging` sync ← `main` | ✅ Done | Fast-forward merge, staging now has all CI workflows. |
+
+### Bug fixes shipped Sprint 0
+
+| Fix | PR | Issue |
+|---|---|---|
+| Skip rsync when `backend/` absent | #8 | Deploy crash on empty repo |
+| Quality gate fires on all PRs (not just main/staging) | #13 | PR #12 had no check runs |
+| Sync `staging` ← `main` | direct push | #15 — staging had no `.github/` |
+| Inject API keys into VPS `.env` | #18 | GEMINI/CLAUDE keys were None → 401 |
+| Exempt long-lived branches from pattern check | #21 | #20 — `staging→main` promote blocked |
+| Bootstrap VPS dirs before rsync | #21 | #20 — rsync code 11 on first deploy |
 
 ---
 
@@ -26,21 +42,19 @@ Go to: **repo Settings → Secrets and variables → Actions → New repository 
 
 | Secret name | Value | Who provides |
 |---|---|---|
-| `JWT_SECRET` | Random 64-char hex string | PM / Backend lead |
-| `GEMINI_API_KEY` | Google AI Studio key | PM |
-| `CLAUDE_API_KEY` | Anthropic API key | PM |
-| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | PM |
-| `TELEGRAM_CHAT_ID` | Chat ID for deploy notifications | PM |
+| `JWT_SECRET` | Random 64-char hex string (`openssl rand -hex 32`) | ✅ Set |
+| `GEMINI_API_KEY` | Google AI Studio key | ✅ Set |
+| `CLAUDE_API_KEY` | Anthropic API key | ✅ Set |
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | ✅ Set |
+| `TELEGRAM_CHAT_ID` | Chat ID for deploy notifications | ✅ Set |
 
 ### VPS secrets (dùng chung staging + production — cùng 1 VPS, khác port/folder)
 
 | Secret name | Value |
 |---|---|
-| `VPS_HOST` | IP hoặc hostname của VPS |
-| `VPS_USER` | SSH user (e.g. `deploy`) |
-| `VPS_SSH_KEY` | Private key (multiline, paste full PEM) |
-
-**Note:** Workflows gracefully skip VPS steps if secrets are unset — safe to merge before VPS is provisioned.
+| `VPS_HOST` | ✅ Set |
+| `VPS_USER` | ✅ Set |
+| `VPS_SSH_KEY` | ✅ Set (`ed25519`, generated via `ssh-keygen -t ed25519 -C "khe-deploy"`) |
 
 ---
 
