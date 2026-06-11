@@ -1,13 +1,14 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-10 | v0.6*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-11 | v0.7*
 
 ---
 
 ## Active Sprint Context
 
-**Current phase:** Sprint 0 bootstrap (kicking off) + **Strategy v2 fold (2026-06-10)**
-**Sprint 0 goal:** FastAPI + multi-tenant DB scaffold, CI/CD, Telegram bot, Vision extraction benchmark, **2 firm pilots** (đại lý thuế + law firm). Runs **in parallel** with M0 vertical slice (Sprint 1).
+**Current phase:** **Sprint 0 COMPLETE (2026-06-11)** — see nghiệm thu issue #23. Ready Sprint 1 kickoff.
+**Sprint 0 goal (ĐÃ ĐẠT):** FastAPI + multi-tenant DB scaffold, CI/CD, Telegram bot, Vision extraction interface + 3 providers. Architecture/contract baseline ratified.
+**Sprint 1 prep:** Spawn KHE_Docs (fold 11 DOCS_INBOX entries) + KHE_Frontend_Admin/PWA/QC/Compliance. Carry-over: #10 per-tenant Alembic, #22 NĐ 13 consent gate.
 
 ---
 
@@ -80,13 +81,15 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 
 | # | Session | Status |
 |---|---|---|
-| 1 | KHE_Docs | Branch created ✅ — not yet spawned |
+| 1 | KHE_Docs | Branch created ✅ — **NEEDS spawn Sprint 1** (11 DOCS_INBOX pending fold) |
 | 2 | KHE_PM_Assistant | Active ✅ |
-| 3 | KHE_Backend | Task [#2](https://github.com/kevindo1103/khe/issues/2) issued ✅ — ready to spawn |
-| 4-7 | KHE_Frontend_Admin/PWA/QC/Designer | Not spawned |
-| 8 | KHE_Infra | Not spawned |
-| 9 | KHE_AI | Task [#3](https://github.com/kevindo1103/khe/issues/3) issued ✅ — ready to spawn |
-| 10 | KHE_Compliance | Not spawned |
+| 3 | KHE_Backend | Sprint 0 ✅ DONE (#2 closed, PR #19 merged `cf6d022`). Sprint 1 backlog: #10 (per-tenant alembic), #22 (NĐ 13 consent gate) |
+| 4-5 | KHE_Frontend_Admin / PWA_Chat | **NEEDS spawn Sprint 1** (M0 vertical slice) |
+| 6 | KHE_QC | **NEEDS spawn Sprint 1** (E2E smoke) |
+| 7 | KHE_Designer | Not spawned |
+| 8 | KHE_Infra | Sprint 0 ✅ DONE (PRs #7, #8, #13, #18, #21 merged). VPS pattern + 8 secrets live |
+| 9 | KHE_AI | Sprint 0 ✅ DONE (#3 closed, PR #17 merged). Pending: 15 PII-scrubbed samples từ Kevin |
+| 10 | KHE_Compliance | **NEEDS spawn Sprint 1** (consent UX for #22) |
 
 ---
 
@@ -100,10 +103,35 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 - [x] DEC-002, DEC-006, DEC-007, DEC-008, DEC-009, DEC-010 ratified
 - [x] KHE_Backend [#2](https://github.com/kevindo1103/khe/issues/2) + KHE_AI [#3](https://github.com/kevindo1103/khe/issues/3)
 - [x] PROJECT_PLAN v0.1 draft in DOCS_INBOX
-- [ ] KHE_Backend + KHE_AI sessions spawned by user
-- [ ] GitHub labels created (Settings → Labels)
-- [ ] KHE_Docs spawned
-- [ ] Sprint 0 kickoff
+- [x] KHE_Backend + KHE_AI + KHE_Infra sessions spawned + Sprint 0 delivered
+- [x] **Sprint 0 nghiệm thu — issue [#23](https://github.com/kevindo1103/khe/issues/23) (2026-06-11)**
+- [ ] GitHub labels created (Settings → Labels) — vẫn pending Kevin
+- [ ] KHE_Docs spawned — Sprint 1 priority (fold 11 DOCS_INBOX entries)
+- [ ] Sprint 1 kickoff: Frontend/PWA/QC/Compliance spawn
+
+---
+
+## Sprint 0 Nghiệm thu Summary (2026-06-11)
+
+**All 10 exit criteria PASS** — full table in issue [#23](https://github.com/kevindo1103/khe/issues/23).
+
+**Architecture baseline ratified:**
+- master.db (4 bảng) + per-tenant (7 bảng skeleton)
+- API: `POST /auth/login` body `{tenant_id, username, password}` → JWT
+- VisionExtractionProvider Protocol + 3 providers (Gemini 2.5 Flash primary)
+- Deploy flow: `feature → staging → main`, 8/8 secrets live
+- D-rules enforced ở extraction (D-01/06/08); D-10 enforced ở `get_db()` env-gate
+
+**Sprint 1 carry-over:**
+- 🔴 #22 NĐ 13/2023 consent gate (CRITICAL trước first production extraction)
+- 🔴 #10 per-tenant Alembic migration chain
+- 🟡 DEC-016 freemium paywall lever (Kevin quyết)
+- 🟡 Domain `khe.vn`/`staging.khe.vn` confirm + VPS systemd unit deploy
+- 🟡 15 PII-scrubbed F&B/bán lẻ HĐ samples từ Kevin cho full vision benchmark
+
+**Sprint 0 PRs merged:** #6, #7, #8, #12, #13, #14, #16, #17, #18, #19, #21
+**Issues closed:** #2, #3, #5, #9, #11, #15, #20
+**Open Sprint 1:** #10, #22, #1 (DOCS_INBOX long-lived), #23 (nghiệm thu reference)
 
 ---
 
