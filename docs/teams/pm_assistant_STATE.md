@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-11 | v0.7*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-11 | v0.8*
 
 ---
 
@@ -60,8 +60,57 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | DEC-014 | **Positioning:** "Ngôi nhà cho mọi hợp đồng sau khi ký" — đón hậu sóng NĐ 337 (01/07/2026), KHÔNG cạnh tranh tầng ký số. | **Ratified** (user relay) | 2026-06-10 |
 | DEC-015 | **Kill/pivot signals** ghi vào BRD: retention W4 <30% post-concierge → DMS pivot; firm không trả + SME convert → direct freemium; 2 firm không đủ 10 SME/90d → đổi kênh. | **Ratified** (user relay) | 2026-06-10 |
 | DEC-016 | **Reminder paywall lever:** Strategy gốc đề xuất ZNS paywall (email free / Zalo paid) — NHƯNG DEC-006 Telegram giữ nguyên per user 2026-06-10. Freemium value metric cần lever khác hoặc re-evaluate Zalo paid channel GĐ2. | **Open — cần Kevin quyết** | 2026-06-10 |
+| DEC-017 | **Design-first Sprint 1:** Design System đồng nhất + M0 mockups (#24) phải approve TRƯỚC khi Frontend_Admin (#30) + PWA_Chat (#31) code. Tránh revamp UI. KHE_Designer gating. | **Ratified** | 2026-06-11 |
 
 **Giữ nguyên (user confirm 2026-06-10):** DEC-002 (VisionExtractionProvider Gemini+Claude), DEC-006 (Telegram), DEC-010 (NĐ 13 Phase 1).
+
+---
+
+## Sprint 1 Plan (ratified 2026-06-11) — M0 vertical slice + concierge foundation
+
+**Goal:** End-to-end 1 lease contract: upload → vision extract → obligation (derived) → Telegram reminder → chat query. NĐ 13 consent gate live. Per-tenant Alembic. ~2 tuần.
+
+**Design-first (DEC-017):** Designer làm Design System + mockups TRƯỚC, Frontend/PWA build sau.
+
+### Issues created
+
+| Issue | Team | Status | Blocker |
+|---|---|---|---|
+| #24 | KHE_Designer | planned | — (GATING cho #30/#31) |
+| #25 | KHE_Backend | planned | dep #22 consent |
+| #26 | KHE_Backend | planned | dep #25 |
+| #27 | KHE_Backend | planned | dep #26 |
+| #22 | KHE_Backend | planned (Sprint 0 carry) | CRITICAL — trước first extraction |
+| #10 | KHE_Backend | planned (Sprint 0 carry) | HIGH |
+| #28 | KHE_AI | planned | blocker:human — 15 samples từ Kevin |
+| #29 | KHE_Infra | planned | dep #10, domain confirm |
+| #30 | KHE_Frontend_Admin | ⛔ blocked | #24 design |
+| #31 | KHE_PWA_Chat | ⛔ blocked | #24 design |
+| #32 | KHE_Compliance | planned | feeds #22/#31 |
+| #33 | KHE_QC | planned | dep backend modules |
+
+### Spawn order Sprint 1
+1. **KHE_Docs** (urgent — fold 11 DOCS_INBOX) — đang chạy
+2. **KHE_Designer** (#24 — gating, spawn ngay để unblock Frontend sớm)
+3. **KHE_Backend** (continue — #22, #10, #25-27 critical path)
+4. **KHE_Compliance** (#32 — consent spec feeds Backend + PWA)
+5. **KHE_AI** (#28 — chờ samples Kevin)
+6. **KHE_Infra** (#29)
+7. **KHE_Frontend_Admin** / **KHE_PWA_Chat** — sau khi #24 approve
+8. **KHE_QC** (#33 — backend pytest tuần 1, E2E tuần 2)
+
+### Critical dependencies
+- #22 consent gate → blocks first production extraction (Backend ← Compliance spec #32)
+- #24 design → blocks #30 + #31 (Kevin approve gate)
+- Backend ingest/obligation API shape → Frontend/PWA (coordinate DOCS_INBOX)
+- #10 per-tenant Alembic → Infra deploy wire #29
+
+### Kevin action items Sprint 1
+- [ ] Approve Design System + mockups (#24) khi Designer submit
+- [ ] Cung cấp 15 PII-scrubbed F&B/bán lẻ HĐ samples (#28)
+- [ ] Confirm domain `khe.vn` / `staging.khe.vn` (#29)
+- [ ] DEC-016 freemium lever decision
+- [ ] Policy `thoi_han_hd` phi-số: skip / flag-for-human / recurring (#26)
 
 ---
 
