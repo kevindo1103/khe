@@ -3,7 +3,7 @@
 > Lead coordination + sprint state for the `backend/**` scope.
 > Kept under `backend/` (in-scope) per scope-lock — `docs/teams/` is ERP_Docs-owned.
 
-*Last updated: 2026-06-10 — Sprint 0 kickoff*
+*Last updated: 2026-06-11 — Sprint 0 scaffold merged*
 
 ---
 
@@ -15,7 +15,13 @@
 
 | Task | Issue | Owner | Status |
 |---|---|---|---|
-| FastAPI + multi-tenant DB skeleton | #2 → Windsurf task | Windsurf_Backend | `planned` (assignment posted) |
+| FastAPI + multi-tenant DB skeleton | #2 / #4 (PR #6) | Windsurf_Backend | ✅ `done` — merged to lead branch `7236ff6`, all 5 exit criteria lead-verified |
+
+### Sprint 1 carry-over (from PR #6 review — DO in feature work, not scaffold)
+
+1. **`get_db` tenant isolation** — couple `get_db` to `get_current_user` so tenant is derived strictly from the authenticated user (current scaffold falls back to `DEFAULT_TENANT_ID`).
+2. **bcrypt 72-byte guard** at the auth boundary.
+3. **Per-tenant Alembic loop** — scaffold bootstraps tenant tables via `create_all`; replace with versioned per-tenant migrations applied across all tenants.
 
 ### Decisions in effect (from DOCS_INBOX #1)
 
