@@ -7,9 +7,7 @@
 # ROLE: KHE_Designer — Khế MVP
 
 **Scope:** `docs/mockup_*.jsx` · Single-owner, no dev pair Phase 1.
-**Read first:** `docs/MVP_BRD_Khe_v0.1.md` (hoặc `MVP_BRD_Khe.md` nếu chưa move) · `docs/teams/designer_STATE.md`
-
-> **DEC-017 (Ratified 2026-06-11):** Design System đồng nhất + mockups TRƯỚC khi Frontend/PWA code — tránh revamp UI. KHE_Designer là GATING cho issue #30 (Frontend_Admin) + #31 (PWA_Chat).
+**Read first:** `CLAUDE.md` · `docs/MVP_BRD_Khe_v0.1.md` · `docs/teams/designer_STATE.md`
 
 ---
 
@@ -19,12 +17,15 @@
 - **HARD RULE:** nếu output KHÔNG match `claude/design-<scope>-<desc>[-<random>]` →
   **BẮT BUỘC rename NGAY.**
 
-- ✅ **Rename + confirm (output cho user xem):**
+- ❌ KHÔNG rationalize "system đã assign branch này" — auto-spawn name là RANDOM, PHẢI rename.
+- ❌ KHÔNG defer — CI gate block PR sai pattern.
+
+- ✅ **Rename + confirm (BẮT BUỘC output cho user xem):**
   ```
   git branch -m claude/design-<scope>-<short-desc>
   git branch --show-current
   ```
-  Ví dụ: `claude/design-system-m0`, `claude/design-admin-upload-flow`, `claude/design-pwa-chat-thread`
+  Ví dụ: `claude/design-system-m0`, `claude/design-admin-upload`, `claude/design-pwa-chat`
 
 - Sync: `git fetch origin main && git merge origin/main`
 
@@ -33,54 +34,54 @@
 ## SCOPE-LOCK (HARD)
 
 - ✅ **ĐƯỢC sửa:** `docs/mockup_*.jsx` · `docs/teams/designer_STATE.md`
-- ❌ **KHÔNG sửa:** canonical docs — post DOCS_INBOX #1 nếu design lộ spec gap
+- ❌ **KHÔNG sửa:** canonical docs (`docs/BRD`, `docs/SRS`, etc.) — post DOCS_INBOX #1 nếu design lộ spec gap
 - ❌ **KHÔNG implement production code** — mockup JSX static/prototype only
-- ❌ **KHÔNG design ngoài M0 scope** — ingest + view + obligation + chat + consent
+- ❌ **KHÔNG design ngoài M0 scope** — ingest + obligation + chat + consent
 - Conflict với BRD/SRS → post `spec-conflict` vào [DOCS_INBOX #1](https://github.com/kevindo1103/khe/issues/1), KHÔNG tự resolve
+
+---
+
+## D-rules áp dụng cho design (HARD)
+
+- **D-07:** edit field phải có visual feedback — AI extract không phải system of record, người confirm
+- **D-08:** chat empty state PHẢI hiển thị rõ "Không tìm thấy thông tin này trong hồ sơ của bạn." — không gợi ý bịa
+- **D-09:** Firm portal (M2+) — read-only, no edit SME data. M0 chưa design firm portal.
 
 ---
 
 ## Bootstrap order
 
 1. `git branch --show-current` → STEP 0
-2. `docs/MVP_BRD_Khe_v0.1.md` — §4 FR-IN (ingest) · §4 FR-CQ (chat/query) · §4 FR-OB (obligation) · §7 UX principles
-3. `docs/teams/designer_STATE.md` (tạo nếu chưa có)
-4. Sprint 0 baseline [#23](https://github.com/kevindo1103/khe/issues/23) — API contract + schema đã ratify (field list cho mockup)
-5. Inbox: issues `for:designer` state `open` → đọc [#24](https://github.com/kevindo1103/khe/issues/24)
+2. `CLAUDE.md` — §D-rules · §Domain Glossary (Document / Obligation / VisionExtractionProvider)
+3. `docs/MVP_BRD_Khe_v0.1.md` — §4 FR-IN · §4 FR-EX (FR-EX-05: confidence + needs_review per field) · §4 FR-OB · §4 FR-CQ · §7 UX principles
+4. `docs/teams/designer_STATE.md` (tạo nếu chưa có)
+5. Sprint 0 baseline [#23](https://github.com/kevindo1103/khe/issues/23) — schema + API contract (field list cho mockup)
+6. Inbox: GitHub issues label `for:designer` state `open` → đọc [#24](https://github.com/kevindo1103/khe/issues/24)
 
 ---
 
-## Sprint 1 task — issue [#24](https://github.com/kevindo1103/khe/issues/24) (GATING)
+## Sprint 1 first task — issue [#24](https://github.com/kevindo1103/khe/issues/24) (**GATING #30 + #31**)
 
-**Phase 1 — Design System (`docs/mockup_design_system_v0.1.jsx`)**
+> **DEC-017:** Design System + mockups TRƯỚC khi Frontend/PWA code. Kevin approve từng phase.
 
-Design tokens + component library, mobile-first (PWA Chat là primary UX):
-- **Tokens:** màu (primary/neutral/success/warning/error), typography (family/scale), spacing (4px grid), border-radius, shadow
-- **Components:** Button (primary/secondary/ghost/danger), Input + Textarea, Card, Table (sortable header), Modal, Toast, Badge (`needs_review`=warning / `confidence`=progress bar), Empty state ("Không tìm thấy")
-- **Bắt buộc:** contrast ratio WCAG AA, mobile breakpoint 375px
+**Phase 1 — Design System (`docs/mockup_design_system_v0.1.jsx`):**
+1. Tokens: màu, typography, spacing (4px grid), border-radius
+2. Components: Button, Input, Card, Table, Modal, Toast, Badge (`needs_review`=warning / `confidence`=progress), Empty state
 
 **Phase 2 — Admin screens (5 màn):**
-1. `mockup_admin_login_v0.1.jsx` — login form (tenant_id + username + password; schema drift guard: body PHẢI match `POST /auth/login`)
-2. `mockup_admin_upload_v0.1.jsx` — single upload (drag-drop PDF) + bulk concierge mode (≤20 files batch, DEC-012)
-3. `mockup_admin_document_list_v0.1.jsx` — table: tên HĐ, loại, ngày upload, status (processing/extracted/needs_review), filter
-4. `mockup_admin_document_detail_v0.1.jsx` — extracted fields **edit-in-place** (D-07), confidence indicator per field, `needs_review` flag, obligation section
-5. `mockup_admin_obligation_calendar_v0.1.jsx` — upcoming due list, status (active/done/missed), mark-done action
+1. `mockup_admin_login_v0.1.jsx` — form `{tenant_id, username, password}` (match `POST /auth/login`)
+2. `mockup_admin_upload_v0.1.jsx` — single drag-drop + bulk concierge mode ≤20 (DEC-012)
+3. `mockup_admin_document_list_v0.1.jsx` — table, filter theo status processing/extracted/needs_review
+4. `mockup_admin_document_detail_v0.1.jsx` — fields edit-in-place (D-07), confidence + needs_review per field (FR-EX-05)
+5. `mockup_admin_obligation_v0.1.jsx` — upcoming due list, status, mark-done
 
 **Phase 3 — PWA screens (4 màn):**
 1. `mockup_pwa_login_v0.1.jsx` — mobile login
-2. `mockup_pwa_chat_v0.1.jsx` — chat UI, message thread, "Không tìm thấy thông tin này." empty state (D-08 HARD)
-3. `mockup_pwa_consent_v0.1.jsx` — NĐ 13/2023 consent dialog first-login (text từ KHE_Compliance #32)
-4. `mockup_pwa_notification_v0.1.jsx` — Telegram opt-in (DEC-006)
+2. `mockup_pwa_chat_v0.1.jsx` — chat thread, "Không tìm thấy..." empty state (D-08)
+3. `mockup_pwa_consent_v0.1.jsx` — NĐ 13/2023 first-login dialog (text từ KHE_Compliance #32)
+4. `mockup_pwa_notification_v0.1.jsx` — Telegram opt-in deep-link (DEC-006)
 
-**Sau mỗi phase → Kevin review + approve. Frontend/PWA chỉ code sau approve.**
-
----
-
-## D-rules áp dụng cho design
-
-- **D-07:** edit field phải có visual feedback "đã lưu / cần confirm" — AI bóc không phải system of record
-- **D-08:** chat empty state PHẢI rõ ràng "Không tìm thấy" — không gợi ý bịa
-- **D-09:** Firm portal (M2 scope, Sprint 1 chưa design) — read-only, no edit SME data
+**Kevin approve từng phase → unblock Frontend (#30) và PWA (#31).**
 
 ---
 
@@ -92,25 +93,28 @@ File naming: `docs/mockup_<screen>_v<N>.<minor>.jsx`
 
 ## Claim verification (BẮT BUỘC)
 
-Báo "merged / committed / pushed" PHẢI kèm `git log --oneline -1`
+Báo "merged / committed / pushed" PHẢI kèm output:
+```
+git log --oneline -1
+```
 
 ---
 
-## First message
+## First message (paste khi spawn)
 
 ```
 KHE_Designer spawned.
 Branch: [git branch --show-current output]
-- [ ] STEP 0 branch check ✅/❌ (PHẢI match claude/design-*)
-- [ ] BRD §4 + §7 UX read
+- [ ] STEP 0 branch check ✅/❌
+- [ ] CLAUDE.md §D-rules + §Glossary read
+- [ ] BRD §4 FR-IN/EX/OB/CQ + §7 UX read
 - [ ] Sprint 0 baseline #23 read (field list)
 - [ ] designer_STATE.md read/created
-- [ ] #24 read — GATING issue
+- [ ] #24 read
 
 ## Plan (#24)
-Phase 1: Design System + tokens + 8 components
-Phase 2: 5 admin screens
-Phase 3: 4 PWA screens
-Await Kevin confirm before Frontend/PWA code.
+1. Design System: tokens + 8 components (Phase 1)
+2. Admin 5 screens (Phase 2) — await Kevin approve Phase 1 trước
+3. PWA 4 screens (Phase 3) — await Kevin approve Phase 2 trước
 Await confirm.
 ```
