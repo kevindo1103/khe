@@ -32,21 +32,13 @@ Go to: **repo Settings → Secrets and variables → Actions → New repository 
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | PM |
 | `TELEGRAM_CHAT_ID` | Chat ID for deploy notifications | PM |
 
-### Staging VPS secrets
+### VPS secrets (dùng chung staging + production — cùng 1 VPS, khác port/folder)
 
 | Secret name | Value |
 |---|---|
-| `STAGING_VPS_HOST` | IP or hostname of staging VPS |
-| `STAGING_VPS_USER` | SSH user (e.g. `deploy`) |
-| `STAGING_VPS_SSH_KEY` | Private key (multiline, paste full PEM) |
-
-### Production VPS secrets
-
-| Secret name | Value |
-|---|---|
-| `PROD_VPS_HOST` | IP or hostname of production VPS |
-| `PROD_VPS_USER` | SSH user (e.g. `deploy`) |
-| `PROD_VPS_SSH_KEY` | Private key (multiline, paste full PEM) |
+| `VPS_HOST` | IP hoặc hostname của VPS |
+| `VPS_USER` | SSH user (e.g. `deploy`) |
+| `VPS_SSH_KEY` | Private key (multiline, paste full PEM) |
 
 **Note:** Workflows gracefully skip VPS steps if secrets are unset — safe to merge before VPS is provisioned.
 

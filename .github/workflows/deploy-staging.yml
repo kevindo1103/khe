@@ -46,34 +46,27 @@ jobs:
       # ── Backend deploy ───────────────────────────────────────────────
       - name: Deploy backend to staging VPS
         env:
-          VPS_HOST: ${{ secrets.STAGING_VPS_HOST }}
-          VPS_USER: ${{ secrets.STAGING_VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.STAGING_VPS_SSH_KEY }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           if [ -z "$VPS_HOST" ]; then
-            echo "⚠️  STAGING_VPS_HOST secret not set — skipping VPS deploy (set secret to enable)"
+            echo "⚠️  VPS_HOST secret not set — skipping VPS deploy (set secret to enable)"
             exit 0
           fi
 
-          # Write SSH key
           mkdir -p ~/.ssh
           echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          # Rsync backend
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key" \
-            ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend/"
+            ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend-staging/"
 
-          # Remote: install deps + run alembic + restart service
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash <<'REMOTE'
             set -e
-            cd /opt/khe/backend
+            cd /opt/khe/backend-staging
             source venv/bin/activate
             pip install -r requirements.txt --quiet
             alembic upgrade head
@@ -84,16 +77,16 @@ jobs:
       # ── Frontend deploy ──────────────────────────────────────────────
       - name: Build & deploy frontend to staging
         env:
-          VPS_HOST: ${{ secrets.STAGING_VPS_HOST }}
-          VPS_USER: ${{ secrets.STAGING_VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           if [ ! -d "frontend" ]; then
             echo "⚠️  frontend/ not found — skipping"
             exit 0
           fi
           if [ -z "$VPS_HOST" ]; then
-            echo "⚠️  STAGING_VPS_HOST secret not set — skipping"
+            echo "⚠️  VPS_HOST secret not set — skipping"
             exit 0
           fi
 
