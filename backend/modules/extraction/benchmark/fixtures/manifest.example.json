@@ -1,0 +1,43 @@
+{
+  "_comment": "Template manifest for the Sprint-0 benchmark (issue #3). Copy to manifest.json, drop the 15 PII-scrubbed Bingxue HĐ images under data/, and fill ground_truth. NEVER commit real PII — see README.md. Image paths are relative to this file's directory.",
+  "samples": [
+    {
+      "id": "lease-01",
+      "image": "data/lease-01.jpg",
+      "doc_type": "hd_thue_mat_bang",
+      "ground_truth": {
+        "doi_tac": "Cong ty TNHH ABC; Ong Nguyen Van X",
+        "ngay_hieu_luc": "2025-01-01",
+        "ngay_het_han": "2026-12-31",
+        "gia_tri_hd": "50000000",
+        "thoi_han_hd": "24 thang",
+        "dieu_khoan_gia_han": "Bao truoc 60 ngay truoc khi het han",
+        "dieu_khoan_thanh_toan": "Tra ngay 05 hang thang"
+      }
+    },
+    {
+      "id": "supplier-01",
+      "image": "data/supplier-01.jpg",
+      "doc_type": "hd_nha_cung_cap",
+      "ground_truth": {
+        "doi_tac": "Cong ty CP DEF; Ho kinh doanh Quan An GHI",
+        "ngay_hieu_luc": "2025-03-15",
+        "ngay_het_han": "2026-03-14",
+        "gia_tri_hd": "120000000",
+        "thoi_han_hd": "12 thang"
+      }
+    },
+    {
+      "id": "labor-01",
+      "image": "data/labor-01.jpg",
+      "doc_type": "hd_lao_dong",
+      "ground_truth": {
+        "doi_tac": "Cong ty TNHH ABC; Ba Tran Thi Y",
+        "ngay_hieu_luc": "2026-01-01",
+        "ngay_het_han": "",
+        "gia_tri_hd": "15000000",
+        "thoi_han_hd": "khong xac dinh thoi han"
+      }
+    }
+  ]
+}

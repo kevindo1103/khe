@@ -1,0 +1,6 @@
+# KHE_AI extraction module deps.
+# Core (always needed):
+pydantic>=2.0
+# Provider SDKs (imported lazily; only needed to actually call a provider):
+anthropic>=0.50.0
+google-genai>=1.0.0
