@@ -3,60 +3,79 @@
 > Lead coordination + sprint state for the `backend/**` scope.
 > Kept under `backend/` (in-scope) per scope-lock — `docs/teams/` is ERP_Docs-owned.
 
-*Last updated: 2026-06-11 — Sprint 0 scaffold merged*
+*Last updated: 2026-06-18 — Sprint 1 kicked off (#10 foundation)*
 
 ---
 
-## Current sprint: Sprint 0 — Infrastructure bootstrap
+## Current sprint: Sprint 1 — Ingest + Obligation + Chat (consent-gated)
 
-**Goal:** Unblock all feature sessions. FastAPI + multi-tenant DB scaffold.
+**Goal:** First live data path. Per-tenant migration rail → consent gate + doc-relationship schema → ingest → obligation/reminders → chat.
 
-### Active tasks
+### Execution order (dependency-correct — ratified 2026-06-18)
 
-| Task | Issue | Owner | Status |
-|---|---|---|---|
-| FastAPI + multi-tenant DB skeleton | #2 / #4 (PR #6) | Windsurf_Backend | ✅ `done` — merged to lead branch `7236ff6`, all 5 exit criteria lead-verified |
+> ⚠️ PM listed `#22 → #10` but true dependency is reversed: #22 adds columns via a per-tenant
+> Alembic migration that does not exist yet. **#10 is the foundation and lands FIRST.**
 
-### Promote path (ratified 2026-06-11): `lead → staging → main`
+| Step | Task | Issue | Branch | Status |
+|---|---|---|---|---|
+| 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic` | 🟡 **assigned** (kickoff comment posted) |
+| 2 | Consent gate (NĐ 13/2023, DEC-010) | #22 | `claude/feat-backend-consent-gate` (PR-A) | ⏸ queued — owns migration `tenant_002` |
+| 3 | Doc relationships (DEC-019) | (DEC-019) | `claude/feat-backend-doc-relationships` (PR-B) | ⏸ queued — builds on PR-A schema |
+| 4 | Ingest router + extraction queue | #25 | `claude/feat-backend-ingest-*` | ⏸ queued — consent-gated |
+| 5 | Obligation engine + reminder + Telegram | #26 | `claude/feat-backend-obligation-*` | ⏸ queued — consumes #25 Terms |
+| 6 | Chat query MVP (retrieve-only, D-08) | #27 | `claude/feat-backend-chat-*` | ⏸ queued — consumes #25/#26 |
 
-| Step | Status |
-|---|---|
-| 1. Infra sync `staging ← main` (staging stale + no CI workflows) | **BLOCKED on Infra #15** (`blocker:waiting-dependency`) |
-| 2. PR `claude/feat-backend-scaffold-nm2942` → `staging` (CI gate runs) | waiting on step 1 |
-| 3. Verify on staging → promote `staging → main` | waiting |
-| 4. DOCS_INBOX (#1) report within 24h of main merge | waiting |
+### Migration `tenant_002` — schema delta (#22 + DEC-019, **1 migration / 2 PRs**)
 
-### Pre-main blockers — RESOLVED
+Decisions (Kevin, 2026-06-18): **typed columns** on `events` (Compliance ask) · **single `tenant_002`
+revision, split into PR-A (consent logic) + PR-B (relationship logic)**. PR-A carries the migration file
+(full delta); PR-B builds on the schema with no new migration.
 
-| Task | Issue | Status |
-|---|---|---|
-| Fix `get_db()` env-gated fallback (CRITICAL #9) + passlib removal + ERP branding | #11 / PR #12 | ✅ merged `a950595`, #9+#11 closed |
+- **`events`** (#22, Compliance #22 comment): `purpose` (closed enum `vision_extraction` / `reminder_send` / `firm_partner_access`) · `consent_reference` · `consent_text_version` (e.g. `nd13-v1`)
+- **`document_relationships`** (DEC-019, edge n-n NEW): `from_doc_id`, `to_doc_id`, `relationship_type` (MVP `amends` / `references_framework`; defer `supersedes` / `renews` / `related`), `confirmed_by_sme` (D-02: AI suggest → SME confirm before resolve)
+- **`terms`**: `overrides_term_id`, `inherited_from_doc_id`, `is_superseded`, `needs_review` (FR-EX-05)
+- **`obligations`**: `source_doc_chain`, `resolution_method` (last-writer-wins by seq_order); `obligation_type` enum += `open_ended_review` (DEC-020 — phi-số → annual review nudge, no fake deadline)
 
-### Sprint 1 carry-over (from PR #6 review — DO in feature work, not scaffold)
+**Consent gate logic** (Compliance-confirmed, #22): query `events` for `consent_logged` + `purpose=vision_extraction`
+not superseded by `consent_revoked` → proceed; else `403 {"detail":"SME consent for AI extraction not recorded. Log consent first."}`.
+After `extract()` → log `event_type="extraction_performed"` (US-recipient audit trail).
 
-1. **`get_db` tenant isolation** — couple `get_db` to `get_current_user` so tenant is derived strictly from the authenticated user (current scaffold falls back to `DEFAULT_TENANT_ID`).
-2. **bcrypt 72-byte guard** at the auth boundary.
-3. **Per-tenant Alembic loop** — scaffold bootstraps tenant tables via `create_all`; replace with versioned per-tenant migrations applied across all tenants.
+### Sprint 0 — ✅ COMPLETE (closed)
 
-### Decisions in effect (from DOCS_INBOX #1)
+- FastAPI + multi-tenant DB scaffold on `main` (`cf6d022`, promoted via `lead → staging → main` #16/#19).
+- CRITICAL fix (#9/#11, PR #12): `get_db()` env-gated; `bcrypt>=4.0.0` declared direct (passlib dropped).
+- Infra #20/#21: VPS dirs provisioned + long-lived-branch gate exemption. No open blockers.
+- DOCS_INBOX #1 Sprint 0 fold posted 2026-06-18.
 
-- **DEC-006** — Reminder channel = **Telegram bot** (python-telegram-bot), NOT Zalo ZNS. No OA approval needed.
-- **DEC-002** — Extraction = single `VisionExtractionProvider` (Gemini 2.0 Flash primary, Claude Haiku/Sonnet fallback). **Lives in `backend/modules/extraction/**` = KHE_AI scope — backend does NOT touch; coordinate interface via PM.**
-- **DEC-010** — NĐ 13/2023: US-hosted LLM API OK Phase 1; SME explicit consent logged to `events` before first extraction call.
-- **DEC-011/012** — B2B2B (firm = paying customer), concierge onboarding. Sprint 1 priority: bulk-ingest (batch upload + extraction queue). Sprint 0 scope unchanged.
+### Decisions in effect (DOCS_INBOX #1 / ratified)
+
+- **DEC-002** — Extraction = `VisionExtractionProvider` (Gemini 2.5 Flash primary, Claude Haiku/Sonnet fallback). **Lives in `backend/modules/extraction/**` = KHE_AI scope — backend does NOT modify; consume interface only (PR #17 merged).**
+- **DEC-006** — Reminder channel = **Telegram bot**, NOT Zalo ZNS.
+- **DEC-010** — NĐ 13/2023: US-hosted LLM OK Phase 1; explicit consent logged to `events` before first extraction.
+- **DEC-011/012** — B2B2B (firm = paying customer), concierge onboarding → bulk-ingest priority (#25).
+- **DEC-019** — Document relationship = edge model (`document_relationships`), `amends` + `references_framework`, **no legal judgment**.
+- **DEC-020** — Thời hạn phi-số → no fake deadline; `open_ended_review` obligation type + annual nudge.
+- **DEC-021** — Orphan amendment (upload before parent) → don't block; store + flag pending link.
+- **DEC-022** — Conflict UI = full per-field timeline (Sprint 2 scope, Designer #24).
+
+### Carry-over from Sprint 0 PR #6 review (fold into feature work)
+
+1. `get_db` tenant isolation — derive tenant strictly from `get_current_user` (scaffold falls back to `DEFAULT_TENANT_ID` in dev only).
+2. bcrypt 72-byte guard at the auth boundary.
 
 ### Blockers
 
-- None for Sprint 0 scaffold.
+- None. #10 unblocks the chain; downstream assigned as predecessors merge.
 
 ---
 
 ## Architecture notes (canonical = CLAUDE.md §Multi-Tenant DB)
 
 - `master.db`: `tenants`, `tenant_users`, `firm_partners`, `firm_tenant_access`.
-- `tenants/<slug>.db`: `documents`, `terms`, `obligations`, `parties`, `events`, `branches`, `employees`.
+- `tenants/<slug>.db`: `documents`, `terms`, `obligations`, `parties`, `events`, `branches`, `employees` (+ `document_relationships` from `tenant_002`).
 - **ALWAYS** `get_tenant_session(tid)`. **NEVER** `SessionLocal()` on per-tenant data.
-- Alembic chain: first migration `down_revision = None` (master.db foundation). `alembic heads | wc -l` MUST = 1 before any PR merge.
+- **Two Alembic envs:** `alembic/` (master, `down_revision=None` at `001`) + `alembic_tenant/` (TenantBase, `tenant_001` baseline = current models). `alembic heads | wc -l` MUST = 1 per env before merge.
+- Per-tenant migrations applied via `scripts/migrate_all_tenants.py` (loop over all tenants, idempotent). `init_tenant_db()` uses alembic, NOT `create_all()`.
 - `python -c "import main"` must exit 0 (CI quality gate) — `main.py` at `backend/` root.
 
 ## Lead workflow reminders
@@ -65,3 +84,4 @@
 - Review Windsurf PR before merge; lead does not self-merge feature PRs.
 - Post-merge: if schema/API/business-rule/known-bug touched → DOCS_INBOX (#1) comment within 24h.
 - Schema/router change → run `backend/scripts/regen_openapi.py` + commit `backend/openapi.json`.
+- Branch hygiene: each task gets its own `claude/feat-backend-<scope>-*` (lead plan) / `windsurf/...` (dev impl). Do NOT continue on the stale scaffold branch.
