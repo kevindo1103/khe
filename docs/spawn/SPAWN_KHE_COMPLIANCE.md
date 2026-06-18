@@ -7,7 +7,7 @@
 # ROLE: KHE_Compliance — Khế MVP
 
 **Scope:** NĐ 13/2023 (DLCN/PII) · NĐ 337/2025 (lao động điện tử) · NĐ 70/2025 (hóa đơn điện tử) · consent flows · data residency · retention · audit log spec.
-**Read first:** `CLAUDE.md` §Security Rules · §D-rules (D-09, D-10) · `docs/teams/compliance_STATE.md`
+**Read first (Decision Review Gate cascade):** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (positioning hậu-ký, DEC-014) · `CLAUDE.md` (§Security Rules · §D-rules D-09/D-10 · §Decision Review Gate) · `docs/MVP_BRD_Khe_v0.1.md` (v0.3 — FR-EX-06 consent gate, NFR-3 residency) · `docs/teams/compliance_STATE.md`
 
 ---
 
@@ -53,10 +53,12 @@
 ## Bootstrap order
 
 1. `git branch --show-current` → STEP 0
-2. `CLAUDE.md` — §Security Rules (NĐ 13) · §D-rules (D-09, D-10) · §Multi-Tenant DB
-3. `docs/teams/compliance_STATE.md` (tạo nếu chưa có)
-4. Sprint 0 baseline [#23](https://github.com/kevindo1103/khe/issues/23) — `events` table schema, `consent_status` lifecycle (pending→granted→revoked)
-5. Inbox: GitHub issues label `for:compliance` state `open` → đọc [#32](https://github.com/kevindo1103/khe/issues/32) + [#22](https://github.com/kevindo1103/khe/issues/22)
+2. `docs/PRODUCT_STRATEGY_Khe_v0.2.md` — positioning hậu-ký (DEC-014 guard "không ký số")
+3. `CLAUDE.md` — §Security Rules (NĐ 13) · §D-rules (D-09, D-10) · §Decision Review Gate · §Multi-Tenant DB
+4. `docs/MVP_BRD_Khe_v0.1.md` (v0.3) — FR-EX-06 (consent gate 403) · NFR-3 (at-rest VN, LLM US-hosted Phase 1)
+5. `docs/teams/compliance_STATE.md` (tạo nếu chưa có)
+6. Sprint 0 baseline [#23](https://github.com/kevindo1103/khe/issues/23) — `events` table schema, `consent_status` lifecycle (pending→granted→revoked)
+7. Inbox: GitHub issues label `for:compliance` state `open` → đọc [#32](https://github.com/kevindo1103/khe/issues/32) + [#22](https://github.com/kevindo1103/khe/issues/22)
 
 ---
 

@@ -7,7 +7,7 @@
 # ROLE: KHE_Designer — Khế MVP
 
 **Scope:** `docs/mockup_*.jsx` · Single-owner, no dev pair Phase 1.
-**Read first:** `CLAUDE.md` · `docs/MVP_BRD_Khe_v0.1.md` · `docs/teams/designer_STATE.md`
+**Read first (Decision Review Gate cascade):** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (personas/JTBD) · `docs/MVP_BRD_Khe_v0.1.md` (v0.3 — FR) · `CLAUDE.md` (§D-rules · §Decision Review Gate) · `docs/teams/designer_STATE.md`
 
 ---
 
@@ -52,11 +52,12 @@
 ## Bootstrap order
 
 1. `git branch --show-current` → STEP 0
-2. `CLAUDE.md` — §D-rules · §Domain Glossary (Document / Obligation / VisionExtractionProvider)
-3. `docs/MVP_BRD_Khe_v0.1.md` — §4 FR-IN · §4 FR-EX (FR-EX-05: confidence + needs_review per field) · §4 FR-OB · §4 FR-CQ · §7 UX principles
-4. `docs/teams/designer_STATE.md` (tạo nếu chưa có)
-5. Sprint 0 baseline [#23](https://github.com/kevindo1103/khe/issues/23) — schema + API contract (field list cho mockup)
-6. Inbox: GitHub issues label `for:designer` state `open` → đọc [#24](https://github.com/kevindo1103/khe/issues/24)
+2. `docs/PRODUCT_STRATEGY_Khe_v0.2.md` — §2 Personas · §3 JTBD (J1-J5) — design phục vụ job nào
+3. `CLAUDE.md` — §D-rules · §Decision Review Gate · §Domain Glossary (Document / Obligation / VisionExtractionProvider)
+4. `docs/MVP_BRD_Khe_v0.1.md` (v0.3) — FR-IN · FR-EX (FR-EX-05: confidence + needs_review per field) · FR-OB · FR-CQ · FR-DR (liên kết tài liệu) · §7 UX principles
+5. `docs/teams/designer_STATE.md` (tạo nếu chưa có)
+6. Sprint 0 baseline [#23](https://github.com/kevindo1103/khe/issues/23) — schema + API contract (field list cho mockup)
+7. Inbox: GitHub issues label `for:designer` state `open` → đọc [#24](https://github.com/kevindo1103/khe/issues/24)
 
 ---
 
@@ -82,6 +83,19 @@
 4. `mockup_pwa_notification_v0.1.jsx` — Telegram opt-in deep-link (DEC-006)
 
 **Kevin approve từng phase → unblock Frontend (#30) và PWA (#31).**
+
+---
+
+## Sprint 2 design scope (flag trước, KHÔNG làm ở Sprint 1)
+
+> Phát sinh từ BA contract logic v0.4 (DEC-019..022). Chưa fold vào BRD canonical (chờ KHE_Docs cycle 3) — đọc `docs/BA_contract_processing_logic_v0.1.md` để hiểu trước.
+
+- **Contract family view** (DEC-019, BA §7.3) — cây HĐ chính → phụ lục / HĐ khung → đơn hàng, tree layout
+- **Link confirmation UI** (DEC-019/DEC-021, BA §7.1) — "Tài liệu này có liên quan HĐ X không?" AI suggest → SME confirm; orphan amendment flag "chưa link HĐ gốc"
+- **Conflict timeline per-field** (DEC-022, BA §7.4) — lịch sử thay đổi từng field (HĐ gốc → PL01 → PL02), node link tới document, "đang áp dụng" vs "đã sửa đổi"
+- **"Vô thời hạn" state** (DEC-020) — obligation hiển thị "Vô thời hạn — không có ngày hết hạn", không phải deadline đỏ
+
+Sprint 1 chỉ làm M0 core (Phase 1-3). Các màn trên đợi Kevin approve M0 + KHE_Docs fold BA.
 
 ---
 
