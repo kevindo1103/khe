@@ -1,14 +1,15 @@
 # BA — Phân tích Logic Xử lý Hợp đồng
-## Khế MVP · v0.3 · 2026-06-18
+## Khế MVP · v0.4 · 2026-06-18
 
-> **Trạng thái:** Draft — PM_Assistant · Chờ KHE_Docs fold canonical
+> **Trạng thái:** Draft — PM_Assistant · Q-1/2/3 ratified · Chờ KHE_Docs fold canonical (sau PR #35 merge)
 > **Áp dụng cho:** KHE_Backend (#26), KHE_AI (#28), KHE_QC (#33), KHE_Frontend_Admin (#30)
-> **Tham chiếu:** BRD §7 FR-EX / FR-OB · SRS v0.1 §schema · CLAUDE.md §D-rules
+> **Tham chiếu:** BRD §7 FR-EX / FR-OB · SRS v0.1 §schema · CLAUDE.md §D-rules · DEC-019..022
 >
 > **Changelog:**
 > - v0.1: Amendment chain + last-writer-wins
 > - v0.2: Thêm legal validity layer (Ls. NNB framework) — REVERTED, overscoped
 > - v0.3: Rewrite theo CLM edge model. Cắt legal classification. Thêm reference chain (HĐ khung). Khế detect + surface, human decide.
+> - v0.4: Q-1/2/3 ratified (DEC-020/021/022). §7.4 conflict timeline. §9 → Resolved Decisions.
 
 ---
 
@@ -304,6 +305,25 @@ SME vào document detail → "Liên kết tài liệu"
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### 7.4 Conflict timeline — per field (DEC-022)
+
+Khi SME mở một field bị thay đổi qua chain, hiển thị **lịch sử đầy đủ** (không chỉ final value + badge). Phục vụ audit + firm/luật sư:
+
+```
+Điều khoản: Thời hạn hợp đồng — Lịch sử thay đổi
+─────────────────────────────────────────────────────
+  HĐ chính 01/2024  (01/01/2024)   "24 tháng"        ⊘ đã sửa đổi
+        ↓
+  Phụ lục 01        (01/06/2024)   "+12 tháng"       ⊘ đã sửa đổi
+        ↓
+  Phụ lục 02        (01/09/2025)   "+6 tháng"        ● đang áp dụng
+─────────────────────────────────────────────────────
+  → Ngày hết hạn tính toán: 30/06/2026
+  [✓ Xác nhận]   [Sửa thủ công]
+```
+
+> Data nguồn: `terms.overrides_term_id` chain + `terms.effective_from` + `documents.doc_date`. Mỗi node link tới document gốc. Áp dụng cho cả `amends` chain và `references_framework` (hiện inherited vs overridden).
+
 ---
 
 ## 8. Scope theo Sprint
@@ -317,6 +337,8 @@ SME vào document detail → "Liên kết tài liệu"
 | `overrides_term_id`, `is_superseded`, `inherited_from_doc_id` vào `terms` | KHE_Backend | #26 |
 | Relationship `amends` + `references_framework` resolution | KHE_Backend | #26 |
 | FR-OB-01 derivation rule | KHE_Backend | #26 |
+| Q-1 (DEC-020): obligation type `open_ended_review`, phi-số → flag "vô thời hạn" + annual nudge | KHE_Backend | #26 |
+| Q-2 (DEC-021): orphan amendment → lưu + flag pending link, không block | KHE_Backend | #25 |
 | Extraction: `doc_type_suggested`, `references_doc_hint`, `has_signature_both_parties`, `replacement_language` | KHE_AI | #28 |
 | Link confirmation UI (AI suggest → SME confirm) | KHE_Frontend_Admin | #30 |
 | QC: amendment chain D-07 + framework inherit | KHE_QC | #33 |
@@ -326,6 +348,7 @@ SME vào document detail → "Liên kết tài liệu"
 | Item | Owner |
 |---|---|
 | Contract family view (§7.3 tree UI) | KHE_Frontend_Admin |
+| Q-3 (DEC-022): conflict timeline per-field (§7.4) — needs Designer #24 spec | KHE_Designer + KHE_Frontend_Admin |
 | Context injection khi extract (prior terms → prompt) | KHE_AI |
 | `supersedes`, `renews` relationships | KHE_Backend |
 
@@ -339,13 +362,15 @@ SME vào document detail → "Liên kết tài liệu"
 
 ---
 
-## 9. Open Questions (cần Kevin quyết)
+## 9. Resolved Decisions (Kevin ratify 2026-06-18)
 
-| ID | Câu hỏi | Impact |
+| ID | Quyết định | DEC |
 |---|---|---|
-| **Q-1** | `thoi_han_hd` = "vô thời hạn" — obligation `open_ended` nhắc hàng năm, hay chỉ flag? | Reminder logic |
-| **Q-2** | Upload amendment trước HĐ gốc — xử lý `unknown` hay yêu cầu upload HĐ gốc trước? | Ingest UX |
-| **Q-3** | Conflict UI — lịch sử từng field hay chỉ final + badge? | Sprint 2 UI scope |
+| **Q-1** | `thoi_han_hd` phi-số ("vô thời hạn") → **KHÔNG tạo deadline alert giả.** Flag rõ "vô thời hạn" + 1 nhắc review/năm (tùy chọn). Vẫn track nghĩa vụ định kỳ khác (thanh toán). | DEC-020 |
+| **Q-2** | Upload amendment trước HĐ gốc → **KHÔNG block.** Lưu với relationship pending, flag "chưa tìm thấy HĐ gốc", cho link sau. | DEC-021 |
+| **Q-3** | Conflict UI → **timeline đầy đủ từng field** (§7.4), không chỉ final + badge. Phục vụ audit + firm/luật sư. | DEC-022 |
+
+> Reminder engine impl Q-1: thêm obligation type `open_ended_review` (annual nudge, không phải deadline alert). UI hiển thị "Vô thời hạn — không có ngày hết hạn".
 
 ---
 
