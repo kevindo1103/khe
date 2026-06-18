@@ -9,11 +9,12 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.2 |
-| Trạng thái | Ratified — fold Strategy v2 (DEC-006/011..015) + AI extraction insight |
+| Phiên bản | v0.3 |
+| Trạng thái | Ratified — fold DEC-018 (Vertical OPEN) + cascade upstream Product Strategy |
 | Phạm vi | **Chỉ MVP** (tầng ingest + retrieve + deadline). Không phải full vision. |
 | Owner | Kevin (PM) |
 | Liên quan | Tái dùng hạ tầng SpurX (ledger, multi-tenant, infra v3) |
+| Upstream cascade | `docs/PRODUCT_STRATEGY_Khe_v0.2.md` — tài liệu nền (WHY/Personas/JTBD/Positioning). BRD dẫn xuất từ đây; khi mâu thuẫn → Product Strategy thắng về *tại sao / cho ai / job gì*; BRD thắng về *hệ thống phải làm gì*. |
 
 ---
 
@@ -23,6 +24,7 @@
 |---|---|---|---|
 | v0.1 | 2026-06-09 | Kevin (PM) / ERP_PM_Assistant | Initial draft. Scope MVP ingest + retrieve + deadline. Topology 10 sessions. D-rules P-1..P-5. |
 | v0.2 | 2026-06-11 | KHE_Docs | Fold Strategy v2 (DEC-011..015): B2B2B firm-pays Phase 1, concierge onboarding, 2-firm pilot, positioning hậu sóng NĐ 337, 3-giai-đoạn roadmap, kill signals. Fold DEC-006: Telegram bot thay Zalo ZNS (FR-RM-01, §10, §11 A-3, §12 R-2, UC-02, AC-2). Fold KHE_AI insight: §6 Term/Field + §7 FR-EX/FR-OB-01 — `ngày_hết_hạn` derivable từ `ngày_hiệu_lực + thời_hạn`. **OPEN:** DEC-016 freemium paywall lever conflicts với DEC-006 — NOT folded, chờ PM quyết. `thoi_han_hd` phi-số policy (a/b/c) NOT folded — chờ PM. |
+| v0.3 | 2026-06-18 | KHE_Docs | Fold DEC-018 (Vertical = OPEN — không khóa F&B/bán lẻ; wedge chọn theo tín hiệu pilot). Revise §11 A-5 (vertical seed → wedge OPEN). Update §1 Executive summary + §10 R-1 wording. Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` (Personas, JTBD, Golden Circle, Dunford positioning). |
 
 ---
 
@@ -132,7 +134,7 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 | P-2 | **Mọi ghi xuống lõi mang tính pháp lý phải qua xác nhận của người** | Authoring mode bắt readback → preview → user confirm. (MVP gần như chỉ có đọc, nên rủi ro thấp.) |
 | P-3 | **Ngựa thành Troy** | Dẫn bằng ingest + retrieve + deadline. Drafting/review là upsell sau. |
 | P-4 | **Tích hợp, đừng tự build** | Ký số, hóa đơn ĐT, kênh nhắc (Zalo) → dùng bên thứ ba. |
-| P-5 | **Đa loại document trong KIẾN TRÚC, sắc trong SEED** | Lõi general; nhưng seed/onboarding tập trung 1 vertical (HĐ thuê + NCC ngành F&B/bán lẻ). |
+| P-5 | **Đa loại document trong KIẾN TRÚC, wedge OPEN trong SEED** | Lõi general (multi-tenant, đa loại doc, obligation graph không phụ thuộc ngành). **Wedge KHÔNG khóa trước (DEC-018)** — chọn theo tín hiệu pilot. F&B/bán lẻ là 1 ứng viên; agency/dịch vụ B2B, sản xuất nhỏ, giáo dục đều khả thi. Xem `PRODUCT_STRATEGY_Khe_v0.2.md` §9. |
 
 ---
 
@@ -260,7 +262,7 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 - A-2: Có ≥1 firm design-partner đồng ý đẩy cho khách (điều kiện cần để chạy MVP thật).
 - A-3: ~~Zalo ZNS cần OA doanh nghiệp + duyệt template~~ **Đã giải (DEC-006):** chuyển sang Telegram bot — chỉ cần bot token, không có timeline risk.
 - A-4: Template do firm cấp là việc của giai đoạn sau, **không** chặn MVP.
-- A-5: Seed vertical đầu tiên = HĐ thuê + NCC ngành F&B/bán lẻ (lợi thế network Mùa Vàng/Bingxue).
+- A-5 (DEC-018 revised): **Vertical = OPEN.** Không khóa F&B/bán lẻ trước. Wedge chọn theo tín hiệu pilot (xem `PRODUCT_STRATEGY_Khe_v0.2.md` §9). Tiêu chí: (a) lượng HĐ đủ tạo đau, (b) có sẵn firm phục vụ ngành đó, (c) loại HĐ có nghĩa vụ ngày-tháng để bóc. F&B/bán lẻ vẫn là ứng viên mạnh (network Mùa Vàng/Bingxue) nhưng không độc quyền.
 
 ---
 
@@ -268,7 +270,7 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 
 | ID | Rủi ro / câu hỏi | Ghi chú |
 |---|---|---|
-| R-1 | **Rủi ro nền tảng nhà nước (NĐ 337)** | Mảng HĐ lao động có thể bị nền tảng quốc gia + vendor kết nối chiếm → **đừng** làm sản phẩm chỉ về HĐ lao động; coi nó là một loại doc trong danh mục. |
+| R-1 | **Rủi ro nền tảng nhà nước (NĐ 337)** | Mảng HĐ lao động có thể bị nền tảng quốc gia + vendor kết nối chiếm → **đừng** làm sản phẩm chỉ về HĐ lao động. Đây là 1 phần lý do **DEC-018 Vertical = OPEN** — đa loại doc trong danh mục, không khóa wedge nào (kể cả lao động) trước. |
 | R-2 | ~~Timeline duyệt Zalo ZNS~~ **Closed (DEC-006)** | Đã chuyển Telegram bot — không còn timeline risk. |
 | R-3 | **Độ chính xác trích xuất** | Ảnh chụp xấu, chữ ký tay, mẫu HĐ đa dạng → đặt mục tiêu thực tế (M-3 ≥90%), luôn cho người sửa. |
 | R-4 | **Cannibalization với firm** | Tuyệt đối không marketing tầng (tương lai) drafting như "thay luật sư"; luôn là "luật sư của bạn, nhanh hơn." |
