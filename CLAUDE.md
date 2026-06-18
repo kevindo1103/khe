@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-18 (v0.3 — fold DOCS_INBOX 13/14: DEC-018 + PRODUCT_STRATEGY adoption) — Upstream PRODUCT_STRATEGY v0.2 + MVP BRD v0.3 reference*
+*Last updated: 2026-06-18 (v0.4 — fix ERP_→KHE_ topology, +Decision Review Gate, +system_architecture ref) — Upstream PRODUCT_STRATEGY v0.2 + MVP BRD v0.3 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -50,29 +50,61 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 ### Session docs-editor (branch `claude/edit-git-docs-Khe01`)
 - Đọc DOCS_INBOX comments mới → fold canonical docs theo cascade order:
-  **BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup**.
+  **Strategy → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup**.
 - Cập nhật version number + changelog entry ở mỗi file bị ảnh hưởng.
 - Reply DOCS_INBOX comment với: `✅ Folded — <docs/version kết quả>`.
 - Weekly Review (Monday): check `## Weekly Review Log` trong DOCS_INBOX. Run 8-item checklist.
 
 ---
 
-## Session Topology (10 sessions: 6 lead + 4 dev pairs — Khế Day 1)
+## Decision Review Gate (BẮT BUỘC trước mọi module/feature decision)
+
+**Trước khi đề xuất hoặc implement bất kỳ module, feature, schema, hoặc API mới:**
+
+### Cascade đọc bắt buộc (theo thứ tự)
+
+| # | Tài liệu | Đọc khi nào |
+|---|---|---|
+| 1 | `docs/PRODUCT_STRATEGY_Khe_v0.2.md` | LUÔN LUÔN — JTBD, personas, positioning, D-rules rationale |
+| 2 | `docs/MVP_BRD_Khe_v0.1.md` (v0.3) | LUÔN LUÔN — FR/NFR, AC, scope boundary |
+| 3 | `CLAUDE.md` §D-rules | LUÔN LUÔN — 10 business invariants |
+| 4 | `CLAUDE.md` §Multi-Tenant DB | Khi chạm schema hoặc query |
+| 5 | `docs/system_architecture_khe.html` | Khi chạm module boundary, API shape, hoặc external service |
+| 6 | `docs/teams/<myteam>_STATE.md` | Mỗi session kickoff |
+
+### Checklist trước khi propose decision
+
+- [ ] Feature này phục vụ JTBD nào? (J1–J5 trong Strategy §3)
+- [ ] Feature này có vi phạm D-rules không? (đặc biệt D-01, D-06, D-08, D-09, D-10)
+- [ ] Feature này có thay đổi schema / API không? → PHẢI comment DOCS_INBOX
+- [ ] Feature này có chạm multi-tenant isolation không? → Review §Multi-Tenant DB
+- [ ] Feature này có trong MVP scope (M0–M3) không? Nếu không → flag lên PM trước
+- [ ] Feature này có conflict với ratified DEC-001–018 không? → PHẢI escalate PM, không tự override
+
+### Escalation rule
+
+- **Conflict với DEC-*** → comment issue `for:pm` + `spec-conflict`, KHÔNG tự resolve.
+- **Tính năng ngoài MVP scope** → label `blocker:human-needed`, STOP, báo user.
+- **Ambiguity về business rule** → comment DOCS_INBOX, KHÔNG assumption.
+
+---
+
+## Session Topology (10 sessions — Khế Day 1)
 
 ### Pair table
 
 | # | Lead (Claude Code) | Middle Dev (Windsurf) | Scope |
 |---|---|---|---|
-| 1 | **ERP_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
-| 2 | **ERP_PM_Assistant** | — *(single-owner, long-lived)* | Branch `claude/pm-assistant`. Read-only mọi nơi. WRITE: GitHub issue comments + `docs/teams/pm_assistant_STATE.md` only. Cross-team triage, draft PM decisions, coordinate sessions. KHÔNG phải PM thật — draft + user ratify. |
-| 3 | **ERP_Backend** | **Windsurf_Backend** | TOÀN BỘ `backend/**` — FastAPI, modules (ingest, extraction, obligation, reminders, firm_portal, auth, audit), alembic, scheduler. Multi-tenant: master.db + per-tenant pattern (reuse SpurX A-1). |
-| 4 | **ERP_Frontend_Admin** | **Windsurf_Frontend** | `frontend/src/pages/{admin,firm,public}/**` — SME admin web UI + firm partner portal. |
-| 5 | **ERP_PWA_Chat** | **Windsurf_PWA** | `frontend/src/pwa/**` — Chat-first SME UI (primary user experience), mobile-first PWA. |
-| 6 | **ERP_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
-| 7 | **ERP_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
-| 8 | **ERP_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Zalo ZNS OA integration, env secrets, OCR/LLM API key rotation, monitoring. |
-| 9 | **ERP_AI** (Khế-specific) | — *(single-owner Phase 1)* | OCR + LLM extraction tuning, prompt engineering, model selection per Term/Field, accuracy monitoring (M-3 ≥90%). |
-| 10 | **ERP_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
+| 1 | **KHE_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade Strategy → BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
+| 2 | **KHE_PM_Assistant** | — *(single-owner, long-lived)* | Branch `claude/pm-assistant`. Read-only mọi nơi. WRITE: GitHub issue comments + `docs/teams/pm_assistant_STATE.md` only. Cross-team triage, draft PM decisions, coordinate sessions. KHÔNG phải PM thật — draft + user ratify. |
+| 3 | **KHE_Backend** | **Windsurf_Backend** | TOÀN BỘ `backend/**` — FastAPI, modules (ingest, extraction, obligation, reminders, firm_portal, auth, audit), alembic, scheduler. Multi-tenant: master.db + per-tenant pattern (reuse SpurX A-1). |
+| 4 | **KHE_Frontend_Admin** | **Windsurf_Frontend** | `frontend/src/pages/{admin,firm,public}/**` — SME admin web UI + firm partner portal. |
+| 5 | **KHE_PWA_Chat** | **Windsurf_PWA** | `frontend/src/pwa/**` — Chat-first SME UI (primary user experience), mobile-first PWA. |
+| 6 | **KHE_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
+| 7 | **KHE_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
+| 8 | **KHE_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Telegram bot integration, env secrets, OCR/LLM API key rotation, monitoring. |
+| 9 | **KHE_AI** (Khế-specific) | — *(single-owner Phase 1)* | `VisionExtractionProvider` interface — Gemini 2.5 Flash + Claude Haiku/Sonnet Vision. No separate OCR step. Sprint 0 benchmark on 15 PII-scrubbed samples. Accuracy target M-3 ≥90%. US-hosted Phase 1 per DEC-010. |
+| 10 | **KHE_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
 
 ### Lead/Dev workflow (BẮT BUỘC)
 
@@ -84,8 +116,8 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 ### Cross-session rules
 
 - **Trùng file giữa 2 session** → coordinate qua PM, KHÔNG tự merge.
-- **Infra-only files** — `.github/workflows/**`, deploy scripts: CHỈ ERP_Infra được sửa.
-- **Backend schema change** → ERP_Backend lead MUST comment DOCS_INBOX để frontend sessions biết.
+- **Infra-only files** — `.github/workflows/**`, deploy scripts: CHỈ KHE_Infra được sửa.
+- **Backend schema change** → KHE_Backend lead MUST comment DOCS_INBOX để frontend sessions biết.
 - **Deploy** chỉ qua GitHub Actions CI/CD. KHÔNG SSH/SFTP trực tiếp VPS bypass quality gate. Exception: documented hotpatch playbook.
 - **PR phải qua quality gate** (`pr-quality-gate.yml`): `npm run build` (frontend), `python -c "import main"` (backend), schema diff check.
 
@@ -101,14 +133,14 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **Status labels:** `status:planned` → `status:in-progress` → `status:review` → `status:done-staging` → close
 - **Bước 0 mỗi session kickoff:** list `for:<my-team>` open issues
 - **Bước 1 mỗi session:** đọc `docs/teams/<myteam>_STATE.md`
-- **Post-merge:** comment **DOCS_INBOX** issue trong 24h
+- **Post-merge:** comment **[DOCS_INBOX #1](https://github.com/kevindo1103/khe/issues/1)** trong 24h
 
 ### Branch Naming (BẮT BUỘC)
 
 **Pattern (feature/fix branch):** `claude/<type>-<scope>-<short-desc>[-<random>]`
 
 - **type:** `feat` · `fix` · `chore` · `docs` · `infra` · `hotfix` · `test` · `design` · `compliance`
-- **scope:** module/area — `ingest` · `extraction` · `obligation` · `reminders` · `chat` · `firm` · `auth` · `tenant` · `ai` · `legal` · `zalo` · `infra`
+- **scope:** module/area — `ingest` · `extraction` · `obligation` · `reminders` · `chat` · `firm` · `auth` · `tenant` · `ai` · `legal` · `telegram` · `infra`
 
 **Long-lived branches:**
 - `main` — production canonical
@@ -340,6 +372,8 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.4 — PM review pre-merge fix: ERP_→KHE_ rename in topology, Decision Review Gate section, system_architecture_khe.html reference, docs-editor cascade Strategy→BRD→..., Branch Naming zalo→telegram scope.*
 
 *v0.3 — folded DOCS_INBOX 13/14 (DEC-018 Vertical OPEN + PRODUCT_STRATEGY canonical adoption). Cascade: PRODUCT_STRATEGY v0.2 → BRD v0.3 → SRS v0.1 → Glossary v0.2 → PROJECT_PLAN v0.2 → CLAUDE.md v0.3.*
 
