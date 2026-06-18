@@ -18,12 +18,26 @@
 
 | Step | Task | Issue | Branch | Status |
 |---|---|---|---|---|
-| 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic` | 🟡 **assigned** (kickoff comment posted) |
+| 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic` | 🔴 **changes requested** (PR #41 — stale base regresses D-10) |
 | 2 | Consent gate (NĐ 13/2023, DEC-010) | #22 | `claude/feat-backend-consent-gate` (PR-A) | ⏸ queued — owns migration `tenant_002` |
 | 3 | Doc relationships (DEC-019) | (DEC-019) | `claude/feat-backend-doc-relationships` (PR-B) | ⏸ queued — builds on PR-A schema |
 | 4 | Ingest router + extraction queue | #25 | `claude/feat-backend-ingest-*` | ⏸ queued — consent-gated |
 | 5 | Obligation engine + reminder + Telegram | #26 | `claude/feat-backend-obligation-*` | ⏸ queued — consumes #25 Terms |
 | 6 | Chat query MVP (retrieve-only, D-08) | #27 | `claude/feat-backend-chat-*` | ⏸ queued — consumes #25/#26 |
+
+### ⚠️ Branch-base rule (locked 2026-06-18 after PR #41)
+
+**All Sprint 1 feature branches MUST base off `staging`, NOT `claude/feat-backend-scaffold-nm2942`.**
+The scaffold branch is the defunct Sprint-0 lead branch (`6ea2ad9`) — it never received PR #12, so it
+carries the pre-#12 `get_db()` (silent `DEFAULT_TENANT_ID` fallback = D-10 regression). PR #41 hit exactly
+this: rebasing onto `staging` (which has the #12 fix) is required before merge. Flow = `feature → staging → main`.
+
+### PR #41 review (#10) — CHANGES REQUESTED 2026-06-18
+
+- 🔴 **Blocker:** stale base regresses #12 D-10 `get_db`. Rebuild on `staging`, reapply alembic additions only, retarget base → `staging`.
+- 🟠 **Should-fix:** alembic `Config("alembic_tenant.ini")` is CWD-relative → breaks runtime `init_tenant_db()` tenant provisioning. Anchor paths to `__file__` (BACKEND_DIR).
+- 🟡 Nits: baseline `server_default` vs model `default=` drift · duplicate tenant-db-path derivation · no rail regression test.
+- Alembic rail itself ✅ (tenant_001 matches models, idempotent runner, baseline-stamp). Re-verify on rebase: `alembic_tenant heads==1`, `import main`, smoke 4/4, `get_db()` diff-clean vs staging.
 
 ### Migration `tenant_002` — schema delta (#22 + DEC-019, **1 migration / 2 PRs**)
 
