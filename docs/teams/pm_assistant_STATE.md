@@ -1,6 +1,8 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-11 | v0.8*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-18 | v0.9*
+
+> **2026-06-18:** Tạo `docs/PRODUCT_STRATEGY_Khe_v0.1.md` (PM draft) — định vị tường minh theo April Dunford framework, đính chính B2C→B2B (motion), vertical chuyển OPEN (DEC-018). Đã review phân tích CLM-SME của cộng sự Kevin: giữ thesis Khế, harvest 3 điểm (Plan B blueprint cho DEC-015 #2, pricing input cho DEC-016, validation discipline cho pilot). Routed DOCS_INBOX cho KHE_Docs canonical fold.
 
 ---
 
@@ -61,6 +63,7 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | DEC-015 | **Kill/pivot signals** ghi vào BRD: retention W4 <30% post-concierge → DMS pivot; firm không trả + SME convert → direct freemium; 2 firm không đủ 10 SME/90d → đổi kênh. | **Ratified** (user relay) | 2026-06-10 |
 | DEC-016 | **Reminder paywall lever:** Strategy gốc đề xuất ZNS paywall (email free / Zalo paid) — NHƯNG DEC-006 Telegram giữ nguyên per user 2026-06-10. Freemium value metric cần lever khác hoặc re-evaluate Zalo paid channel GĐ2. | **Open — cần Kevin quyết** | 2026-06-10 |
 | DEC-017 | **Design-first Sprint 1:** Design System đồng nhất + M0 mockups (#24) phải approve TRƯỚC khi Frontend_Admin (#30) + PWA_Chat (#31) code. Tránh revamp UI. KHE_Designer gating. | **Ratified** | 2026-06-11 |
+| DEC-018 | **Vertical = OPEN:** KHÔNG khóa focus F&B/bán lẻ. Lõi general; chọn wedge theo tín hiệu pilot (lượng HĐ đủ đau + kênh firm sẵn + HĐ có nghĩa vụ ngày tháng). Điều chỉnh D-05/BRD/CLAUDE.md wording "sắc trong seed" → "sắc theo wedge chọn bởi pilot". | **Ratified** (Kevin 2026-06-18) | 2026-06-18 |
 
 **Giữ nguyên (user confirm 2026-06-10):** DEC-002 (VisionExtractionProvider Gemini+Claude), DEC-006 (Telegram), DEC-010 (NĐ 13 Phase 1).
 
