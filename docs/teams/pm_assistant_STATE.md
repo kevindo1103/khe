@@ -187,8 +187,15 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 - 🟡 15 PII-scrubbed F&B/bán lẻ HĐ samples từ Kevin cho full vision benchmark
 
 **Sprint 0 PRs merged:** #6, #7, #8, #12, #13, #14, #16, #17, #18, #19, #21
+**Docs PRs merged:** #35 (KHE_Docs cycle 1+2 — full doc suite v0.1→v0.4 vào main, 2026-06-18)
 **Issues closed:** #2, #3, #5, #9, #11, #15, #20
 **Open Sprint 1:** #10, #22, #1 (DOCS_INBOX long-lived), #23 (nghiệm thu reference)
+
+**Post-#35 status (2026-06-18):**
+- main canonical: PRODUCT_STRATEGY v0.2 · BRD v0.3 · SRS v0.1 · Glossary v0.2 · PROJECT_PLAN v0.2 · CLAUDE.md v0.4
+- pm-assistant synced với main (merged, CLAUDE.md/BRD lấy bản canonical, xóa draft PRODUCT_STRATEGY_Khe.md trùng)
+- **Chờ KHE_Docs cycle 3:** fold BA_contract_processing_logic v0.4 (DEC-019..022) vào BRD §3.3 + §7.3/7.4 (FR-DR/FR-OB) + SRS schema + Glossary. DOCS_INBOX có đủ instruction.
+- BA doc chỉ sống ở branch `claude/pm-assistant` (chưa lên main); KHE_Docs `git fetch origin claude/pm-assistant` để đọc khi fold.
 
 ---
 
