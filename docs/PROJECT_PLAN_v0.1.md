@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.1 |
-| Trạng thái | Ratified — fold entry 3 (PM_Assistant draft) + Strategy v2 milestones + Sprint 0 exit ✅ |
+| Phiên bản | v0.2 |
+| Trạng thái | Fold DEC-018 + cascade upstream Product Strategy |
 | Owner | KHE_Docs |
-| Source | BRD v0.2 §13 milestones |
+| Source | BRD v0.3 §13 milestones (upstream: `PRODUCT_STRATEGY_Khe_v0.2.md` §10) |
 
 ---
 
@@ -20,6 +20,7 @@
 | Phiên bản | Ngày | Tác giả | Thay đổi |
 |---|---|---|---|
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Fold PM_Assistant draft (entry 3) + Strategy v2 milestones (entry 4: M-1 concierge, 2-firm pilot). Mark Sprint 0 ✅ COMPLETE per backend #19 + infra #21. |
+| v0.2 | 2026-06-18 | KHE_Docs | Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` §10 (3 giai-đoạn + kill signals canonical). Add DEC-018 (Vertical OPEN) to Open Decisions. No milestone changes. |
 
 ---
 
@@ -150,7 +151,8 @@ Exit criteria:
 
 | ID | Item | Owner |
 |---|---|---|
-| DEC-016 | Freemium paywall lever (conflicts DEC-006 Telegram) | Kevin |
+| DEC-016 | Freemium paywall lever (conflicts DEC-006 Telegram) — Plan B input ~$30-100/mo self-serve | Kevin |
+| DEC-018 | Vertical wedge selection — currently OPEN; chọn theo pilot signal (a/b/c criteria) | Kevin (post-pilot) |
 | DEC-017 | Domain `khe.vn` confirm | Kevin |
 | Naming R-7 | "Khế" final hoặc rename trước M3 launch | Kevin |
 | Policy O-3 | `thoi_han_hd` phi-số (a/b/c) | PM |
