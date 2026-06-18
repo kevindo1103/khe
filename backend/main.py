@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.database import init_master_db, init_tenant_db
-from app.routers import auth, health
+from app.routers import auth, consent, health
 
 
 def _seed_default_tenant():
@@ -88,6 +88,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(consent.router)
 app.include_router(health.router)
 
 
