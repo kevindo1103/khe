@@ -89,7 +89,8 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(consent.router)
-app.include_router(documents.router)
+app.include_router(documents.ingest_router)
+app.include_router(documents.docs_router)
 app.include_router(health.router)
 
 

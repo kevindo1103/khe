@@ -181,12 +181,45 @@ class TestListDetail:
         )
         assert r.status_code == 201
 
-        r2 = auth_client.get("/ingest/documents")
+        r2 = auth_client.get("/documents")
         assert r2.status_code == 200
         data = r2.json()
         assert "items" in data
         assert "total" in data
         assert data["page"] == 1
+
+    def test_list_documents_needs_review_filter(self, auth_client):
+        # Upload a doc and create a term with needs_review=True
+        r = auth_client.post(
+            "/ingest/upload",
+            files={"file": ("review_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+        )
+        assert r.status_code == 201
+        doc_id = r.json()["doc_id"]
+
+        from app.models.tenant import Term
+        db = get_tenant_session("ingest-tenant")
+        term = Term(
+            tenant_id="ingest-tenant",
+            document_id=doc_id,
+            field_name="review_field",
+            field_value="review_me",
+            confidence=0.5,
+            needs_review=True,
+        )
+        db.add(term)
+        db.commit()
+        db.close()
+
+        r2 = auth_client.get("/documents?needs_review=true")
+        assert r2.status_code == 200
+        data = r2.json()
+        assert any(d["id"] == doc_id and d["needs_review"] is True for d in data["items"])
+
+        r3 = auth_client.get("/documents?needs_review=false")
+        assert r3.status_code == 200
+        data3 = r3.json()
+        assert not any(d["id"] == doc_id for d in data3["items"])
 
     def test_detail_document(self, auth_client):
         r = auth_client.post(
@@ -196,19 +229,86 @@ class TestListDetail:
         assert r.status_code == 201
         doc_id = r.json()["doc_id"]
 
-        r2 = auth_client.get(f"/ingest/documents/{doc_id}")
+        r2 = auth_client.get(f"/documents/{doc_id}")
         assert r2.status_code == 200
         data = r2.json()
         assert data["id"] == doc_id
         assert data["file_name"] == "detail_test.pdf"
-        assert data["file_url"] is not None
+        assert data["file_url"] == f"/documents/{doc_id}/file"
         assert "terms" in data
         assert "obligations" in data
 
     def test_detail_cross_tenant_404(self, auth_client):
         # Try to access doc_id 99999 which shouldn't exist for this tenant
-        r = auth_client.get("/ingest/documents/99999")
+        r = auth_client.get("/documents/99999")
         assert r.status_code == 404
+
+    def test_detail_real_cross_tenant_404(self, auth_client):
+        """Create a doc in another tenant and try to access it with ingest-tenant auth.
+
+        Uses a high explicit ID (999999) to avoid collision with ingest-tenant's
+        auto-incremented IDs.
+        """
+        from sqlalchemy import text
+        from app.models.tenant import Document
+
+        # Setup other tenant with consent
+        init_tenant_db("other-tenant")
+        db = MasterSessionLocal()
+        tenant = db.query(Tenant).filter(Tenant.id == "other-tenant").first()
+        if not tenant:
+            db.add(Tenant(id="other-tenant", name="Other Tenant", db_path="tenants/other-tenant.db"))
+            db.commit()
+        user = db.query(TenantUser).filter(TenantUser.tenant_id == "other-tenant", TenantUser.username == "otheruser").first()
+        if not user:
+            db.add(
+                TenantUser(
+                    tenant_id="other-tenant",
+                    username="otheruser",
+                    hashed_password=get_password_hash("pass"),
+                    role="staff",
+                )
+            )
+            db.commit()
+        db.close()
+
+        other_db = get_tenant_session("other-tenant")
+        record_consent(other_db, "other-tenant", "vision_extraction", actor="otheruser", entity_id=1)
+        other_doc_id = 999999
+        # Insert with explicit ID to avoid collision with ingest-tenant
+        other_db.execute(
+            text(
+                "INSERT INTO documents (id, tenant_id, file_name, file_path, doc_type, status) "
+                "VALUES (:id, :tenant_id, :file_name, :file_path, :doc_type, :status)"
+            ),
+            {
+                "id": other_doc_id,
+                "tenant_id": "other-tenant",
+                "file_name": "other_doc.pdf",
+                "file_path": "other-tenant/other_doc.pdf",
+                "doc_type": "lease",
+                "status": "processing",
+            },
+        )
+        other_db.commit()
+        other_db.close()
+
+        # Ensure ingest-tenant has no doc with this ID
+        r0 = auth_client.get(f"/documents/{other_doc_id}")
+        assert r0.status_code == 404
+
+        r2 = auth_client.get(f"/documents/{other_doc_id}/file")
+        assert r2.status_code == 404
+
+        # Sanity: other-tenant can see its own doc
+        oc = TestClient(app)
+        lr = oc.post(
+            "/auth/login",
+            json={"tenant_id": "other-tenant", "username": "otheruser", "password": "pass"},
+        )
+        assert lr.status_code == 200
+        r3 = oc.get(f"/documents/{other_doc_id}")
+        assert r3.status_code == 200
 
 
 # ── File download ──
@@ -222,12 +322,12 @@ class TestFileDownload:
         assert r.status_code == 201
         doc_id = r.json()["doc_id"]
 
-        r2 = auth_client.get(f"/ingest/documents/{doc_id}/file")
+        r2 = auth_client.get(f"/documents/{doc_id}/file")
         assert r2.status_code == 200
         assert r2.headers["content-type"] == "application/pdf"
 
     def test_download_404_cross_tenant(self, auth_client):
-        r = auth_client.get("/ingest/documents/99999/file")
+        r = auth_client.get("/documents/99999/file")
         assert r.status_code == 404
 
 
@@ -263,7 +363,7 @@ class TestPatchTerm:
 
         # Patch the term
         r2 = auth_client.patch(
-            f"/ingest/documents/{doc_id}/terms/{term_id}",
+            f"/documents/{doc_id}/terms/{term_id}",
             json={"field_value": "new_value"},
         )
         assert r2.status_code == 200
@@ -280,7 +380,7 @@ class TestPatchTerm:
 
     def test_patch_term_404_wrong_doc(self, auth_client):
         r = auth_client.patch(
-            "/ingest/documents/99999/terms/1",
+            "/documents/99999/terms/1",
             json={"field_value": "x"},
         )
         assert r.status_code == 404
