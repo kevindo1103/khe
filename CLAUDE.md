@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-09 (v0.1 — draft, awaiting docs-editor session fold) — MVP BRD v0.1 reference*
+*Last updated: 2026-06-18 (v0.4 — fix ERP_→KHE_ topology, +Decision Review Gate, +system_architecture ref) — Upstream PRODUCT_STRATEGY v0.2 + MVP BRD v0.3 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,13 +9,15 @@
 
 ## Project context
 
-**Reference:** `docs/MVP_BRD_Khe_v0.1.md` *(current file: `MVP_BRD_Khe.md` at root — KHE_Docs to move + version on first fold)*
+**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (upstream — Why/Personas/JTBD/Positioning) · `docs/MVP_BRD_Khe_v0.1.md` (v0.3) · `docs/SRS_v0.1.md` · `docs/GLOSSARY_v0.1.md` (v0.2) · `docs/PROJECT_PLAN_v0.1.md` (v0.2)
+
+**Doc cascade:** PRODUCT_STRATEGY → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup. PRODUCT_STRATEGY thắng về *tại sao / cho ai / job gì*; BRD thắng về *hệ thống phải làm gì*.
 
 **MVP scope (M0 → M3):** Ingest + retrieve + deadline. KHÔNG soạn HĐ tự động (drafting), KHÔNG review rủi ro, KHÔNG ký số (integrate sau), KHÔNG đa thị trường (VN-first), KHÔNG marketplace template.
 
-**Vertical seed:** F&B / bán lẻ (HĐ thuê mặt bằng + HĐ nhà cung cấp + HĐ lao động). Architecture phải general nhưng seed sắc theo vertical.
+**Vertical wedge (DEC-018 — OPEN):** KHÔNG khóa F&B/bán lẻ trước. Lõi general (multi-tenant, đa loại doc, obligation graph không phụ thuộc ngành). Chọn wedge theo **tín hiệu pilot** — tiêu chí (a) lượng HĐ tạo đau, (b) firm sẵn phục vụ, (c) HĐ có nghĩa vụ ngày-tháng để bóc. F&B/bán lẻ vẫn là ứng viên mạnh (network Mùa Vàng/Bingxue) nhưng không độc quyền. Xem `PRODUCT_STRATEGY_Khe_v0.2.md` §9.
 
-**Distribution:** Law firm + tax agent (đại lý thuế) làm channel — họ vốn là "phòng pháp lý thuê ngoài" SME đã có. Tầng deadline reminder ĐẺ việc cho firm thay vì cướp việc.
+**Distribution + Revenue (DEC-011 B2B2B):** Law firm + đại lý thuế là **khách hàng trả tiền** (Phase 1, ~50-100k VND/client/năm) **VÀ** kênh phân phối — không chỉ channel. SME end-user **FREE** Phase 1. Tầng deadline reminder ĐẺ việc cho firm thay vì cướp việc; firm bundle Khế vào gói dịch vụ tháng cho SME. Pivot ở GĐ2 (lawyer-in-loop drafting/review): SME-pays + firm rev share. **2-firm pilot (DEC-013):** 1 đại lý thuế + 1 law firm song song, 90-day evaluation. **Concierge onboarding (DEC-012):** 20 SME đầu được số hóa tận nơi — bỏ ma sát upload.
 
 **Catalysts:**
 - NĐ 337/2025 (hợp đồng lao động điện tử) hiệu lực 01/01/2026
@@ -33,7 +35,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **KHÔNG sửa trực tiếp** file trong `docs/` hoặc root `*.md`.
   - Ngoại lệ: được phép thêm ghi chú vận hành vào `CLAUDE.md` (bug pattern, fix mới).
 - Sau bất kỳ thay đổi nào ảnh hưởng tới **business rule, schema, API, UI, deploy info, hoặc known bug**,
-  **comment vào DOCS_INBOX issue [#1](https://github.com/kevindo1103/khe/issues/1)** (pinned, label `docs-inbox`) theo template:
+  **comment vào DOCS_INBOX issue** (pinned, label `docs-inbox`) theo template:
   ```
   ### <YYYY-MM-DD> — <session / branch>
   - **PR / trigger:** #<số PR> → `<base branch>`
@@ -63,8 +65,8 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 | # | Tài liệu | Đọc khi nào |
 |---|---|---|
-| 1 | `docs/PRODUCT_STRATEGY_Khe.md` | LUÔN LUÔN — JTBD, personas, positioning, D-rules rationale |
-| 2 | `MVP_BRD_Khe.md` | LUÔN LUÔN — FR/NFR, AC, scope boundary |
+| 1 | `docs/PRODUCT_STRATEGY_Khe_v0.2.md` | LUÔN LUÔN — JTBD, personas, positioning, D-rules rationale |
+| 2 | `docs/MVP_BRD_Khe_v0.1.md` (v0.3) | LUÔN LUÔN — FR/NFR, AC, scope boundary |
 | 3 | `CLAUDE.md` §D-rules | LUÔN LUÔN — 10 business invariants |
 | 4 | `CLAUDE.md` §Multi-Tenant DB | Khi chạm schema hoặc query |
 | 5 | `docs/system_architecture_khe.html` | Khi chạm module boundary, API shape, hoặc external service |
@@ -93,7 +95,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 | # | Lead (Claude Code) | Middle Dev (Windsurf) | Scope |
 |---|---|---|---|
-| 1 | **KHE_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
+| 1 | **KHE_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade Strategy → BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
 | 2 | **KHE_PM_Assistant** | — *(single-owner, long-lived)* | Branch `claude/pm-assistant`. Read-only mọi nơi. WRITE: GitHub issue comments + `docs/teams/pm_assistant_STATE.md` only. Cross-team triage, draft PM decisions, coordinate sessions. KHÔNG phải PM thật — draft + user ratify. |
 | 3 | **KHE_Backend** | **Windsurf_Backend** | TOÀN BỘ `backend/**` — FastAPI, modules (ingest, extraction, obligation, reminders, firm_portal, auth, audit), alembic, scheduler. Multi-tenant: master.db + per-tenant pattern (reuse SpurX A-1). |
 | 4 | **KHE_Frontend_Admin** | **Windsurf_Frontend** | `frontend/src/pages/{admin,firm,public}/**` — SME admin web UI + firm partner portal. |
@@ -101,7 +103,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | 6 | **KHE_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
 | 7 | **KHE_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
 | 8 | **KHE_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Telegram bot integration, env secrets, OCR/LLM API key rotation, monitoring. |
-| 9 | **KHE_AI** (Khế-specific) | — *(single-owner Phase 1)* | `VisionExtractionProvider` interface — Gemini 2.0 Flash + Claude Haiku/Sonnet Vision. No separate OCR step. Sprint 0 benchmark on 15 PII-scrubbed samples. Accuracy target M-3 ≥90%. US-hosted Phase 1 per DEC-010. |
+| 9 | **KHE_AI** (Khế-specific) | — *(single-owner Phase 1)* | `VisionExtractionProvider` interface — Gemini 2.5 Flash + Claude Haiku/Sonnet Vision. No separate OCR step. Sprint 0 benchmark on 15 PII-scrubbed samples. Accuracy target M-3 ≥90%. US-hosted Phase 1 per DEC-010. |
 | 10 | **KHE_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
 
 ### Lead/Dev workflow (BẮT BUỘC)
@@ -131,20 +133,28 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **Status labels:** `status:planned` → `status:in-progress` → `status:review` → `status:done-staging` → close
 - **Bước 0 mỗi session kickoff:** list `for:<my-team>` open issues
 - **Bước 1 mỗi session:** đọc `docs/teams/<myteam>_STATE.md`
-- **Post-merge:** comment **[DOCS_INBOX #1](https://github.com/kevindo1103/khe/issues/1)** issue trong 24h
+- **Post-merge:** comment **[DOCS_INBOX #1](https://github.com/kevindo1103/khe/issues/1)** trong 24h
 
 ### Branch Naming (BẮT BUỘC)
 
 **Pattern (feature/fix branch):** `claude/<type>-<scope>-<short-desc>[-<random>]`
 
 - **type:** `feat` · `fix` · `chore` · `docs` · `infra` · `hotfix` · `test` · `design` · `compliance`
-- **scope:** `ingest` · `extraction` · `obligation` · `reminders` · `chat` · `firm` · `auth` · `tenant` · `ai` · `legal` · `telegram` · `infra`
+- **scope:** module/area — `ingest` · `extraction` · `obligation` · `reminders` · `chat` · `firm` · `auth` · `tenant` · `ai` · `legal` · `telegram` · `infra`
 
 **Long-lived branches:**
 - `main` — production canonical
 - `staging` — pre-prod test environment
 - `claude/edit-git-docs-Khe01` — docs canonical lane
-- `claude/pm-assistant` — KHE_PM_Assistant role
+- `claude/pm-assistant` — PM_Assistant role
+
+**Ví dụ đúng:**
+- `claude/feat-extraction-pdf-pipeline-A1b2c`
+- `claude/fix-reminders-zalo-template-X9y8z`
+- `windsurf/feat-backend-obligation-engine`
+- `claude/compliance-nd13-consent-audit`
+
+**Quy tắc enforcement:** Tên không match pattern → rename trước khi push lần đầu.
 
 ---
 
@@ -152,54 +162,107 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 **Thứ tự bắt buộc — không bỏ bước:**
 
-1. Reproduce first — xác nhận bug trên staging
-2. Locate root cause — service.py → schemas.py → models.py
-3. Check impact scope
-4. Fix & verify locally (`npm run dev` / pytest)
-5. Deploy via GitHub Actions (KHÔNG SSH trực tiếp)
-6. Confirm on staging
+### 1. Reproduce first
+- Xác nhận bug reproduce trên staging trước khi code
+- Ghi rõ: endpoint nào, input nào, response thực tế vs expected
+
+### 2. Locate root cause
+- Backend bug → đọc `service.py` → `schemas.py` → `models.py` theo thứ tự
+- Frontend bug → API field name? Hook placement? Missing `key` prop?
+- **Không fix symptom — fix root cause**
+
+### 3. Check impact scope
+- Schema change Pydantic → kiểm tra tất cả endpoint dùng schema đó
+- DB query change → kiểm tra data integrity (FK, unique constraint)
+- Frontend component change → kiểm tra tất cả routes dùng component đó
+
+### 4. Fix & verify locally
+- `npm run dev` (frontend) hoặc local pytest (backend) verify
+- Với seed/migration: chạy 2 lần verify idempotent
+
+### 5. Deploy
+- Merge fix vào `main` → GitHub Actions auto deploy
+- **KHÔNG** SSH/paramiko/SFTP trực tiếp — bypass CI quality gate
+- Exception: documented hotpatch playbook khi prod down + Backend lead approve
+
+### 6. Confirm on staging
+- Verify API response với `curl`
+- Confirm không regression trên screen liên quan
 
 ---
 
 ## Common Bug Patterns (sẽ grow theo Sprint)
 
-*Bingxue Cairn N=1 seeded 5 entries. Khế N=2 may add more.*
+*Bingxue Cairn N=1 retrospective seeded 5 entries below. Khế N=2 may add more.*
 
 | Pattern | Triệu chứng | Fix |
 |---------|-------------|-----|
-| **Pydantic nested config inheritance** | 500 ValidationError on nested ORM response | Each nested schema needs own `model_config = ConfigDict(from_attributes=True)` |
-| **Schema-vs-body shape drift** | 422 "Field required" on auth/post | Verify frontend body matches backend Pydantic schema |
-| **React Hooks useCallback TDZ** | Page load ReferenceError | Define callbacks in dependency order |
-| **SQLite same-thread deadlock** | `database is locked` 10s | Commit outer session BEFORE inner opens |
-| **Cross-env data alignment** | UI shows different ID than source system | Single source of truth canonical ID across all layers |
+| **Pydantic nested config inheritance** | 500 ValidationError on response serialization for nested ORM objects | Each nested schema needs own `model_config = ConfigDict(from_attributes=True)` — không cascade từ parent |
+| **Schema-vs-body shape drift** | 422 "Field required" on auth/post endpoints | Verify frontend body matches backend Pydantic schema (e.g., `tenant_slug` field required) |
+| **React Hooks useCallback TDZ** | Page load ReferenceError "Cannot access X before initialization" | Define dependent callbacks BEFORE dependent ones in source order |
+| **SQLite same-thread deadlock** | `database is locked` 10s sau busy_timeout | Outer session holds write lock + inner session tries to write same thread → blocked. Commit outer BEFORE inner opens session. |
+| **Cross-env data alignment** | UI shows different identifier than source system (e.g., POS receipt #232, system #1) | Single source of truth — use canonical ID across all layers. Verify pre-prod smoke. |
+| **`pkg[extra]` removal drops transitive import** | `import main` fails on clean env / CI dù pass local; vd gỡ `passlib[bcrypt]` làm mất `bcrypt` mà code dùng `import bcrypt` (PR #12 case) | Declare TRỰC TIẾP mọi package mà code import — không dựa vào `[extra]` của package khác để pull transitive. |
+| **`pull_request` workflow reads HEAD branch YAML, không phải base** | Fix workflow trên `main` không apply ngay cho PR `staging → main`; gate cũ vẫn chạy từ `staging` HEAD | Forward-merge fix workflow vào tất cả long-lived branches (vd `main → staging`) TRƯỚC khi mở promote PR. Tránh hotfix workflow chỉ trên main. |
+| **rsync exit code 11 = target dir chưa tồn tại trên VPS** | Deploy workflow fail với `rsync error: errno 11` | Bootstrap `mkdir -p /opt/khe/backend{,-staging}` trên VPS qua SSH step TRƯỚC rsync. Đã wired in `deploy-*.yml` Sprint 0. |
 
 ---
 
-## Stack
+## Stack (ratified Sprint 0)
 
-- **Backend:** FastAPI + SQLAlchemy + APScheduler, Python 3.11+, SQLite multi-tenant
-- **Frontend Admin:** React + Vite + Tailwind CSS, React Router v6
-- **PWA Chat:** React + Vite, mobile-first PWA
-- **OCR + LLM:** Single `VisionExtractionProvider` interface — Gemini 2.0 Flash primary (~150đ/doc) + Claude Haiku fallback (~300đ/doc if accuracy <90%). Sprint 0 benchmark on 15 PII-scrubbed samples. (DEC-002)
-- **Reminders:** Telegram bot (telebot / python-telegram-bot) + email fallback (DEC-006)
+- **Backend:** FastAPI + SQLAlchemy + APScheduler, Python 3.11+, SQLite multi-tenant (`master.db` + `tenants/<slug>.db`)
+- **Auth:** `bcrypt` **direct** (KHÔNG `passlib[bcrypt]` — xem bug pattern) + `python-jose` cho JWT
+- **Frontend Admin:** React + Vite + Tailwind CSS, React Router v6 *(Sprint 1+ provision)*
+- **PWA Chat:** Same React + Vite stack, mobile-first PWA *(Sprint 1+ provision)*
+- **Vision extraction (DEC-002):** `VisionExtractionProvider` Protocol, 1-call vision (no separate OCR). Providers: Gemini 2.5 Flash (primary, ~59đ/doc) + Claude Haiku 4.5 (fallback, ~560đ/doc) + Claude Sonnet 4.6 (complex, ~1693đ/doc)
+- **Reminders (DEC-006):** Telegram bot via `python-telegram-bot` (env vars `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`) — fallback email. *(Zalo ZNS deprecated for MVP — blocker OA registration.)*
 - **Infra:** VPS Ubuntu, systemd + nginx, GitHub Actions CI/CD
 
 ---
 
-## Deploy
+## Deploy (ratified Sprint 0)
 
-- All deploy via GitHub Actions CI/CD — KHÔNG SSH/paramiko trực tiếp
-- Branch flow: feature → staging → main
-- PR quality gate: build + import check + schema diff
-- Alembic via deploy workflow only
+**All deploy via GitHub Actions CI/CD — KHÔNG SSH/paramiko/SFTP trực tiếp VPS** (bypass quality gate). Exception duy nhất: documented hotpatch playbook khi prod down + Backend lead approve.
+
+### Branch flow
+
+`feature` → `staging` → `main`. Mỗi push đến `staging`/`main` trigger auto-deploy workflow tương ứng.
+
+### Workflows (`.github/workflows/`)
+
+| File | Trigger | Hành động |
+|---|---|---|
+| `pr-quality-gate.yml` | mọi PR | Branch name pattern check (long-lived branches exempt) + backend `python -c "import main"` + alembic single-head + frontend build |
+| `deploy-staging.yml` | push `staging` | Bootstrap VPS dirs → rsync `backend/` → ghi `.env` secrets via SSH stdin (masked) → `systemctl restart khe-backend-staging` |
+| `deploy-main.yml` | push `main` | Same as staging với target `khe-backend` + Telegram notify ✅/❌ |
+
+### VPS layout
+
+1 VPS dùng chung:
+- Staging: `/opt/khe/backend-staging`, port **8001**, service `khe-backend-staging`
+- Production: `/opt/khe/backend`, port **8000**, service `khe-backend`
+- Systemd `EnvironmentFile=` load `.env` (secrets injected at deploy)
+
+### Secrets (GitHub repository secrets)
+
+`JWT_SECRET`, `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`. Two environments: `staging` + `production`.
+
+### Alembic
+
+Master.db migrations via deploy workflow only (not direct VPS). Per-tenant migration loop is Sprint 1 carry-over (currently `create_all` for skeleton).
 
 ---
 
 ## Local development
 
-- `npm run dev` → backend (uvicorn 8000) + frontend (Vite 5173)
-- Seed: `scripts/seed_local.py` — idempotent
-- Env: `backend/.env.local` + `frontend/.env.local` (gitignored)
+**TBD — Sprint 1 sẽ ratify khi frontend session spawn.**
+
+Pattern (mirror Bingxue):
+- `npm run dev` from project root → backend (uvicorn 8000) + frontend (Vite 5173) hot-reload
+- Seed script `scripts/seed_local.py` — idempotent wipe + alembic upgrade + fixtures
+- Login default: admin/admin123 or staff/staff123 (local only)
+- Env files: `backend/.env.local` + `frontend/.env.local`, both gitignored
+- Scope: ~70-80% fix UI/logic/CRUD. Staging needed for: scheduler / vision provider / Telegram / multi-tenant integration.
 
 ---
 
@@ -207,106 +270,111 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 - JWT `Depends(get_current_user)` BẮT BUỘC trên mọi endpoint sửa data
 - Endpoints SME-side phải verify `tenant_id` match JWT
-- Firm portal: verify consent (FR-FP-03)
-- KHÔNG log: passwords, JWT secrets, Telegram bot tokens, OCR/LLM API keys
+- Firm portal endpoints phải verify consent (FR-FP-03)
+- KHÔNG log: passwords, JWT secrets, Telegram bot tokens, vision provider API keys (Gemini / Claude)
 - SQL: chỉ ORM, không raw SQL với f-string
-- **NĐ 13/2023 DLCN:** mọi PII processing phải log purpose + consent reference
-- **NĐ 13/2023 Phase 1 hosting:** US-hosted LLM API acceptable với explicit consent + audit log. Phase 2+ re-evaluate self-host. (DEC-010)
-- **Tenant isolation:** MUST filter by tenant_id, NEVER `SessionLocal()` directly
+- **NĐ 13/2023 DLCN compliance hooks:** mọi PII processing phải log purpose + consent reference
+- **Tenant isolation:** mọi query MUST filter by tenant_id, NEVER `SessionLocal()` directly
 
 ---
 
-## Business Rules — D-rules
+## Business Rules — D-rules (sẽ lock per BRD §4 + §7)
 
-**D-01:** AI không bao giờ là system of record.
-**D-02:** Mọi ghi xuống pháp lý phải qua xác nhận người.
-**D-03:** Dẫn bằng ingest + retrieve + deadline. Drafting là upsell sau.
-**D-04:** Tích hợp, đừng tự build. Kênh nhắc Telegram → bên thứ ba.
-**D-05:** Đa loại document trong kiến trúc, sắc trong seed. Lõi general; seed F&B/bán lẻ.
-**D-06:** AI extraction CHỈ ĐỌC — không sinh/sửa nội dung pháp lý.
-**D-07:** Mọi field bóc ra phải cho người sửa; sửa → ghi Event.
-**D-08:** Chat không trả lời được → nói "không tìm thấy", không phỏng đoán.
-**D-09:** Firm KHÔNG sửa dữ liệu SME ở MVP.
-**D-10:** Quyền partner xuyên-tenant chỉ mở khi SME consent rõ ràng, thu hồi được.
+*To be expanded as features lock. Initial D-rules from BRD guardrails P-1 to P-5:*
+
+**D-01 (P-1):** AI không bao giờ là system of record. AI chỉ đọc/bóc tách (vào) và điền template đã duyệt (ra, giai đoạn sau).
+
+**D-02 (P-2):** Mọi ghi xuống lõi mang tính pháp lý phải qua xác nhận của người. Authoring mode bắt readback → preview → user confirm.
+
+**D-03 (P-3):** "Ngựa thành Troy" — dẫn bằng ingest + retrieve + deadline. Drafting/review là upsell sau.
+
+**D-04 (P-4):** Tích hợp, đừng tự build. Ký số, hóa đơn ĐT, kênh nhắc Zalo → bên thứ ba.
+
+**D-05 (P-5 — DEC-018 revised):** Đa loại document trong KIẾN TRÚC, **wedge OPEN trong SEED**. Lõi general; wedge chọn theo tín hiệu pilot, **không khóa ngành trước** (không khóa F&B/bán lẻ, không khóa lao động — xem R-1 BRD). Tiêu chí wedge: lượng HĐ + sẵn firm + nghĩa vụ ngày-tháng.
+
+**D-06 (FR-EX-03):** AI extraction CHỈ ĐỌC — không sinh/sửa nội dung pháp lý.
+
+**D-07 (FR-EX-04):** Mọi field bóc ra phải cho người sửa; sửa → ghi Event.
+
+**D-08 (FR-CQ-03):** Chat không trả lời được → nói thẳng "không tìm thấy", không phỏng đoán.
+
+**D-09 (FR-FP-03):** Firm KHÔNG sửa dữ liệu SME ở MVP (chỉ xem + nhận tín hiệu).
+
+**D-10 (FR-AC-03):** Quyền partner xuyên-tenant chỉ mở khi SME consent rõ ràng, thu hồi được.
+
+*(Sẽ grow theo Sprint 1+ implementation.)*
 
 ---
 
 ## Multi-Tenant DB Architecture (CRITICAL)
 
-- **`master.db`:** tenants, tenant_users, firm_partners, firm_tenant_access
-- **`tenants/<slug>.db`:** documents, terms, obligations, parties, events, branches, employees
+**Pattern reuse từ SpurX (BRD A-1).** 2-database structure:
 
-**`get_tenant_session(tid)`** MUST be used. NEVER `SessionLocal()` directly.
+- **`master.db`** — global tenant registry
+  - `tenants` table: tenant_id, name, plan, status, created_at
+  - `tenant_users` table: tenant_id FK, username, hashed_password, role, is_active
+  - `firm_partners` table: firm_id, name, contact (Khế-new vs SpurX)
+  - `firm_tenant_access` table: firm_id, tenant_id, consent_status, granted_at, revoked_at (Khế-new)
 
----
+- **`<tenant_slug>.db`** — per-tenant data (vd `tenants/sme-abc-restaurant.db`)
+  - `documents` table — file metadata + classification
+  - `terms` table — extracted fields per document
+  - `obligations` table — derived deadlines + recurrence
+  - `parties` table — normalized partner entities
+  - `events` table — append-only ledger (reuse SpurX pattern)
+  - `branches` table — physical locations (if multi-branch SME)
+  - `employees` table — staff (if SME has multiple users)
 
-## Vision Extraction Architecture (KHE_AI scope)
+**`get_tenant_session(tid)`** dependency MUST be used; NEVER `SessionLocal()` directly.
 
-**Single `VisionExtractionProvider` — no separate OCR.**
-
-```python
-class VisionExtractionProvider(Protocol):
-    async def extract(self, image_bytes: bytes, doc_type: str) -> ExtractionResult: ...
-```
-
-Providers: `GeminiFlashProvider` (primary) · `ClaudeHaikuProvider` (fallback) · `ClaudeSonnetProvider` (complex docs)
-
-**NĐ 13/2023 Phase 1:** Explicit SME consent logged in `events` table before first extraction.
-
----
-
-## Vision Extraction Architecture (KHE_AI scope)
-
-**Single `VisionExtractionProvider` interface — no separate OCR step.**
-
-```python
-class VisionExtractionProvider(Protocol):
-    async def extract(self, image_bytes: bytes, doc_type: str) -> ExtractionResult: ...
-```
-
-**Providers (Sprint 0 benchmark):**
-- `GeminiFlashProvider` — primary, ~150đ/doc
-- `ClaudeHaikuProvider` — fallback if accuracy <90%, ~300đ/doc
-- `ClaudeSonnetProvider` — fallback for complex/handwritten docs
-
-**Selection logic:** Run benchmark Sprint 0. Lock primary/fallback config before Sprint 1.
-
-**NĐ 13/2023 Phase 1:** Documents sent to US-hosted API must have explicit SME consent logged before first extraction. Consent reference stored in `events` table.
+**Migration rule:** Migration scripts dùng `SessionLocal()` chỉ chạy trên master.db. Per-tenant migrations qua loop over all tenants.
 
 ---
 
 ## Anti-Patterns
 
-- N+1 queries, magic numbers, god files >500 lines, `console.log` in prod
-- Direct SQL f-string, `SessionLocal()` direct
-- AI generating legal content (D-01/D-06 violation)
-- Skipping `## Plan` before coding
-- Separate OCR + LLM pipeline (use `VisionExtractionProvider` single call)
+- N+1 queries → dùng `joinedload` hoặc `selectinload`
+- Magic numbers → đặt tên constant
+- God files >500 lines → split
+- `console.log` trong production code
+- Direct SQL với f-string (use parameterized queries)
+- `SessionLocal()` direct (use `get_tenant_session(tid)`)
+- AI generating legal content (P-1 violation)
+- Skipping `## Plan` 1-5 lines confirm trước khi code
 
 ---
 
-## Domain Glossary
+## Domain Glossary (refs BRD §6)
 
-| Term | Definition |
-|---|---|
-| Document | File gốc bất biến + Term + relationships |
-| Obligation | **MVP heart.** Cam kết rời rạc, có ngày, có trạng thái. |
-| VisionExtractionProvider | Single-call OCR+classify+extract (no separate OCR) |
-| DOCS_INBOX | Pinned issue for docs relay — [#1](https://github.com/kevindo1103/khe/issues/1) |
-| FM-XX | Failure Mode (recurring process bug) |
-| INC-XX | Incident (specific bad event) |
+| Term | Definition (1-line) | Full def |
+|---|---|---|
+| Document | Văn bản: file gốc bất biến + Term + relationships | BRD §6 |
+| Term/Field | Giá trị có cấu trúc bóc từ Document | BRD §6 |
+| **Obligation** | **MVP heart.** Cam kết rời rạc, có ngày, có trạng thái. | BRD §6 |
+| Party | Đối tác trong tài liệu, chuẩn hóa | BRD §6 |
+| Event (Ledger) | Append-only ghi mọi thay đổi trạng thái | BRD §6 |
+| Tenant | Một SME (cô lập dữ liệu) | BRD §6 |
+| Partner | Một firm; role xuyên tenant | BRD §6 |
+| FM-XX | Failure Mode (recurring process bug) | This file Common Bug Patterns |
+| INC-XX | Incident (specific bad event with root cause) | This file Common Bug Patterns |
+| DOCS_INBOX | Pinned GitHub issue for canonical docs relay | This file Docs Ownership |
 
 ---
 
 ## Commit Format
 
 ```
-feat(ingest): add PDF upload + vision extraction queue
-fix(reminders): retry on Telegram delivery 5xx
-chore(infra): rotate Gemini API key
+feat(ingest): add PDF upload + OCR queue
+fix(reminders): retry on Zalo ZNS 5xx
+chore(infra): rotate OCR API key
+docs(brd): clarify Obligation lifecycle states
 compliance(nd13): add purpose-of-processing log
 ```
 
 ---
 
-*v0.1 — KHE_PM_Assistant bootstrap. KHE_Docs to fold on first DOCS_INBOX cycle.*
+*v0.4 — PM review pre-merge fix: ERP_→KHE_ rename in topology, Decision Review Gate section, system_architecture_khe.html reference, docs-editor cascade Strategy→BRD→..., Branch Naming zalo→telegram scope.*
+
+*v0.3 — folded DOCS_INBOX 13/14 (DEC-018 Vertical OPEN + PRODUCT_STRATEGY canonical adoption). Cascade: PRODUCT_STRATEGY v0.2 → BRD v0.3 → SRS v0.1 → Glossary v0.2 → PROJECT_PLAN v0.2 → CLAUDE.md v0.3.*
+
+*v0.2 — folded Sprint 0 DOCS_INBOX entries 1-11 (Strategy v2 / DEC-006 Telegram / Backend scaffold / Infra CI/CD / AI extraction insight). Cascade: BRD v0.2 → SRS v0.1 → Glossary v0.1 → PROJECT_PLAN v0.1 → CLAUDE.md v0.2.*

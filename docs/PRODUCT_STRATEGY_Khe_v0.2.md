@@ -1,9 +1,9 @@
 # Khế — Product Strategy Foundation (v0.2)
 
 > **Vai trò tài liệu:** Đây là **tài liệu nền** của Khế. Mọi tài liệu downstream — **BRD → SRS → roadmap → mockup → code** — phải dẫn xuất và nhất quán với file này. Khi có mâu thuẫn, file này là nguồn chân lý về *tại sao / cho ai / job gì*; BRD quyết *hệ thống phải làm gì*.
-> **Trạng thái:** Draft — chờ ratify + KHE_Docs fold canonical.
+> **Trạng thái:** **Canonical** (KHE_Docs adopted 2026-06-18 from PM draft on branch `claude/pm-assistant`). Cascade upstream của BRD → SRS.
 > **Last updated:** 2026-06-18
-> **Tham chiếu:** `docs/MVP_BRD_Khe.md` · `CLAUDE.md` (D-rules) · DEC log (`docs/teams/pm_assistant_STATE.md`)
+> **Tham chiếu:** `docs/MVP_BRD_Khe_v0.1.md` (v0.2) · `docs/SRS_v0.1.md` · `CLAUDE.md` (D-rules) · DEC log (`docs/teams/pm_assistant_STATE.md`)
 
 ---
 
@@ -208,5 +208,6 @@ Có hai motion đưa sản phẩm tới SME:
 
 ## Changelog
 
-- **v0.2 (2026-06-18):** Tái cấu trúc thành **tài liệu nền độc lập** (bỏ framing thảo luận). Thêm **§2 Personas · §3 Jobs to be Done · §4 Why-How-What (Golden Circle)** + mapping WHAT→JTBD. Mục GTM motion viết lại trung tính (kênh B2B vs self-serve). Khẳng định vai trò: nền → BRD → SRS.
-- **v0.1 (2026-06-18):** Bản đầu — định vị April Dunford 5-component + Positioning Thesis; vertical chuyển OPEN (DEC-018); roadmap 3 giai đoạn + kill signals.
+- **v0.2 canonical-adoption (2026-06-18, KHE_Docs):** Pulled từ PM draft branch `claude/pm-assistant` vào docs lane. File rename: `PRODUCT_STRATEGY_Khe.md` → `PRODUCT_STRATEGY_Khe_v0.2.md` (version-in-filename per docs convention). No content edits — chỉ update §0 status line. Folded DOCS_INBOX comments 13 + 14 (DEC-018 + PRODUCT_STRATEGY adoption).
+- **v0.2 (2026-06-18, KHE_PM_Assistant):** Tái cấu trúc thành **tài liệu nền độc lập** (bỏ framing thảo luận). Thêm **§2 Personas · §3 Jobs to be Done · §4 Why-How-What (Golden Circle)** + mapping WHAT→JTBD. Mục GTM motion viết lại trung tính (kênh B2B vs self-serve). Khẳng định vai trò: nền → BRD → SRS.
+- **v0.1 (2026-06-18, KHE_PM_Assistant):** Bản đầu — định vị April Dunford 5-component + Positioning Thesis; vertical chuyển OPEN (DEC-018); roadmap 3 giai đoạn + kill signals.

@@ -1,0 +1,3 @@
+# Never commit real / scrubbed sample documents or the filled answer key.
+data/
+manifest.json
