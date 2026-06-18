@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-18 (Phase 1 approved; Phase 2 Admin screens built)_
+_Last updated: 2026-06-18 (Phase 1+2 approved; Phase 3 PWA screens built)_
 
 ## Decisions in force (design-relevant)
 - **DEC-017** — Design System + mockups MUST land + Kevin-approve BEFORE Frontend
@@ -56,9 +56,13 @@ Built in `mockup_design_system_v0.1.jsx`:
   - `mockup_admin_document_detail_v0.1.jsx` — edit-in-place per field (D-07) + ConfidenceMeter + needs_review (FR-EX-05); obligations panel
   - `mockup_admin_obligation_v0.1.jsx` — urgency-bucketed due list, mark-done/hoãn → Event (FR-OB)
 
-## Next (await Kevin approve Phase 2 first — DEC-017 gate)
-- **Phase 3** — PWA 4 screens: login, chat (D-08 empty state), consent (NĐ 13/2023,
-  text from KHE_Compliance #32), notification opt-in (Telegram deep-link).
+- [x] **Phase 3** — PWA 4 screens (mobile-first, PhoneFrame; import Design System v0.1). Kevin approved Phase 2 on #24.
+  - `mockup_pwa_login_v0.1.jsx` — mobile login (same auth contract); exports shared `PhoneFrame`
+  - `mockup_pwa_chat_v0.1.jsx` — chat thread, source chips (FR-CQ-02), **D-08 "Không tìm thấy" bubble**, empty state
+  - `mockup_pwa_consent_v0.1.jsx` — NĐ 13/2023 first-login dialog per `nd13-v1` spec (#32 comment): buttons "Đồng ý…"/"Để sau", purpose=vision_extraction, names US recipients Google/Anthropic + revocation. ⚠ DRAFT copy, counsel sign-off pending (DEC-010)
+  - `mockup_pwa_notification_v0.1.jsx` — Telegram opt-in deep-link `t.me/?start=` (DEC-006), 30+7 day reminders, email fallback
+
+## Status: ALL Phase 1–3 mockups delivered. Awaiting Kevin Phase-3 approval to close #24 → unblock Frontend #30 + PWA #32.
 - Each phase: commit → push → present to Kevin → await approve → next phase.
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
