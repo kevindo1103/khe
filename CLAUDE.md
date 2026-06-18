@@ -48,10 +48,42 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 ### Session docs-editor (branch `claude/edit-git-docs-Khe01`)
 - Đọc DOCS_INBOX comments mới → fold canonical docs theo cascade order:
-  **BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup**.
+  **Strategy → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup**.
 - Cập nhật version number + changelog entry ở mỗi file bị ảnh hưởng.
 - Reply DOCS_INBOX comment với: `✅ Folded — <docs/version kết quả>`.
 - Weekly Review (Monday): check `## Weekly Review Log` trong DOCS_INBOX. Run 8-item checklist.
+
+---
+
+## Decision Review Gate (BẮT BUỘC trước mọi module/feature decision)
+
+**Trước khi đề xuất hoặc implement bất kỳ module, feature, schema, hoặc API mới:**
+
+### Cascade đọc bắt buộc (theo thứ tự)
+
+| # | Tài liệu | Đọc khi nào |
+|---|---|---|
+| 1 | `docs/PRODUCT_STRATEGY_Khe.md` | LUÔN LUÔN — JTBD, personas, positioning, D-rules rationale |
+| 2 | `MVP_BRD_Khe.md` | LUÔN LUÔN — FR/NFR, AC, scope boundary |
+| 3 | `CLAUDE.md` §D-rules | LUÔN LUÔN — 10 business invariants |
+| 4 | `CLAUDE.md` §Multi-Tenant DB | Khi chạm schema hoặc query |
+| 5 | `docs/system_architecture_khe.html` | Khi chạm module boundary, API shape, hoặc external service |
+| 6 | `docs/teams/<myteam>_STATE.md` | Mỗi session kickoff |
+
+### Checklist trước khi propose decision
+
+- [ ] Feature này phục vụ JTBD nào? (J1–J5 trong Strategy §3)
+- [ ] Feature này có vi phạm D-rules không? (đặc biệt D-01, D-06, D-08, D-09, D-10)
+- [ ] Feature này có thay đổi schema / API không? → PHẢI comment DOCS_INBOX
+- [ ] Feature này có chạm multi-tenant isolation không? → Review §Multi-Tenant DB
+- [ ] Feature này có trong MVP scope (M0–M3) không? Nếu không → flag lên PM trước
+- [ ] Feature này có conflict với ratified DEC-001–018 không? → PHẢI escalate PM, không tự override
+
+### Escalation rule
+
+- **Conflict với DEC-*** → comment issue `for:pm` + `spec-conflict`, KHÔNG tự resolve.
+- **Tính năng ngoài MVP scope** → label `blocker:human-needed`, STOP, báo user.
+- **Ambiguity về business rule** → comment DOCS_INBOX, KHÔNG assumption.
 
 ---
 
