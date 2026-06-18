@@ -1,14 +1,15 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build output
 dist/
 dist-ssr/
 *.local
 
-# TypeScript
+# TypeScript build artifacts
 *.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 
 # Environment
 .env.local

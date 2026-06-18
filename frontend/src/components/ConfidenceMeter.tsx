@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface ConfidenceMeterProps {
   value: number; // 0.0 - 1.0
   className?: string;

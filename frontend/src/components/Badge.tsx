@@ -1,4 +1,4 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 
 export type BadgeKind =
   | 'processing'
@@ -6,11 +6,12 @@ export type BadgeKind =
   | 'needs_review'
   | 'due_soon'
   | 'overdue'
-  | 'done';
+  | 'done'
+  | 'neutral';
 
 interface BadgeProps {
   kind: BadgeKind;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }
 
@@ -21,6 +22,7 @@ const kindClasses: Record<BadgeKind, string> = {
   due_soon: 'bg-warning-soft text-warning',
   overdue: 'bg-danger-soft text-danger',
   done: 'bg-success-soft text-success',
+  neutral: 'bg-ink-muted text-white',
 };
 
 export function Badge({ kind, children, className = '' }: BadgeProps) {
