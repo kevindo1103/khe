@@ -84,6 +84,7 @@ GEMINI_API_KEY=${GEMINI_API_KEY}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 JWT_SECRET=${JWT_SECRET}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+CORS_ORIGINS=https://staging.khe.vn
 EOF
 
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash <<'REMOTE'
@@ -92,9 +93,30 @@ EOF
             source venv/bin/activate
             pip install -r requirements.txt --quiet
             alembic upgrade head
+            python scripts/migrate_all_tenants.py
             sudo systemctl restart khe-backend-staging
             echo "✅ staging backend restarted"
           REMOTE
+
+      # ── HTTPS check (warning only — auth cookie requires Secure flag over HTTPS) ──
+      - name: HTTPS staging check
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_HOST" ]; then exit 0; fi
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          TLS_OK=$(ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://staging.khe.vn/health || echo 000")
+          if [ "$TLS_OK" = "200" ]; then
+            echo "✅ staging HTTPS OK (HTTP $TLS_OK)"
+          else
+            echo "⚠️  staging HTTPS not reachable (HTTP $TLS_OK) — HttpOnly auth cookies require Secure+HTTPS to work in browsers. Run certbot on VPS before deploying auth (#46)."
+          fi
 
       # ── Frontend deploy ──────────────────────────────────────────────
       - name: Build & deploy frontend to staging
