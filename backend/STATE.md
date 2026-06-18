@@ -24,7 +24,7 @@
 | 4 | Ingest router + extraction queue | #25 | `claude/feat-backend-ingest-*` | ⏸ queued — consent-gated |
 | 5 | Obligation engine + reminder + Telegram | #26 | `claude/feat-backend-obligation-*` | ⏸ queued — consumes #25 Terms |
 | 6 | Chat query MVP (retrieve-only, D-08) | #27 | `claude/feat-backend-chat-*` | ⏸ queued — consumes #25/#26 |
-| ‖ | Auth → HttpOnly cookie JWT (#43 Option A) | #46 | `windsurf/feat-backend-auth-cookie` | 🟡 **assigned** (parallel; blocks PWA #44) |
+| ‖ | Auth → HttpOnly cookie JWT (#43 Option A) | #46 | `windsurf/feat-backend-auth-cookie` | ✅ **merged → staging** (PR #49 `b750c5b`, #46 closed) |
 
 > **#46 (parallel security track, runs alongside the chain):** switch JWT JSON→HttpOnly cookie.
 > Linchpin = `deps.py::get_current_user` must read `khe_session` cookie **and keep setting
