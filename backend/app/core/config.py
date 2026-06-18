@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # JWT
     JWT_SECRET: str = os.getenv("JWT_SECRET", "change-me-in-production")
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 8  # 8 hours (#43/#46)
 
     # Bcrypt
     BCRYPT_ROUNDS: int = 12
