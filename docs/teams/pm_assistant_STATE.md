@@ -2,7 +2,7 @@
 
 *Branch: `claude/pm-assistant` | Last updated: 2026-06-18 | v0.9*
 
-> **2026-06-18:** Tạo `docs/PRODUCT_STRATEGY_Khe_v0.1.md` (PM draft) — định vị tường minh theo April Dunford framework, đính chính B2C→B2B (motion), vertical chuyển OPEN (DEC-018). Đã review phân tích CLM-SME của cộng sự Kevin: giữ thesis Khế, harvest 3 điểm (Plan B blueprint cho DEC-015 #2, pricing input cho DEC-016, validation discipline cho pilot). Routed DOCS_INBOX cho KHE_Docs canonical fold.
+> **2026-06-18:** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
 
 ---
 
