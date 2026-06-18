@@ -84,7 +84,7 @@ GEMINI_API_KEY=${GEMINI_API_KEY}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 JWT_SECRET=${JWT_SECRET}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-CORS_ORIGINS=https://staging.khe.vn
+CORS_ORIGINS=https://staging.khe.iceflow.cloud
 EOF
 
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash <<'REMOTE'
@@ -111,7 +111,7 @@ EOF
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           TLS_OK=$(ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
-            "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://staging.khe.vn/health || echo 000")
+            "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://staging.khe.iceflow.cloud/health || echo 000")
           if [ "$TLS_OK" = "200" ]; then
             echo "✅ staging HTTPS OK (HTTP $TLS_OK)"
           else
@@ -136,7 +136,7 @@ EOF
 
           cd frontend
           npm ci --quiet
-          VITE_API_BASE_URL=https://staging.khe.vn/api npm run build
+          VITE_API_BASE_URL=https://staging.khe.iceflow.cloud/api npm run build
 
           mkdir -p ~/.ssh
           echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key

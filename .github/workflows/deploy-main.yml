@@ -84,7 +84,7 @@ GEMINI_API_KEY=${GEMINI_API_KEY}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 JWT_SECRET=${JWT_SECRET}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-CORS_ORIGINS=https://khe.vn
+CORS_ORIGINS=https://khe.iceflow.cloud
 EOF
 
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash <<'REMOTE'
@@ -116,7 +116,7 @@ EOF
 
           cd frontend
           npm ci --quiet
-          VITE_API_BASE_URL=https://khe.vn/api npm run build
+          VITE_API_BASE_URL=https://khe.iceflow.cloud/api npm run build
 
           mkdir -p ~/.ssh
           echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key

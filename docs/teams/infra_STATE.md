@@ -117,17 +117,17 @@ Duplicate for `khe-backend-staging.service` with port 8001.
 ```nginx
 server {
     listen 80;
-    server_name khe.vn www.khe.vn;
+    server_name khe.iceflow.cloud www.khe.iceflow.cloud;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name khe.vn www.khe.vn;
+    server_name khe.iceflow.cloud www.khe.iceflow.cloud;
 
     # TLS — use certbot / Let's Encrypt
-    ssl_certificate /etc/letsencrypt/live/khe.vn/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/khe.vn/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/khe.iceflow.cloud/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/khe.iceflow.cloud/privkey.pem;
 
     root /opt/khe/frontend;
     index index.html;
@@ -143,13 +143,13 @@ server {
     }
 }
 
-# Staging vhost (staging.khe.vn)
+# Staging vhost (staging.khe.iceflow.cloud)
 server {
     listen 443 ssl;
-    server_name staging.khe.vn;
+    server_name staging.khe.iceflow.cloud;
 
-    ssl_certificate /etc/letsencrypt/live/staging.khe.vn/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/staging.khe.vn/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/staging.khe.iceflow.cloud/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/staging.khe.iceflow.cloud/privkey.pem;
 
     root /opt/khe/frontend-staging;
     index index.html;
