@@ -101,8 +101,38 @@ def init_master_db():
     MasterBase.metadata.create_all(bind=master_engine)
 
 
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def _upgrade_tenant_alembic(tenant_id: str) -> None:
+    """Programmatically run alembic upgrade for a single tenant DB."""
+    import alembic.config
+    from alembic import command
+    from sqlalchemy import create_engine, inspect
+
+    db_path = TENANTS_DIR / f"{tenant_id}.db"
+    db_url = f"sqlite:///{db_path}"
+
+    # Baseline stamp: if DB has tables but no alembic_version, stamp tenant_001
+    if db_path.exists():
+        tmp_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+        inspector = inspect(tmp_engine)
+        table_names = inspector.get_table_names()
+        tmp_engine.dispose()
+
+        if table_names and "alembic_version" not in table_names:
+            cfg = alembic.config.Config(str(_BACKEND_DIR / "alembic_tenant.ini"))
+            cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic_tenant"))
+            cfg.set_main_option("sqlalchemy.url", db_url)
+            command.stamp(cfg, "tenant_001")
+            print(f"  [alembic] {tenant_id} baseline-stamped tenant_001")
+
+    cfg = alembic.config.Config(str(_BACKEND_DIR / "alembic_tenant.ini"))
+    cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic_tenant"))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(cfg, "head")
+
+
 def init_tenant_db(tenant_id: str):
-    """Create per-tenant tables if they don't exist."""
-    from app.models import tenant as _tenant_models  # noqa: F401
-    eng = _get_tenant_engine(tenant_id)
-    TenantBase.metadata.create_all(bind=eng)
+    """Create / upgrade per-tenant tables via Alembic (not create_all)."""
+    _upgrade_tenant_alembic(tenant_id)
