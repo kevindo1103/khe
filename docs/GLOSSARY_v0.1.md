@@ -8,8 +8,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.1 |
-| Trạng thái | Initial — extract từ BRD §6 + fold Sprint 0 schema + Strategy v2 |
+| Phiên bản | v0.2 |
+| Trạng thái | Fold DOCS_INBOX entries 13 + 14 (DEC-018 + PRODUCT_STRATEGY adoption) |
 | Owner | KHE_Docs |
 
 ---
@@ -19,6 +19,7 @@
 | Phiên bản | Ngày | Tác giả | Thay đổi |
 |---|---|---|---|
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Extract BRD §6 terms + fold Backend schema field map (entry 7/8), AI extraction concept (entry 9), Strategy v2 terms (entry 4), Telegram bot (entry 2). |
+| v0.2 | 2026-06-18 | KHE_Docs | Fold DOCS_INBOX 13/14: add §G Strategy framework terms — Persona, JTBD, Golden Circle (Why-How-What), Dunford Positioning Thesis, B2B2B channel motion vs PLG, Obligation OS, Vertical wedge (DEC-018), Plan B contingency. |
 
 ---
 
@@ -153,4 +154,52 @@ Milestones per BRD §13:
 
 ---
 
-*Hết v0.1. Bước kế tiếp: thêm UI terms khi Frontend session spawn.*
+---
+
+## G. Strategy framework (DEC-018 / PRODUCT_STRATEGY v0.2)
+
+### Persona
+Mô tả profile người dùng cụ thể trong B2B2B motion. Khế có 3:
+- **Firm Champion / Economic Buyer** (chị Hằng, chủ đại lý thuế) — người trả tiền.
+- **SME Owner** (anh Dũng) — primary user, free Phase 1.
+- **SME Admin / Ops** (bạn Linh, kế toán) — secondary user, xử lý upload + sửa field.
+
+Định nghĩa đầy đủ trong `PRODUCT_STRATEGY_Khe_v0.2.md` §2.
+
+### JTBD (Jobs to be Done)
+Framework xác định **job** khách hàng "thuê" Khế hoàn thành. Format: *"Khi [tình huống], tôi muốn [động lực], để [kết quả]"*. Khế có 5+1 jobs (J1-J5 + J-E emotional). **J2 là trái tim** (nhắc trước hạn — Obligation engine + Telegram). Detail: PRODUCT_STRATEGY §3.
+
+### Golden Circle (Why-How-What)
+Framework Simon Sinek. Khế:
+- **WHY:** Không SME nào nên mất tiền/cơ hội vì HĐ đã ký bị bỏ quên.
+- **HOW:** (1) Đi qua người SME đã tin (firm), (2) AI chỉ-đọc bóc nghĩa vụ VN, (3) File tĩnh → dòng nhắc, (4) Tập trung hậu-ký.
+- **WHAT:** Ingest + Retrieve + Deadline trên multi-tenant phân phối qua firm portal.
+
+Detail: PRODUCT_STRATEGY §4.
+
+### Dunford Positioning Thesis
+Framework April Dunford 5-component (competitive alternatives / unique attributes / value+proof / target market / market category). Khế Positioning Thesis (lỏng, tinh chỉnh qua pilot):
+
+> Cho SME VN không có phòng pháp lý nhưng đã có cố vấn ngoài, Khế là **Hệ điều hành nghĩa vụ hợp đồng hậu-ký** — vận hành bởi chính firm trên kho client của họ — khác Google Drive/Excel/trí nhớ ở chỗ biến nghĩa vụ rời rạc thành dòng nhắc có hệ thống, đón hậu sóng NĐ 337.
+
+Detail: PRODUCT_STRATEGY §5.
+
+### B2B2B channel motion vs PLG
+2 GTM motion:
+- **Channel-led B2B (Khế chọn Phase 1):** bán qua firm vốn có quan hệ SME; concierge onboarding; firm trả per-client.
+- **Mass self-serve (PLG, contingency):** SME tự đăng ký, tự trả ($30-100/mo); CAC thấp, onboarding 15 phút. Kích hoạt nếu Kill signal K-2 trigger (firm không trả + SME convert tốt).
+
+DEC-011 chọn channel-led; self-serve giữ làm Plan B. Detail: PRODUCT_STRATEGY §6 + §10.
+
+### Obligation OS
+Định danh category Khế: *"Hệ điều hành nghĩa vụ & tài liệu hợp đồng hậu-ký cho SME — phân phối qua cố vấn ngoài."* **KHÔNG** là CLM enterprise (drafting/redlining/e-sign). Tránh kỳ vọng sai.
+
+### Vertical wedge (DEC-018 — OPEN)
+Wedge = ngành cụ thể chọn làm beachhead. Khế **không khóa wedge trước** — lõi general (multi-tenant, đa loại doc, obligation graph), chọn theo tín hiệu pilot. Tiêu chí: (a) lượng HĐ tạo đau, (b) firm sẵn phục vụ, (c) HĐ có nghĩa vụ ngày-tháng để bóc. F&B/bán lẻ là 1 ứng viên; không độc quyền.
+
+### Plan B blueprint
+Self-serve PLG motion tham chiếu (~$30-100/mo SME-pays trực tiếp). Gắn DEC-015 K-2 kill signal — nếu firm không trả + SME tự convert tốt qua paywall reminder → bỏ B2B2B, chuyển direct freemium. Tracked PRODUCT_STRATEGY §6 + §10.
+
+---
+
+*Hết v0.2. Bước kế tiếp: thêm UI terms khi Frontend session spawn.*
