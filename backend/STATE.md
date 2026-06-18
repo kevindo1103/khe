@@ -18,7 +18,7 @@
 
 | Step | Task | Issue | Branch | Status |
 |---|---|---|---|---|
-| 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic` | 🔴 **changes requested** (PR #41 — stale base regresses D-10) |
+| 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic-v2` | ✅ **merged → staging** (PR #42 `11a24a9`, #10 closed) |
 | 2 | Consent gate (NĐ 13/2023, DEC-010) | #22 | `claude/feat-backend-consent-gate` (PR-A) | ⏸ queued — owns migration `tenant_002` |
 | 3 | Doc relationships (DEC-019) | (DEC-019) | `claude/feat-backend-doc-relationships` (PR-B) | ⏸ queued — builds on PR-A schema |
 | 4 | Ingest router + extraction queue | #25 | `claude/feat-backend-ingest-*` | ⏸ queued — consent-gated |
@@ -32,7 +32,14 @@ The scaffold branch is the defunct Sprint-0 lead branch (`6ea2ad9`) — it never
 carries the pre-#12 `get_db()` (silent `DEFAULT_TENANT_ID` fallback = D-10 regression). PR #41 hit exactly
 this: rebasing onto `staging` (which has the #12 fix) is required before merge. Flow = `feature → staging → main`.
 
-### PR #41 review (#10) — CHANGES REQUESTED 2026-06-18
+### PR #42 (#10) — ✅ MERGED → staging 2026-06-18
+
+- Replaced PR #41 (closed). Branched from `staging` → `get_db()` D-10 untouched; alembic Config paths anchored to `backend/` (CWD-safe). Quality Gate green; lead-merged squash `11a24a9`.
+- Per-tenant Alembic rail live: `alembic_tenant/` env + `tenant_001` baseline + idempotent `migrate_all_tenants.py`. Sprint-0 carry-over #3 (per-tenant migration loop) CLOSED.
+- **Follow-ups (non-blocking):** Infra #45 (wire `migrate_all_tenants.py` into `deploy-*.yml` + triage deploy failures) · nits 3-5 (server_default mirror, single-source path helper, rail regression test → KHE_QC).
+- DOCS_INBOX #1 report posted (SRS §5 + CLAUDE.md Alembic/Multi-Tenant sections).
+
+### PR #41 review (#10) — CHANGES REQUESTED 2026-06-18 (superseded by #42)
 
 - 🔴 **Blocker:** stale base regresses #12 D-10 `get_db`. Rebuild on `staging`, reapply alembic additions only, retarget base → `staging`.
 - 🟠 **Should-fix:** alembic `Config("alembic_tenant.ini")` is CWD-relative → breaks runtime `init_tenant_db()` tenant provisioning. Anchor paths to `__file__` (BACKEND_DIR).
