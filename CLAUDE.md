@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-11 (v0.2 — fold Sprint 0 entries 1-11 from DOCS_INBOX) — MVP BRD v0.2 reference*
+*Last updated: 2026-06-18 (v0.3 — fold DOCS_INBOX 13/14: DEC-018 + PRODUCT_STRATEGY adoption) — Upstream PRODUCT_STRATEGY v0.2 + MVP BRD v0.3 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,11 +9,13 @@
 
 ## Project context
 
-**References:** `docs/MVP_BRD_Khe_v0.1.md` (v0.2) · `docs/SRS_v0.1.md` · `docs/GLOSSARY_v0.1.md` · `docs/PROJECT_PLAN_v0.1.md`
+**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (upstream — Why/Personas/JTBD/Positioning) · `docs/MVP_BRD_Khe_v0.1.md` (v0.3) · `docs/SRS_v0.1.md` · `docs/GLOSSARY_v0.1.md` (v0.2) · `docs/PROJECT_PLAN_v0.1.md` (v0.2)
+
+**Doc cascade:** PRODUCT_STRATEGY → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup. PRODUCT_STRATEGY thắng về *tại sao / cho ai / job gì*; BRD thắng về *hệ thống phải làm gì*.
 
 **MVP scope (M0 → M3):** Ingest + retrieve + deadline. KHÔNG soạn HĐ tự động (drafting), KHÔNG review rủi ro, KHÔNG ký số (integrate sau), KHÔNG đa thị trường (VN-first), KHÔNG marketplace template.
 
-**Vertical seed:** F&B / bán lẻ (HĐ thuê mặt bằng + HĐ nhà cung cấp + HĐ lao động). Architecture phải general nhưng seed sắc theo vertical.
+**Vertical wedge (DEC-018 — OPEN):** KHÔNG khóa F&B/bán lẻ trước. Lõi general (multi-tenant, đa loại doc, obligation graph không phụ thuộc ngành). Chọn wedge theo **tín hiệu pilot** — tiêu chí (a) lượng HĐ tạo đau, (b) firm sẵn phục vụ, (c) HĐ có nghĩa vụ ngày-tháng để bóc. F&B/bán lẻ vẫn là ứng viên mạnh (network Mùa Vàng/Bingxue) nhưng không độc quyền. Xem `PRODUCT_STRATEGY_Khe_v0.2.md` §9.
 
 **Distribution + Revenue (DEC-011 B2B2B):** Law firm + đại lý thuế là **khách hàng trả tiền** (Phase 1, ~50-100k VND/client/năm) **VÀ** kênh phân phối — không chỉ channel. SME end-user **FREE** Phase 1. Tầng deadline reminder ĐẺ việc cho firm thay vì cướp việc; firm bundle Khế vào gói dịch vụ tháng cho SME. Pivot ở GĐ2 (lawyer-in-loop drafting/review): SME-pays + firm rev share. **2-firm pilot (DEC-013):** 1 đại lý thuế + 1 law firm song song, 90-day evaluation. **Concierge onboarding (DEC-012):** 20 SME đầu được số hóa tận nơi — bỏ ma sát upload.
 
@@ -256,7 +258,7 @@ Pattern (mirror Bingxue):
 
 **D-04 (P-4):** Tích hợp, đừng tự build. Ký số, hóa đơn ĐT, kênh nhắc Zalo → bên thứ ba.
 
-**D-05 (P-5):** Đa loại document trong KIẾN TRÚC, sắc trong SEED. Lõi general; seed F&B/bán lẻ.
+**D-05 (P-5 — DEC-018 revised):** Đa loại document trong KIẾN TRÚC, **wedge OPEN trong SEED**. Lõi general; wedge chọn theo tín hiệu pilot, **không khóa ngành trước** (không khóa F&B/bán lẻ, không khóa lao động — xem R-1 BRD). Tiêu chí wedge: lượng HĐ + sẵn firm + nghĩa vụ ngày-tháng.
 
 **D-06 (FR-EX-03):** AI extraction CHỈ ĐỌC — không sinh/sửa nội dung pháp lý.
 
@@ -338,5 +340,7 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.3 — folded DOCS_INBOX 13/14 (DEC-018 Vertical OPEN + PRODUCT_STRATEGY canonical adoption). Cascade: PRODUCT_STRATEGY v0.2 → BRD v0.3 → SRS v0.1 → Glossary v0.2 → PROJECT_PLAN v0.2 → CLAUDE.md v0.3.*
 
 *v0.2 — folded Sprint 0 DOCS_INBOX entries 1-11 (Strategy v2 / DEC-006 Telegram / Backend scaffold / Infra CI/CD / AI extraction insight). Cascade: BRD v0.2 → SRS v0.1 → Glossary v0.1 → PROJECT_PLAN v0.1 → CLAUDE.md v0.2.*
