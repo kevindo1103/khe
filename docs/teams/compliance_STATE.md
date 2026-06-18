@@ -1,7 +1,7 @@
 # KHE_Compliance — Team State
 
 *Owner: KHE_Compliance (single-owner, low-touch) · Branch: `claude/compliance-nd13-consent-spec`*
-*Last updated: 2026-06-18 — Sprint 1 first task (#30): NĐ 13/2023 consent UX spec + DEC-010 audit sign-off*
+*Last updated: 2026-06-18 — Sprint 1 first task (#30): NĐ 13/2023 consent UX spec + DEC-010 audit sign-off · **3 PM decisions LOCKED** (revocation / retention / LLM DPA)*
 
 > **Scope (HARD):** Compliance **spec** only — NĐ 13/2023 (DLCN/PII) · NĐ 337/2025 (lao động ĐT) · NĐ 70/2025 (hóa đơn ĐT) · consent flows · data residency · retention · audit-log spec.
 > ❌ KHÔNG implement application code (`backend/**`, `frontend/**`, `.github/workflows/**`) — file issues cho KHE_Backend / KHE_Infra.
@@ -18,6 +18,14 @@
 | **DEC-014** | Positioning "ngôi nhà sau khi ký" — KHÔNG claim "ký số" (NĐ 337 guard). | Positioning guard (§F). |
 | **D-09** | Firm KHÔNG sửa dữ liệu SME ở MVP (chỉ xem). | Firm portal consent scope = read-only (§C). |
 | **D-10** | Quyền partner xuyên-tenant chỉ mở khi SME consent rõ ràng, thu hồi được. | `firm_partner_access` consent + revocation (§C, §D). |
+
+### PM-locked decisions (2026-06-18, on #30)
+
+| Q | Decision LOCKED | Spec section |
+|---|---|---|
+| **Revocation** | **Option C** — block future + soft-flag `consent_revoked` + ledger Event; **deadlines/obligations đã sinh vẫn chạy tiếp**. "Xóa dữ liệu" là một action riêng, rõ ràng (tôn trọng 2 quyền tách biệt của NĐ 13). | §D |
+| **Retention** | **Tenant-active + 90 ngày post-close.** ⚠️ verify với thời hạn lưu trữ HĐ luật định — conflict thì flag back PM. | §B |
+| **LLM DPA** | **Zero-retention tier bắt buộc** — Anthropic + Google no-train/no-log; verify **trước** first production extraction. | §E |
 
 ---
 
@@ -109,14 +117,14 @@ NĐ 13/2023 nguyên tắc: giữ dữ liệu **không lâu hơn mục đích**. 
 
 | Dữ liệu | Retention đề xuất | Lý do |
 |---|---|---|
-| File gốc tài liệu (immutable, FR-IN-02) | Giữ suốt đời tenant active; xóa **N ngày** sau khi tenant đóng tài khoản (đề xuất N=90, Kevin confirm) | File gốc là "ngôi nhà sau khi ký" — mục đích kéo dài; nhưng phải xóa khi hết quan hệ. |
+| File gốc tài liệu (immutable, FR-IN-02) | Giữ suốt đời tenant active; xóa **90 ngày** sau khi tenant đóng tài khoản (**LOCKED**) | File gốc là "ngôi nhà sau khi ký" — mục đích kéo dài; nhưng phải xóa khi hết quan hệ. |
 | `terms` (field bóc ra) | Theo file gốc | Phái sinh từ file. |
 | `obligations` | Theo file gốc | Phái sinh. |
 | `events` (ledger, gồm consent) | **Giữ lâu hơn** — tối thiểu **5 năm** sau khi tenant đóng (audit/chứng minh consent) | Append-only ledger là bằng chứng tuân thủ; không xóa cùng file. Verify counsel thời hạn luật định. |
-| `master.db` (tenant/user records) | Xóa/anonymize **N ngày** sau đóng tài khoản, trừ trường tối thiểu cho nghĩa vụ kế toán/thuế | NĐ 13 + nghĩa vụ lưu sổ. |
-| Dữ liệu gửi LLM (transit) | Không Khế lưu; phụ thuộc retention của Google/Anthropic — ghi rõ trong DPA + consent text | Bên thứ ba; ngoài kiểm soát trực tiếp → minh bạch trong consent. |
+| `master.db` (tenant/user records) | Xóa/anonymize **90 ngày** sau đóng tài khoản, trừ trường tối thiểu cho nghĩa vụ kế toán/thuế | NĐ 13 + nghĩa vụ lưu sổ. |
+| Dữ liệu gửi LLM (transit) | **Zero-retention tier (LOCKED)** — Anthropic + Google no-train/no-log; Khế không lưu transit. Ghi rõ trong DPA + consent text | Bên thứ ba; zero-retention loại bỏ rủi ro residual storage. |
 
-> **Ambiguity → Kevin/counsel:** (1) N ngày sau đóng tài khoản; (2) thời hạn luật định cho `events` ledger; (3) Google/Anthropic zero-retention API tier có khả dụng? (giảm rủi ro transit).
+> **Verify-back (không phải open ambiguity nữa — LOCKED 90 ngày):** thời hạn 90 ngày phải đối chiếu **thời hạn lưu trữ hợp đồng luật định** (kế toán/thuế/dân sự). Nếu luật buộc giữ lâu hơn 90 ngày → flag back PM, KHÔNG tự xóa sớm. `events` ledger giữ ≥5 năm (§B trên) độc lập với file gốc.
 
 ---
 
@@ -133,13 +141,16 @@ NĐ 13/2023 nguyên tắc: giữ dữ liệu **không lâu hơn mục đích**. 
 
 Áp dụng cho mọi `purpose` revocable (vision_extraction, reminder_send, firm_partner_access).
 
-1. SME bấm "Thu hồi" trong Cài đặt (PWA) → Backend ghi Event `event_type="consent_revoked"`, `purpose=<x>`, `consent_reference` (tham chiếu consent gốc).
-2. **Hiệu lực: block-future-only (đề xuất MVP)** — chặn xử lý tương lai (extract/firm-view/reminder mới). **KHÔNG** xóa dữ liệu đã bóc.
-   - **Lý do chọn block-future:** dữ liệu đã bóc là tài sản SME đang dùng (J1/J2); xóa = mất "ngôi nhà". Append-only ledger cấm edit-in-place (FR-AU-01).
-   - SME muốn **xóa hẳn** dữ liệu đã bóc → flow riêng "Xóa dữ liệu" (quyền NĐ 13), tách khỏi revoke-consent. MVP: log yêu cầu → xử lý thủ công (concierge), tự động hóa Phase 2.
-3. `firm_partner_access` revoke → firm **mất quyền xem ngay** (BRD AC-5).
+**Decision LOCKED = Option C** (PM, 2026-06-18 on #30): block future + soft-flag + ledger; deadlines giữ chạy; "xóa dữ liệu" là action riêng.
 
-> **Ambiguity → Kevin:** Xác nhận MVP = block-future-only cho revoke; "xóa hẳn" là flow tách (manual Phase 1). Nếu counsel yêu cầu xóa-on-revoke theo NĐ 13 → escalate, đổi spec.
+1. SME bấm "Thu hồi" trong Cài đặt (PWA) → Backend ghi Event `event_type="consent_revoked"`, `purpose=<x>`, `consent_reference` (tham chiếu consent gốc). **Append-only — KHÔNG edit-in-place** consent cũ (FR-AU-01).
+2. **Hiệu lực = block-future + soft-flag:**
+   - Chặn **xử lý tương lai** cho purpose đó (extract mới / firm-view / reminder mới).
+   - Set soft-flag `consent_revoked` (state derived từ ledger, không xóa Event gốc).
+   - **Dữ liệu đã bóc + obligations/deadlines đã sinh VẪN CHẠY TIẾP.** Thu hồi `vision_extraction` consent **KHÔNG** dừng nhắc hạn của HĐ đã bóc trước đó — reminder do consent `reminder_send` riêng điều phối (J2 "trái tim" không bị tắt ngầm).
+3. **"Xóa dữ liệu" là action RIÊNG, rõ ràng** (NĐ 13 quyền xóa — tách biệt với quyền thu hồi đồng ý). SME phải chủ động chọn "Xóa dữ liệu của tôi". MVP: log yêu cầu → xử lý thủ công (concierge) → ghi Event; tự động hóa Phase 2.
+   - **Vì sao tách 2 quyền:** NĐ 13 phân biệt *rút lại sự đồng ý* (ngừng xử lý tương lai) và *quyền xóa* (xóa dữ liệu đã có). Gộp 2 = vừa over-delete (mất "ngôi nhà") vừa mơ hồ pháp lý.
+4. `firm_partner_access` revoke → firm **mất quyền xem ngay** (BRD AC-5).
 
 ---
 
@@ -158,11 +169,14 @@ Ngày: __________   Người ký: __________   Môi trường: [ ] staging  [ ] 
 [ ] 3. events table ghi consent_logged với purpose + consent_reference + consent_text_version.
        Evidence: query output ________________________
 [ ] 4. Audit log READABLE: truy được "tenant X đồng ý lúc nào, text version nào".
-[ ] 5. Revocation hoạt động: revoke → extraction tương lai bị chặn (block-future).
+[ ] 5. Revocation (Option C) hoạt động: revoke → extraction tương lai chặn + soft-flag;
+       obligations/deadlines đã sinh VẪN chạy (không tắt ngầm).
        Evidence: test output ________________________
 [ ] 6. Consent text mô tả đúng bên nhận US (Google/Anthropic) + quyền thu hồi.
-[ ] 7. DPA với Google/Anthropic reviewed (hoặc tracked nếu chưa) — counsel note.
-[ ] 8. Retention policy (§B) đã ratify giá trị N + thời hạn ledger.
+[ ] 7. **DPA zero-retention tier CONFIRMED (HARD):** Anthropic + Google no-train/no-log
+       enabled. Evidence: DPA / account setting screenshot ________________________
+[ ] 8. Retention = tenant-active + 90 ngày post-close (LOCKED); ledger ≥5 năm.
+       Verify-back: 90 ngày KHÔNG dưới thời hạn lưu HĐ luật định (counsel) — nếu có, đã flag PM.
 [ ] 9. KHÔNG log PII cấm: passwords, JWT, bot token, API keys (CLAUDE.md §Security).
 
 Sign-off: __________________   (Thiếu bất kỳ mục nào = KHÔNG go-live extraction)
@@ -184,8 +198,10 @@ Sign-off: __________________   (Thiếu bất kỳ mục nào = KHÔNG go-live e
 | Date | Issue | Action |
 |---|---|---|
 | 2026-06-18 | #30 | First task — spec drafted (§A–§F). Relay → #22, #31, DOCS_INBOX #1. |
+| 2026-06-18 | #30 | **3 PM decisions LOCKED** (revocation Option C / retention 90d / LLM zero-retention) folded into §B/§D/§E. |
 | 2026-06-18 | #22 | Backend consent gate — spec §A feeds; note `consent_text_version` column add. |
 | 2026-06-18 | #32 | PWA epic (BLOCKED on #24 design) — consent UI text §A.3 ready khi unblock. |
+| 2026-06-18 | spawn | Noted `SPAWN_KHE_COMPLIANCE.md` references #32 (PWA epic) instead of #30; file not in repo — PM to fix on template side. |
 
 ---
 
