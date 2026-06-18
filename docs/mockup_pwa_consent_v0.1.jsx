@@ -43,8 +43,9 @@ export default function PwaConsent() {
           </p>
           <ul style={{ paddingLeft: t.space[5], margin: `${t.space[3]}px 0` }}>
             <Point><strong>Mục đích:</strong> bóc tách thông tin hợp đồng (đối tác, ngày, nghĩa vụ) để nhắc hạn — Khế chỉ đọc, không sửa nội dung pháp lý.</Point>
-            <Point><strong>Nơi xử lý:</strong> tài liệu được gửi tới dịch vụ AI đặt tại Hoa Kỳ (<strong>Google</strong> và <strong>Anthropic</strong>) để đọc.</Point>
-            <Point><strong>Quyền của bạn:</strong> bạn có thể <strong>thu hồi đồng ý bất cứ lúc nào</strong> trong phần Cài đặt; khi thu hồi, Khế ngừng đọc tài liệu mới.</Point>
+            <Point><strong>Nơi xử lý:</strong> tài liệu được gửi tới dịch vụ AI đặt tại Hoa Kỳ (<strong>Google LLC</strong> và <strong>Anthropic PBC</strong>) để đọc.</Point>
+            <Point><strong>Lưu trữ:</strong> bản gốc tài liệu của bạn được lưu tại máy chủ ở Việt Nam.</Point>
+            <Point><strong>Quyền của bạn:</strong> bạn có thể <strong>thu hồi đồng ý bất cứ lúc nào</strong> trong phần Cài đặt; khi thu hồi, Khế ngừng gửi tài liệu mới tới AI.</Point>
           </ul>
           <div style={{ fontSize: t.font.size.xs, color: t.color.inkSubtle, background: t.color.surfaceAlt, padding: t.space[3], borderRadius: t.radius.md }}>
             Bản tóm tắt — xem chính sách quyền riêng tư đầy đủ. (nội dung pháp lý cuối: nd13-v1, chờ duyệt)
