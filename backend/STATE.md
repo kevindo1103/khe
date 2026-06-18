@@ -21,7 +21,8 @@
 | 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic-v2` | ✅ **merged → staging** (PR #42 `11a24a9`, #10 closed) |
 | 2 | Consent gate + full tenant_002 schema | #22 | `windsurf/feat-backend-tenant002-consent` (PR-A) | ✅ **merged → staging** (PR #52 `824f660`, #22 closed) |
 | 3 | Doc relationships + chain logic (DEC-019/020/021) | #50 | `windsurf/feat-backend-doc-relationships` (PR-B) | 🟢 **unblocked** — schema on staging; logic only, no migration |
-| 4 | Ingest router + extraction queue | #25 | `claude/feat-backend-ingest-*` | ⏸ queued — consent-gated |
+| 4 | Ingest core (upload/storage/CRUD/consent gate) | #25 PR-A | `windsurf/feat-backend-ingest-core` | 🟡 **assigned** — start now, no AI dep |
+| 4b | Extraction worker (BackgroundTasks) | #25 PR-B | `windsurf/feat-backend-ingest-extraction` | ⏸ blocked on #53 (AI factory) + PR-A |
 | 5 | Obligation engine + reminder + Telegram | #26 | `claude/feat-backend-obligation-*` | ⏸ queued — consumes #25 Terms |
 | 6 | Chat query MVP (retrieve-only, D-08) | #27 | `claude/feat-backend-chat-*` | ⏸ queued — consumes #25/#26 |
 | ‖ | Auth → HttpOnly cookie JWT (#43 Option A) | #46 | `windsurf/feat-backend-auth-cookie` | ✅ **merged → staging** (PR #49 `b750c5b`, #46 closed) |
@@ -68,6 +69,13 @@ revision, split into PR-A (consent logic) + PR-B (relationship logic)**. PR-A ca
 **Consent gate logic** (Compliance-confirmed, #22): query `events` for `consent_logged` + `purpose=vision_extraction`
 not superseded by `consent_revoked` → proceed; else `403 {"detail":"SME consent for AI extraction not recorded. Log consent first."}`.
 After `extract()` → log `event_type="extraction_performed"` (US-recipient audit trail).
+
+### Parallel tracks active 2026-06-18 (post tenant_002)
+
+- **#25 PR-A** ingest core — assigned, off staging, no external dep. **#25 PR-B** extraction worker — blocked on **#53** (KHE_AI `get_extraction_provider()` factory — none exists today, only Protocol + 3 concrete providers) + PR-A.
+- **#50 PR-B** relationships/chain — assigned, off staging, runs parallel to #25 (independent files; build with fixtures, wire into ingest later).
+- **#53** raised `for:ai` — provider factory request.
+- **Field-name correction** posted to #1: vocab = extraction `CANONICAL_FIELDS` (7: `doi_tac, ngay_hieu_luc, ngay_het_han, gia_tri_hd, thoi_han_hd, dieu_khoan_gia_han, dieu_khoan_thanh_toan`); `doc_type` = DocType enum (`hd_thue_mat_bang|hd_nha_cung_cap|hd_lao_dong|khac`).
 
 ### 🧊 Frozen API contract — M0 part 2/2 (DOCS_INBOX #1, 2026-06-18)
 
