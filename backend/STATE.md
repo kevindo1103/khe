@@ -40,6 +40,18 @@ revision, split into PR-A (consent logic) + PR-B (relationship logic)**. PR-A ca
 not superseded by `consent_revoked` → proceed; else `403 {"detail":"SME consent for AI extraction not recorded. Log consent first."}`.
 After `extract()` → log `event_type="extraction_performed"` (US-recipient audit trail).
 
+### 🧊 Frozen API contract — M0 part 2/2 (DOCS_INBOX #1, 2026-06-18)
+
+Frozen for Frontend M0 (upload · list · detail · obligations). #25/#26 implementations **MUST** conform.
+Full shapes in #1 comment. Key locks:
+
+- `POST /ingest/upload` → `{doc_id, file_name, status}` · `403` if consent absent (DEC-010) · `POST /ingest/bulk` ≤20.
+- `GET /documents?status&needs_review&q&page` → `{items:[{id,file_name,doc_type,status,needs_review,term_count,obligation_count,created_at}], page, page_size, total}`.
+- `GET /documents/{id}` → terms as **EAV** `[{id,field_name,field_value,confidence,needs_review}]` + obligations. `PATCH /documents/{id}/terms/{term_id}` → Event (D-07).
+- `GET /obligations?due_within&status&page` → list w/ `obligation_type ∈ {once,monthly,quarterly,yearly,open_ended_review}`; `open_ended_review` ⇒ `due_date=null`. `PATCH /obligations/{id}` mark-done / hoãn → Event (D-02).
+- **Frozen enums:** `documents.status` = `processing|extracted|failed` (aligns mockup #36; SRS §5.1 `ready`→`extracted` reconciliation flagged to Docs). Tenant strictly from JWT. Pagination `{items,page,page_size,total}`. ISO 8601 UTC.
+- **Deferred (DEC-019 PR-B, NOT M0 v1):** detail `relationships:[]`; obligation `source_doc_chain`/`resolution_method`.
+
 ### Sprint 0 — ✅ COMPLETE (closed)
 
 - FastAPI + multi-tenant DB scaffold on `main` (`cf6d022`, promoted via `lead → staging → main` #16/#19).
