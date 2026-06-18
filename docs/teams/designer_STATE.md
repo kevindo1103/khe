@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-18 (Phase 1 Design System built)_
+_Last updated: 2026-06-18 (Phase 1 approved; Phase 2 Admin screens built)_
 
 ## Decisions in force (design-relevant)
 - **DEC-017** — Design System + mockups MUST land + Kevin-approve BEFORE Frontend
@@ -48,12 +48,15 @@ Built in `mockup_design_system_v0.1.jsx`:
 - [x] STEP 0 branch rename `claude/sweet-thompson-jixt9y` → `claude/design-system-m0`.
 - [x] Cascade read: PRODUCT_STRATEGY v0.2 (personas/JTBD), BRD v0.3 (FR-IN/EX/OB/CQ/DR + §6 glossary), CLAUDE.md (D-rules + Decision Review Gate), #23 contract baseline, #24 task.
 - [x] `docs/teams/designer_STATE.md` created.
-- [x] **Phase 1** — `docs/mockup_design_system_v0.1.jsx` (tokens + 8 components + gallery showcase).
+- [x] **Phase 1** — `docs/mockup_design_system_v0.1.jsx` (tokens + 8 components + gallery showcase). **Kevin approved on #24.**
+- [x] **Phase 2** — Admin 5 screens (all import Design System v0.1):
+  - `mockup_admin_login_v0.1.jsx` — form {tenant_id, username, password} → POST /auth/login (#23)
+  - `mockup_admin_upload_v0.1.jsx` — single drag-drop + bulk concierge ≤20 (DEC-012); FR-IN-01/03
+  - `mockup_admin_document_list_v0.1.jsx` — status filter + search; FR-SR
+  - `mockup_admin_document_detail_v0.1.jsx` — edit-in-place per field (D-07) + ConfidenceMeter + needs_review (FR-EX-05); obligations panel
+  - `mockup_admin_obligation_v0.1.jsx` — urgency-bucketed due list, mark-done/hoãn → Event (FR-OB)
 
-## Next (await Kevin approve Phase 1 first — DEC-017 gate)
-- **Phase 2** — Admin 5 screens: login, upload (single + bulk concierge), document
-  list (status filter), document detail (edit-in-place + confidence + needs_review),
-  obligation list (upcoming due + mark-done).
+## Next (await Kevin approve Phase 2 first — DEC-017 gate)
 - **Phase 3** — PWA 4 screens: login, chat (D-08 empty state), consent (NĐ 13/2023,
   text from KHE_Compliance #32), notification opt-in (Telegram deep-link).
 - Each phase: commit → push → present to Kevin → await approve → next phase.
