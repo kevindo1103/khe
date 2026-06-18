@@ -1,9 +1,10 @@
 # BA — Phân tích Logic Xử lý Hợp đồng
-## Khế MVP · v0.1 · 2026-06-18
+## Khế MVP · v0.2 · 2026-06-18
 
 > **Trạng thái:** Draft — PM_Assistant · Chờ KHE_Docs fold canonical
 > **Áp dụng cho:** KHE_Backend (#26), KHE_AI (#28), KHE_QC (#33), KHE_Frontend_Admin (#30)
 > **Tham chiếu:** BRD §7 FR-EX / FR-OB · SRS v0.1 §schema · CLAUDE.md §D-rules
+> **v0.2:** Bổ sung khung pháp lý 7 bước (Ls. Nguyễn Ngọc Bích) — phát sinh gap về classification by title
 
 ---
 
@@ -394,6 +395,208 @@ Ngày hết hạn tính toán: 30/06/2026
 | **Q-1** | `thoi_han_hd` = "vô thời hạn" — tạo obligation `open_ended` và nhắc mỗi năm, hay chỉ flag và không nhắc? | Obligation engine + reminder logic |
 | **Q-2** | Khi SME upload PL mà không có HĐ chính trong hệ thống — xử lý như `standalone` hay block và yêu cầu upload HĐ chính trước? | UX ingest flow |
 | **Q-3** | Chain conflict UI: hiển thị lịch sử từng field hay chỉ final resolved value với badge "đã sửa đổi"? | Sprint 2 UI scope |
+| **Q-4** | Nếu tên văn bản = "Biên bản làm việc" nhưng đủ điều kiện pháp lý là amendment — Khế tự nâng `doc_type` hay chỉ flag `potential_amendment` và chờ SME confirm? | Classification UX + D-02 |
+| **Q-5** | Điều khoản hợp đồng gốc yêu cầu sửa đổi phải dưới dạng "Phụ lục" (SKMC 2) — Khế có extract và enforce điều kiện này không? | SKMC 2 extraction target |
+
+---
+
+## 12. Khung pháp lý — 7 bước Ls. Nguyễn Ngọc Bích
+
+> Áp dụng cho tình huống: **văn bản ghi nhận thời hạn thanh toán** — không rõ có phải là phụ lục/sửa đổi hợp đồng hợp pháp không.
+> Source: Khung tư duy 7 bước phân tích pháp lý (Ls. NNB)
+
+### 12.1 Gap phát sinh với Khế v0.1
+
+BA v0.1 phân loại `doc_type` dựa vào **tên văn bản** (title extraction). Framework NNB chỉ ra điều này **sai về pháp lý**:
+
+> *Pháp luật không bắt buộc hình thức sửa đổi phải mang tên "Phụ lục hợp đồng". Chỉ cần văn bản thể hiện sự thống nhất ý chí của hai bên (ký + đóng dấu đúng thẩm quyền) là đủ.*
+
+**Hệ quả:** Một "Biên bản làm việc", "Cam kết", "Thông báo hai bên ký" đều có thể là văn bản sửa đổi hợp đồng hợp pháp — và phải tham gia vào chain resolution như một `amendment`.
+
+Ngược lại: một văn bản gọi là "Phụ lục" nhưng chỉ có chữ ký của 1 bên → **không** phải amendment hợp pháp.
+
+---
+
+### 12.2 CHKL (Câu hỏi pháp lý kết luận) — ánh xạ sang Obligation Engine
+
+> *"Trong toàn bộ hệ thống tài liệu hiện có giữa hai bên, thời hạn thanh toán và thực hiện nghĩa vụ nào mang tính bắt buộc và là căn cứ cuối cùng?"*
+
+Đây chính xác là bài toán của **Obligation Engine**: từ nhiều tài liệu, resolve ra obligation có hiệu lực. CHKL mapping:
+
+| CHKL | Obligation Engine action |
+|---|---|
+| Văn bản nào là sửa đổi hợp pháp? | `legal_amendment_status` classification |
+| Có xung đột không? | Last-writer-wins conflict detection |
+| Văn bản nào có ưu tiên? | Chain resolution theo `seq_order` + `legal_amendment_status` |
+
+---
+
+### 12.3 SKMC → Extraction targets mới
+
+Framework xác định 3 nhóm Sự kiện mấu chốt. Khế phải extract được:
+
+**SKMC 1 — Hình thức và ý chí:**
+
+| Field cần extract | Mô tả | `needs_review` nếu |
+|---|---|---|
+| `has_signature_party_a` | Bool — bên A ký | FALSE |
+| `has_signature_party_b` | Bool — bên B ký | FALSE |
+| `has_seal_party_a` | Bool — đóng dấu bên A (nếu là pháp nhân) | FALSE |
+| `signatory_name_a` | Tên + chức danh người ký bên A | Không extract được |
+| `signatory_name_b` | Tên + chức danh người ký bên B | Không extract được |
+| `doc_title_raw` | Tên gốc của văn bản ("Biên bản...", "Phụ lục...", "Cam kết...") | — |
+
+**SKMC 2 — Rào cản từ hợp đồng gốc:**
+
+| Field cần extract (từ HĐ chính) | Mô tả |
+|---|---|
+| `amendment_form_required` | HĐ gốc có yêu cầu sửa đổi phải lập thành "Phụ lục" không? |
+| `amendment_form_clause` | Trích dẫn điều khoản nếu có |
+
+> Nếu `amendment_form_required = True` + văn bản mới không tên "Phụ lục" → flag `legal_risk = medium`, không tự block — cần luật sư xem.
+
+**SKMC 3 — Xung đột nội dung:**
+
+| Field cần extract | Mô tả |
+|---|---|
+| `contains_conflicting_terms` | Bool — có điều khoản trái với văn bản trước không? |
+| `replacement_language` | Trích dẫn câu thay thế ("thay thế Điều X", "bãi bỏ khoản Y", "áp dụng thay cho...") |
+| `conflict_fields` | Danh sách field_name bị thay đổi |
+
+---
+
+### 12.4 Legal Amendment Classification (thay thế classification by title)
+
+Dựa trên CHMC 1 + 2 và các CHPT, Khế phân loại `legal_amendment_status` theo ma trận:
+
+| `has_sig_A` | `has_sig_B` | `contains_conflicting_terms` | `legal_amendment_status` | Tham gia chain? |
+|---|---|---|---|---|
+| ✓ | ✓ | ✓ | `confirmed_amendment` | ✅ Yes — override terms |
+| ✓ | ✓ | ✗ | `confirmed_supplement` | ✅ Yes — thêm terms mới |
+| ✓ | ✗ | bất kỳ | `potential_amendment` | ⚠ needs_review — 1 bên ký |
+| ✗ | ✓ | bất kỳ | `potential_amendment` | ⚠ needs_review — 1 bên ký |
+| ✓ | ✓ | không xác định | `potential_amendment` | ⚠ needs_review — extraction uncertain |
+| ✗ | ✗ | bất kỳ | `non_amendment` | ❌ Không tham gia chain |
+
+> **D-02 rule:** Chỉ `confirmed_amendment` và `confirmed_supplement` tự động tham gia chain resolution. `potential_amendment` cần SME confirm trước khi obligations được activate.
+
+---
+
+### 12.5 Điều 403 §2 + Điều 421 → Resolution priority rule
+
+**Điều 421 BLDS 2015** (Sửa đổi hợp đồng): *Hình thức sửa đổi phải tuân theo hình thức của hợp đồng ban đầu.*
+
+Implications cho Khế:
+
+| HĐ gốc ký như thế nào | Yêu cầu cho amendment hợp lệ | Khế action |
+|---|---|---|
+| Văn bản tay, không công chứng | Văn bản tay có chữ ký 2 bên | Accepted nếu cả 2 bên ký |
+| Văn bản công chứng / chứng thực | Amendment cũng phải công chứng | Flag `legal_risk = high` nếu không có |
+| Điện tử (NĐ 337/2025) | Chữ ký điện tử hợp lệ | Flag để KHE_Compliance verify |
+
+> Khế **không thể xác nhận** công chứng hay chữ ký điện tử hợp lệ tại MVP — chỉ extract `has_notarization` và flag `needs_legal_review` nếu relevant.
+
+**Điều 403 §2** — "các bên chấp nhận phụ lục có điều khoản trái → điều khoản HĐ gốc đã được sửa đổi":
+
+Đây là **legal basis** cho Last-writer-wins algorithm:
+- Khi `confirmed_amendment` + `contains_conflicting_terms` → new term **supersedes** old term
+- Không cần cả hai tài liệu cùng ghi rõ "điều này thay thế điều kia"
+- Hành vi ký là đủ → Khế implement đúng
+
+---
+
+### 12.6 Schema additions cho Legal Classification
+
+```sql
+-- Thêm vào bảng documents (per-tenant schema)
+ALTER TABLE documents ADD COLUMN legal_amendment_status TEXT DEFAULT 'unknown';
+    -- VALUES: 'confirmed_amendment' | 'confirmed_supplement' | 'potential_amendment'
+    --         | 'non_amendment' | 'unknown'
+
+ALTER TABLE documents ADD COLUMN has_signature_both_parties BOOLEAN DEFAULT FALSE;
+ALTER TABLE documents ADD COLUMN amendment_form_compliant BOOLEAN;
+    -- NULL = unknown; TRUE = hình thức đúng; FALSE = nghi ngờ không đúng hình thức
+ALTER TABLE documents ADD COLUMN legal_risk TEXT DEFAULT 'none';
+    -- VALUES: 'none' | 'low' | 'medium' | 'high'
+    -- 'high': HĐ gốc yêu cầu công chứng nhưng amendment không có dấu hiệu
+
+-- Thêm vào bảng terms
+ALTER TABLE terms ADD COLUMN replacement_language TEXT;
+    -- Trích dẫn câu thay thế nếu có ("thay thế khoản 3 điều 5...")
+```
+
+---
+
+### 12.7 Updated extraction prompt — Legal validity layer
+
+Sau khi extract terms chuẩn, thêm task phân loại pháp lý:
+
+```
+[Task bổ sung — Legal Classification]
+Phân tích văn bản theo các tiêu chí sau:
+
+1. Chữ ký: Có chữ ký của CẢ HAI bên không? (tìm chữ ký, tên, chức danh, con dấu)
+2. Xung đột: Văn bản này có điều khoản nào TRÁI hoặc THAY THẾ điều khoản cũ không?
+   → Nếu có: trích dẫn câu văn cụ thể (vd: "thay thế Điều 5.1", "áp dụng thay cho...")
+3. Tên văn bản (title_raw): Ghi chính xác tên văn bản như trên trang đầu
+4. Hình thức: Văn bản có công chứng / chứng thực không?
+
+Output thêm vào JSON:
+{
+  "has_signature_both_parties": bool,
+  "signatory_a": {"name": str, "title": str},
+  "signatory_b": {"name": str, "title": str},
+  "contains_conflicting_terms": bool,
+  "replacement_language": [str],  // câu trích dẫn
+  "doc_title_raw": str,
+  "has_notarization": bool,
+  "legal_classification_confidence": float
+}
+```
+
+---
+
+### 12.8 Revised Resolution Algorithm
+
+Cập nhật §6.1 — chỉ documents đủ điều kiện pháp lý mới tham gia chain:
+
+```python
+def resolve_obligations(tenant_id, root_doc_id):
+    chain = get_document_chain(tenant_id, root_doc_id)
+
+    # THÊM: filter chỉ giữ documents hợp lệ pháp lý
+    eligible_docs = [
+        doc for doc in chain
+        if doc.legal_amendment_status in ('confirmed_amendment', 'confirmed_supplement')
+        or doc.id == root_doc_id  # HĐ chính luôn eligible
+    ]
+    pending_review_docs = [
+        doc for doc in chain
+        if doc.legal_amendment_status == 'potential_amendment'
+    ]
+
+    # Run resolution chỉ trên eligible_docs (last-writer-wins như cũ)
+    resolved_terms = run_last_writer_wins(eligible_docs)
+
+    # Flag nếu có pending_review_docs chưa được confirm
+    if pending_review_docs:
+        for ob in obligations:
+            ob.needs_review = True
+            ob.review_reason = 'pending_legal_amendment_confirmation'
+            # Note: pending docs có thể thay đổi obligation nếu SME confirm
+
+    return obligations
+```
+
+**Luồng SME confirm `potential_amendment`:**
+```
+SME xem danh sách tài liệu chờ xác nhận
+    ↓
+UI hiển thị: "Văn bản [X] chỉ có 1 chữ ký — có phải là sửa đổi hợp đồng không?"
+    ├── "Có, hai bên đã ký" → SME upload lại / xác nhận → upgrade sang confirmed_amendment
+    ├── "Không, đây chỉ là tham khảo nội bộ" → mark non_amendment
+    └── "Không chắc" → flag legal_risk = medium, giữ nguyên, remind sau 7 ngày
+```
 
 ---
 
