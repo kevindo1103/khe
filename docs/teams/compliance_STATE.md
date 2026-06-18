@@ -48,7 +48,7 @@ Mọi PII processing log một Event với `purpose` từ enum đóng dưới đ
 | `purpose` value | Khi nào | Bên nhận dữ liệu | Consent bắt buộc trước? |
 |---|---|---|---|
 | `vision_extraction` | Trước mỗi lần gửi ảnh/PDF tài liệu tới Vision LLM (Gemini/Claude, US-hosted) | Google LLC / Anthropic PBC (US) | ✅ YES — gate 403 (A.2) |
-| `reminder_send` | Khi gửi nhắc qua Telegram bot / email | Telegram (Telegram FZ-LLC) / email provider | ✅ YES — opt-in tại first-login |
+| `reminder_send` | Khi gửi nhắc qua Telegram bot / email | Telegram (Telegram FZ-LLC) / email provider | ✅ YES — opt-in tại first-login (schema §A.5) |
 | `firm_partner_access` | Khi firm partner xem dữ liệu nghĩa vụ của tenant | Firm partner (đã ký DPA với SME) | ✅ YES — D-10, revocable (A.2 + §C) |
 
 > **HARD:** enum **đóng**. Thêm purpose mới = compliance review trước, không tự thêm ở code.
@@ -108,6 +108,31 @@ Bạn có quyền yêu cầu xem, sửa, hoặc xóa dữ liệu cá nhân theo 
 ### A.4 — Đề xuất wording FR-EX-06 (cho KHE_Docs fold vào BRD §7.2)
 
 > **FR-EX-06** Trước lần extraction đầu tiên cho mỗi tenant, hệ thống PHẢI có consent event hợp lệ (`purpose="vision_extraction"`, chưa thu hồi) ghi ở `events`. Thiếu → chặn extraction (HTTP 403). Consent thu hồi được; thu hồi chặn extraction tương lai (NĐ 13/2023, DEC-010).
+
+### A.5 — `reminder_send` consent Event schema — feeds #22 (Backend, Telegram opt-in)
+
+`reminder_send` (purpose enum A.1) governs nhắc hạn qua Telegram bot / email. SME opt-in tại first-login hoặc Cài đặt → ghi consent Event **trước** khi dispatch bất kỳ reminder nào.
+
+```python
+Event(
+    tenant_id=tenant_id,
+    event_type="consent_logged",          # thu hồi → event_type="consent_revoked"
+    purpose="reminder_send",
+    consent_reference=<uuid|str>,
+    consent_text_version="nd13-v1",        # cùng field với vision_extraction
+    channel="telegram",                    # NEW cho purpose này: "telegram" | "email"
+    channel_target_ref=<telegram_chat_id | email>,  # đích SME đã opt-in
+    created_by=current_user.id,
+    created_at=<utc>,
+)
+```
+
+**Quy tắc cho Backend:**
+1. **Tách biệt `vision_extraction`** — opt-in nhắc KHÔNG kéo theo consent extraction, và ngược lại. Không share gate.
+2. **Gate (FR-RM):** trước khi dispatch reminder → yêu cầu Event `consent_logged` / `purpose="reminder_send"` chưa bị `consent_revoked` superseded. Thiếu → **không gửi** (reminder async — skip + log, KHÔNG cần 403).
+3. **Revocation (Option C, §D):** thu hồi `reminder_send` chỉ dừng **gửi tương lai**; obligations/deadlines **vẫn chạy** (chỉ không được nhắc).
+4. **`channel` + `channel_target_ref`** là cột MỚI trên `events` (per-tenant) so với shape `vision_extraction` — cần vì consent gắn với một đích cụ thể (NĐ 13 minh bạch bên nhận: Telegram FZ-LLC / email provider). Schema change → Backend note DOCS_INBOX khi wire.
+5. Mỗi lần gửi thực tế vẫn log Event riêng `event_type="reminder_sent"` (FR-RM-03) — đó là bản ghi giao nhận, tách khỏi bản ghi consent ở trên.
 
 ---
 
@@ -202,6 +227,8 @@ Sign-off: __________________   (Thiếu bất kỳ mục nào = KHÔNG go-live e
 | 2026-06-18 | #22 | Backend consent gate — spec §A feeds; note `consent_text_version` column add. |
 | 2026-06-18 | #32 | PWA epic (BLOCKED on #24 design) — consent UI text §A.3 ready khi unblock. |
 | 2026-06-18 | spawn | Noted `SPAWN_KHE_COMPLIANCE.md` references #32 (PWA epic) instead of #30; file not in repo — PM to fix on template side. |
+| 2026-06-18 | #38 | Filed verify-back issue: statutory contract-retention vs 90d (counsel, gates DEC-010 §E item 8). |
+| 2026-06-18 | #22 | Added §A.5 `reminder_send` consent Event schema (channel + channel_target_ref cols); folds the #22 interim comment into spec. |
 
 ---
 
