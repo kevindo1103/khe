@@ -84,6 +84,7 @@ GEMINI_API_KEY=${GEMINI_API_KEY}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 JWT_SECRET=${JWT_SECRET}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+CORS_ORIGINS=https://khe.iceflow.cloud
 EOF
 
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash <<'REMOTE'
@@ -92,6 +93,7 @@ EOF
             source venv/bin/activate
             pip install -r requirements.txt --quiet
             alembic upgrade head
+            python scripts/migrate_all_tenants.py
             sudo systemctl restart khe-backend
             echo "✅ production backend restarted"
           REMOTE
@@ -114,7 +116,7 @@ EOF
 
           cd frontend
           npm ci --quiet
-          VITE_API_BASE_URL=https://khe.vn/api npm run build
+          VITE_API_BASE_URL=https://khe.iceflow.cloud/api npm run build
 
           mkdir -p ~/.ssh
           echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
