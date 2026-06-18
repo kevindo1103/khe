@@ -19,8 +19,8 @@
 | Step | Task | Issue | Branch | Status |
 |---|---|---|---|---|
 | 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic-v2` | ✅ **merged → staging** (PR #42 `11a24a9`, #10 closed) |
-| 2 | Consent gate (NĐ 13/2023, DEC-010) | #22 | `claude/feat-backend-consent-gate` (PR-A) | ⏸ queued — owns migration `tenant_002` |
-| 3 | Doc relationships (DEC-019) | (DEC-019) | `claude/feat-backend-doc-relationships` (PR-B) | ⏸ queued — builds on PR-A schema |
+| 2 | Consent gate + full tenant_002 schema | #22 | `windsurf/feat-backend-tenant002-consent` (PR-A) | 🟡 **assigned** — owns migration `tenant_002` (kickoff posted) |
+| 3 | Doc relationships + chain logic (DEC-019/020/021) | #50 | `windsurf/feat-backend-doc-relationships` (PR-B) | ⏸ blocked-on-PR-A (no migration; logic only) |
 | 4 | Ingest router + extraction queue | #25 | `claude/feat-backend-ingest-*` | ⏸ queued — consent-gated |
 | 5 | Obligation engine + reminder + Telegram | #26 | `claude/feat-backend-obligation-*` | ⏸ queued — consumes #25 Terms |
 | 6 | Chat query MVP (retrieve-only, D-08) | #27 | `claude/feat-backend-chat-*` | ⏸ queued — consumes #25/#26 |
@@ -60,7 +60,7 @@ Decisions (Kevin, 2026-06-18): **typed columns** on `events` (Compliance ask) ·
 revision, split into PR-A (consent logic) + PR-B (relationship logic)**. PR-A carries the migration file
 (full delta); PR-B builds on the schema with no new migration.
 
-- **`events`** (#22, Compliance #22 comment): `purpose` (closed enum `vision_extraction` / `reminder_send` / `firm_partner_access`) · `consent_reference` · `consent_text_version` (e.g. `nd13-v1`)
+- **`events`** (#22, Compliance #22 comment): `purpose` (closed enum `vision_extraction` / `reminder_send` / `firm_partner_access`) · `consent_reference` · `consent_text_version` (e.g. `nd13-v1`) · `channel` (`telegram`/`email`) · `channel_target_ref` — all nullable; **reuse existing `actor` col** (no `created_by`); consent event uses `entity_type="consent"`, `entity_id=<actor id>` to satisfy existing NOT-NULL `entity_id` (avoids a column alter). **tenant_002 = additive only** (`add_column` + `create_table`, no `batch_alter_table`).
 - **`document_relationships`** (DEC-019, edge n-n NEW): `from_doc_id`, `to_doc_id`, `relationship_type` (MVP `amends` / `references_framework`; defer `supersedes` / `renews` / `related`), `confirmed_by_sme` (D-02: AI suggest → SME confirm before resolve)
 - **`terms`**: `overrides_term_id`, `inherited_from_doc_id`, `is_superseded`, `needs_review` (FR-EX-05)
 - **`obligations`**: `source_doc_chain`, `resolution_method` (last-writer-wins by seq_order); `obligation_type` enum += `open_ended_review` (DEC-020 — phi-số → annual review nudge, no fake deadline)
