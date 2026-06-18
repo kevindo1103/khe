@@ -75,6 +75,7 @@ After `extract()` → log `event_type="extraction_performed"` (US-recipient audi
 - **#25 PR-A** ingest core — assigned, off staging, no external dep. **#25 PR-B** extraction worker — blocked on **#53** (KHE_AI `get_extraction_provider()` factory — none exists today, only Protocol + 3 concrete providers) + PR-A.
 - **#50 PR-B** relationships/chain — assigned, off staging, runs parallel to #25 (independent files; build with fixtures, wire into ingest later).
 - **#53** raised `for:ai` — provider factory request.
+- **Infra #45** — PR #48 (→ `main`) wired `migrate_all_tenants.py` + `CORS_ORIGINS` + HTTPS-check + triaged deploy "failures" (phantom 0-job runs, not real). **Residual gap flagged:** #48 is on `main`, NOT `staging` → staging deploy YAML still pre-#48 (no migrate loop, no CORS_ORIGINS) → **forward-merge `main→staging` needed** before next staging deploy or the staging frontend gets CORS-blocked on credentialed requests. certbot/TLS on `staging.khe.iceflow.cloud` still pending for browser cookie-auth (#46). Staging host = `staging.khe.iceflow.cloud` (resolves #23 domain ambiguity).
 - **Field-name correction** posted to #1: vocab = extraction `CANONICAL_FIELDS` (7: `doi_tac, ngay_hieu_luc, ngay_het_han, gia_tri_hd, thoi_han_hd, dieu_khoan_gia_han, dieu_khoan_thanh_toan`); `doc_type` = DocType enum (`hd_thue_mat_bang|hd_nha_cung_cap|hd_lao_dong|khac`).
 
 ### 🧊 Frozen API contract — M0 part 2/2 (DOCS_INBOX #1, 2026-06-18)
