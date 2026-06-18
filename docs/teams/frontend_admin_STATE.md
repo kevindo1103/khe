@@ -24,6 +24,16 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - **FINDING:** `frontend/` directory does NOT exist yet — no Vite/React scaffold. M0 needs scaffold step before screens.
 - Inbox `for:frontend`: only #31 open (EPIC M0 admin UI, was blocker:waiting-dependency on #24 — now UNBLOCKED).
 
+### 2026-06-18 — PR #47 review (scaffold + auth, M0 part 1/2)
+- Assigned #40 → Windsurf opened PR #47 (`windsurf/feat-frontend-scaffold-auth`, commit `3b40333`).
+- **Contract verified vs backend:** `LoginIn {tenant_id,username,password}` + `TokenOut {access_token,token_type}` match FE types exactly — no drift.
+- **Review = CHANGES REQUESTED** (posted as COMMENT — GH blocks formal request-changes on same-account PR). Blockers:
+  1. 🔴 CI Frontend Build RED — `package-lock.json` gitignored → setup-node cache path unresolved. Fix: un-ignore + commit lockfile.
+  2. 🔴 PR base `main` → must retarget `staging` (feature→staging→main).
+  3. 🔴 Committed `vite.config.js` + `vite.config.d.ts` (tsc emit) → delete + gitignore.
+  - 🟡 BadgeKind missing `neutral`; vite `/api` proxy dead config.
+- Awaiting Windsurf fixes → re-review → approve/merge. NOT merged.
+
 ## Open dependencies
 
 | Dep | Status | Note |
