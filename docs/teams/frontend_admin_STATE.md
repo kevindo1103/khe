@@ -32,7 +32,10 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
   2. 🔴 PR base `main` → must retarget `staging` (feature→staging→main).
   3. 🔴 Committed `vite.config.js` + `vite.config.d.ts` (tsc emit) → delete + gitignore.
   - 🟡 BadgeKind missing `neutral`; vite `/api` proxy dead config.
-- Awaiting Windsurf fixes → re-review → approve/merge. NOT merged.
+- Windsurf pushed fixes (commit `8b0ccbc`): lockfile committed, base→staging, artifacts removed, +neutral badge, dead proxy dropped. All 3 CI checks green.
+- Re-reviewed → approved on merits. **PR #47 MERGED to `staging`** by Kevin (20:46). #40 CLOSED.
+- Post-merge: DOCS_INBOX #1 comment posted (frontend stack realized, login contract no-drift, lockfile-gitignore bug-pattern candidate, CLAUDE.md §Local dev now fillable).
+- **Next:** part 2/2 (upload, list, detail, obligations) blocked on #25/#26 response-shape freeze. Open Windsurf task once shapes confirmed on DOCS_INBOX. EPIC #31 stays open.
 
 ## Open dependencies
 
