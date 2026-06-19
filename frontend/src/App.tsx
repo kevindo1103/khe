@@ -9,7 +9,14 @@ import DocumentDetail from './pages/admin/DocumentDetail';
 import Obligations from './pages/admin/Obligations';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-ink-muted text-sm">
+        Đang kiểm tra phiên…
+      </div>
+    );
+  }
   if (!isAuthenticated) {
     return <Navigate to="/admin/login" replace />;
   }

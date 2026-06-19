@@ -1,5 +1,5 @@
 /**
- * Typed contract for POST /auth/login
+ * Typed contract for auth endpoints
  * Mirrors backend Pydantic schema exactly to prevent 422 schema-vs-body drift.
  */
 export interface LoginRequest {
@@ -8,20 +8,16 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface TokenResponse {
-  access_token: string;
-  token_type: string;
-}
-
-export interface JwtPayload {
-  sub: string;
+export interface LoginOut {
+  user: { username: string; role: string };
   tenant_id: string;
-  role: string;
-  exp: number;
 }
 
-export interface User {
+export interface UserOut {
+  user_id: number;
   username: string;
   tenant_id: string;
   role: string;
 }
+
+export type User = UserOut;

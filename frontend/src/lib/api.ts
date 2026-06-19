@@ -1,9 +1,5 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
-function getToken(): string | null {
-  return localStorage.getItem('khe_access_token');
-}
-
 export interface ApiError {
   status: number;
   message: string;
@@ -15,19 +11,15 @@ export async function apiFetch<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const token = getToken();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
   const res = await fetch(url, {
     ...options,
+    credentials: 'include',
     headers,
   });
 
@@ -55,16 +47,10 @@ export async function apiFetchMultipart<T>(
   method: 'POST' | 'PUT' | 'PATCH' = 'POST'
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const token = getToken();
-
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   const res = await fetch(url, {
     method,
-    headers,
+    credentials: 'include',
     body: formData,
   });
 
