@@ -6,10 +6,12 @@ import ChatBubble from '../components/ChatBubble'
 
 const t = theme
 
+// Chips match intents landing in #96 (expiring_within + find_by_party + Unicode doc-hint).
+// Until #96 merges, "Cái gì sắp hết hạn?" and party queries return D-08 on multi-doc tenants.
 const SUGGESTION_CHIPS = [
   'Cái gì sắp hết hạn?',
   'Tìm HĐ với Hải Đăng',
-  'HĐ thuê Q7 còn hạn bao lâu?',
+  'HĐ thuê MB còn hạn bao lâu?',
 ]
 
 function hasConsent() {
