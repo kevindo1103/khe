@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.database import init_master_db, init_tenant_db
-from app.routers import auth, consent, documents, health
+from app.routers import auth, consent, documents, health, relationships
 
 
 def _seed_default_tenant():
@@ -91,6 +91,7 @@ app.include_router(auth.router)
 app.include_router(consent.router)
 app.include_router(documents.ingest_router)
 app.include_router(documents.docs_router)
+app.include_router(relationships.router)
 app.include_router(health.router)
 
 
