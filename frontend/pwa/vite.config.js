@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   root: '.',
+  base: '/pwa/',
   plugins: [
     react(),
     VitePWA({
