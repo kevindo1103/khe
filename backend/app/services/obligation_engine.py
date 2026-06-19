@@ -84,6 +84,15 @@ def _build_chain_docs(
 def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
     """Derive obligations for a document.
 
+    Notes:
+    - If `ngay_het_han` is present but unparseable, we skip rather than falling
+      back to `ngay_hieu_luc + thoi_han_hd`. This follows the literal priority
+      in SRS §6.1; revisit if PM wants fallback behavior.
+    - For multi-parent chains (one doc amends multiple parents), the chain order
+      is depth-sorted and the last non-superseded term wins — deterministic but
+      arbitrary when parent terms conflict. This is the seam for the Sprint-2
+      conflict UI (DEC-022).
+
     Returns metadata: {"created": int, "skipped": bool, "reason": str}.
     """
     chain_docs = _build_chain_docs(db, tenant_id, doc_id)
@@ -129,17 +138,21 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         due_str = due_date.strftime("%Y-%m-%d") if due_date else None
         description = f"Hợp đồng {target_doc.file_name} hết hạn ngày {due_str}"
 
-    # Delete only pending obligations for this doc.
+    # The obligation belongs to the terminal (newest amendment) document in the
+    # chain, not whichever doc_id triggered the derivation. Clear pending
+    # obligations on ALL chain docs so stale parent obligations disappear after a
+    # chain is confirmed.
+    target_doc_id = chain_docs[-1].id
     db.query(Obligation).filter(
         Obligation.tenant_id == tenant_id,
-        Obligation.document_id == doc_id,
+        Obligation.document_id.in_(chain_ids),
         Obligation.status == "pending",
     ).delete()
 
     due_str = due_date.strftime("%Y-%m-%d") if due_date else None
     ob = Obligation(
         tenant_id=tenant_id,
-        document_id=doc_id,
+        document_id=target_doc_id,
         description=description,
         obligation_type=obligation_type,
         due_date=due_str,
@@ -154,7 +167,7 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         tenant_id=tenant_id,
         event_type="obligation_derived",
         entity_type="document",
-        entity_id=doc_id,
+        entity_id=target_doc_id,
         actor="system",
         purpose=None,
         payload=json.dumps(

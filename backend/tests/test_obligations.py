@@ -182,12 +182,19 @@ class TestDeriveObligations:
 
         confirm_relationship(db, "obligation-tenant", amendment.id, rel.id, actor="obluser")
 
-        # The amendment's obligation should reflect the amendment's own expiry (latest wins).
-        obs = db.query(Obligation).filter(Obligation.document_id == amendment.id).all()
-        assert len(obs) == 1
-        assert obs[0].due_date == "2026-12-31"
-        assert obs[0].resolution_method == "last_writer_wins"
-        assert obs[0].source_doc_chain is not None
+        # Exactly one obligation per chain, attached to the terminal (amendment) doc.
+        all_obs = db.query(Obligation).filter(
+            Obligation.tenant_id == "obligation-tenant",
+            Obligation.document_id.in_([parent.id, amendment.id]),
+        ).all()
+        assert len(all_obs) == 1
+        ob = all_obs[0]
+        assert ob.document_id == amendment.id
+        assert ob.due_date == "2026-12-31"
+        assert ob.resolution_method == "last_writer_wins"
+        assert ob.source_doc_chain is not None
+        assert str(parent.id) in ob.source_doc_chain
+        assert str(amendment.id) in ob.source_doc_chain
 
     def test_idempotency_preserves_done(self, db):
         doc = _make_doc(db, "idempotent.pdf")
