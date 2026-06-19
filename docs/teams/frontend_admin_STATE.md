@@ -108,6 +108,12 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - **Backend gap flagged on #99:** AC only adds clause_count to `GET /documents/{id}` (detail), NOT list endpoint. List column needs `clause_count` per `DocumentListItem` → asked Backend to extend list endpoint (watch N+1). If declined, ship detail-header half alone, list-column as follow-up.
 - Opened **#106** Windsurf task (`windsurf/feat-frontend-clause-count`, base staging). `blocker:waiting-dependency` on #99.
 
+### 2026-06-19 — #99 unblocked (PR #104) → #106 detail-half unblocked, list-half still blocked
+- PR #104 merged to staging: `DocumentDetailOut.clause_count` (+`failure_reason`) live on `GET /documents/{id}`. List endpoint NOT touched.
+- **#106 updated:** detail-header half (3 counts: terms.length/obligations.length/clause_count) **unblocked → status:planned, ready for Windsurf.** List-column half kept blocked (no `clause_count` on `DocumentListItem`).
+- Re-raised list-endpoint ask on #99: either add `clause_count` to list query (grouped COUNT, no N+1) OR defer list column to Phase 2 (narrows "Both" → detail-only). Awaiting PM/Backend call.
+- Note: `failure_reason` also shipped in #104 (#79 follow-up) — added to FE types for parity, render optional.
+
 ## Open dependencies
 
 | Dep | Status | Note |
