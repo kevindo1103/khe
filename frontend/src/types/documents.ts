@@ -42,6 +42,8 @@ export interface DocumentDetailOut {
   file_url: string | null;
   terms: TermOut[];
   obligations: unknown[];
+  clause_count: number;
+  failure_reason: string | null;
 }
 
 export interface UploadOut {

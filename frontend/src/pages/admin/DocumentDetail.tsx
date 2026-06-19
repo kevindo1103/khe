@@ -123,6 +123,9 @@ export default function DocumentDetail() {
                 {doc.created_at && (
                   <span>· {new Date(doc.created_at).toLocaleDateString('vi-VN')}</span>
                 )}
+                <span>· 📋 {doc.terms.length} thuộc tính</span>
+                <span>· ⏰ {doc.obligations.length} nghĩa vụ</span>
+                <span>· 📄 {doc.clause_count ?? 0} điều khoản</span>
               </div>
             </div>
             {doc.file_url && (
