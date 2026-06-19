@@ -22,12 +22,9 @@ from .schemas import (
     TokenUsage,
 )
 from .provider import VisionExtractionProvider
-from .factory import ExtractionUnavailable, get_extraction_provider
 
 __all__ = [
     "VisionExtractionProvider",
-    "get_extraction_provider",
-    "ExtractionUnavailable",
     "ExtractionResult",
     "ExtractedField",
     "TokenUsage",
