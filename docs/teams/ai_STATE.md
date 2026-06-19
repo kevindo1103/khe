@@ -4,7 +4,7 @@
 > `docs/teams/ai_STATE.md`, `docs/benchmark_*.md` (via DOCS_INBOX).
 > Branch: `claude/feat-ai-vision-extraction-3k3gup`.
 
-_Last updated: 2026-06-18 (issue #53 — provider factory for Backend #25 PR-B)_
+_Last updated: 2026-06-11 (live-test on H_MB_6.pdf)_
 
 ## Decisions in force
 - **DEC-002** — single `VisionExtractionProvider.extract()` interface; NO separate
@@ -19,21 +19,6 @@ _Last updated: 2026-06-18 (issue #53 — provider factory for Backend #25 PR-B)_
 | GeminiFlashProvider | primary | `gemini-2.5-flash` | 150đ |
 | ClaudeHaikuProvider | fallback (<90% accuracy) | `claude-haiku-4-5` | 300đ |
 | ClaudeSonnetProvider | complex / handwritten | `claude-sonnet-4-6` | — |
-
-## Done (issue #53 — provider factory for Backend #25 PR-B)
-- [x] `get_extraction_provider(prefer="gemini_flash")` exported from
-      `modules.extraction` public API — returns a ready `VisionExtractionProvider`.
-- [x] Typed `ExtractionUnavailable` (RuntimeError subclass) when no key/SDK present
-      → Backend maps to 503 / status=failed (infra condition, not a doc error).
-- [x] Key handling encapsulated (lazy; `GEMINI_API_KEY`/`CLAUDE_API_KEY` + Google/
-      Anthropic fallbacks). `import main` stays green without keys/SDKs.
-- [x] Fallback policy encapsulated (DEC-002): Gemini primary → Claude Haiku.
-      `_FallbackProvider` advances **only on hard failure** (`ExtractionResult.is_error`)
-      — happy path charged once; never re-routes on mere `needs_review`.
-- [x] `ExtractionResult.is_error` property (warnings + 0 input tokens) — lets Backend
-      distinguish failure from a successful-but-uncertain extraction (D-08).
-- [x] +8 unit tests (no keys/SDKs); 18 total passing. README usage updated.
-- Final signature posted to #53 for KHE_Backend to wire PR-B.
 
 ## Done (issue #3 — Sprint 0)
 - [x] `VisionExtractionProvider` Protocol + `ExtractionResult` / `ExtractedField` /
@@ -135,5 +120,3 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results.
 - relay KHE_Infra (2026-06-11) — secret names confirmed; provider key lookup aligned to `CLAUDE_API_KEY`.
-- issue #53 (`for:ai`, `from:backend`, `task-assignment`) — export `get_extraction_provider()`
-  factory for #25 PR-B. Status: **done** — factory + typed error + fallback shipped, signature posted.
