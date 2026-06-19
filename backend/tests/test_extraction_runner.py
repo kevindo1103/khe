@@ -199,9 +199,7 @@ class TestExtractionFailure:
             # Direct-call the worker to test the defensive consent re-check.
             fake = FakeProvider(_make_success_result())
             with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
-                import asyncio
-
-                asyncio.run(run_extraction(doc_id, "extract-tenant", None))
+                run_extraction(doc_id, "extract-tenant", None)
 
             assert fake.calls == []  # LLM was never called
 
@@ -242,9 +240,8 @@ class TestExtractionIdempotency:
         fake2 = FakeProvider(result2)
         with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake2):
             from app.services.extraction_runner import run_extraction
-            import asyncio
 
-            asyncio.run(run_extraction(doc_id, "extract-tenant", None))
+            run_extraction(doc_id, "extract-tenant", None)
 
         r3 = auth_client.get(f"/documents/{doc_id}")
         terms = {t["field_name"]: t for t in r3.json()["terms"]}
