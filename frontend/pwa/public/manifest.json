@@ -1,0 +1,14 @@
+{
+  "name": "Khế — Quản lý hợp đồng",
+  "short_name": "Khế",
+  "description": "Hỏi nhanh hợp đồng — nhắc đúng hạn",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#1F6F5C",
+  "background_color": "#F5F7F6",
+  "lang": "vi",
+  "icons": [
+    {"src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml"},
+    {"src": "/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml"}
+  ]
+}
