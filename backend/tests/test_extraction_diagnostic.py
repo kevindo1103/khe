@@ -5,6 +5,7 @@ import sys
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, backend_dir)
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
@@ -53,6 +54,17 @@ def test_diagnostic_404_in_production(monkeypatch):
     c = TestClient(app)
     r = c.get("/health/extraction")
     assert r.status_code == 404
+
+
+@pytest.mark.parametrize("env_value", ["prod", "Production", "PRODUCTION", "stg", "", "live"])
+def test_diagnostic_404_on_unknown_environment(monkeypatch, env_value):
+    """Allowlist guard (QC #80 review item 1): only known non-prod values open
+    the endpoint. A typo (`prod`, `Production`) or unknown value must 404."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "ENVIRONMENT", env_value)
+    c = TestClient(app)
+    r = c.get("/health/extraction")
+    assert r.status_code == 404, f"ENVIRONMENT={env_value!r} unexpectedly opened the endpoint"
 
 
 def test_diagnostic_hint_mentions_environmentfile(monkeypatch):
