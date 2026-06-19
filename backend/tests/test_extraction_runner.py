@@ -58,6 +58,19 @@ def _make_success_result():
     )
 
 
+def _make_success_result_with_clauses(clauses=None):
+    from modules.extraction import ClauseItem
+
+    result = _make_success_result()
+    items = clauses if clauses is not None else [
+        ClauseItem(num="Điều 1", title="Phạm vi", content="Bên A cho Bên B thuê mặt bằng."),
+        ClauseItem(num="Điều 8", title="Chấm dứt", content="Thông báo trước 30 ngày."),
+        ClauseItem(num=None, title=None, content="Phụ lục không đánh số."),
+    ]
+    result.clauses = items
+    return result
+
+
 def _make_error_result():
     from modules.extraction import DocType, ExtractionResult, TokenUsage
 
@@ -247,3 +260,67 @@ class TestExtractionIdempotency:
         terms = {t["field_name"]: t for t in r3.json()["terms"]}
         assert len(terms) == 7
         assert terms["doi_tac"]["field_value"] == "Công ty B"
+
+
+# ── Clauses (DEC-026 / #99) ──
+
+class TestExtractionClauses:
+    def test_clauses_persisted_and_counted(self, auth_client):
+        """Provider clauses are inserted; clause_count surfaces on detail + list."""
+        fake = FakeProvider(_make_success_result_with_clauses())
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("clauses_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        # Detail endpoint (#104).
+        detail = auth_client.get(f"/documents/{doc_id}").json()
+        assert detail["clause_count"] == 3
+
+        # List endpoint (this PR) — find our doc in the rollup.
+        listing = auth_client.get("/documents/").json()
+        item = next(i for i in listing["items"] if i["id"] == doc_id)
+        assert item["clause_count"] == 3
+
+    def test_re_run_replaces_clauses(self, auth_client):
+        """Re-extraction replaces clauses (idempotent) — no duplication."""
+        from modules.extraction import ClauseItem
+
+        fake = FakeProvider(_make_success_result_with_clauses())
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("clauses_idem_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        assert auth_client.get(f"/documents/{doc_id}").json()["clause_count"] == 3
+
+        # Re-run with a single clause; must replace the original 3, not add.
+        result2 = _make_success_result_with_clauses(
+            clauses=[ClauseItem(num="Điều 2", title="Giá", content="Giá thuê cố định.")]
+        )
+        fake2 = FakeProvider(result2)
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake2):
+            from app.services.extraction_runner import run_extraction
+
+            run_extraction(doc_id, "extract-tenant", None)
+
+        assert auth_client.get(f"/documents/{doc_id}").json()["clause_count"] == 1
+
+    def test_no_clauses_yields_zero_count(self, auth_client):
+        """Claude-fallback path (clauses=[]) → clause_count 0, no error."""
+        fake = FakeProvider(_make_success_result())  # base result has no clauses
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("no_clauses_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        assert auth_client.get(f"/documents/{doc_id}").json()["clause_count"] == 0

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_tenant_session
-from app.models.tenant import Document, Event, Term
+from app.models.tenant import Clause, Document, Event, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations
 from modules.extraction import CANONICAL_FIELDS, ExtractionUnavailable, get_extraction_provider
@@ -100,6 +100,13 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             Term.tenant_id == tenant_id,
         ).delete()
 
+        # 7b. Idempotency: replace existing clauses (DEC-026). Same transaction
+        #     as the inserts below, committed atomically with everything else.
+        db.query(Clause).filter(
+            Clause.document_id == doc_id,
+            Clause.tenant_id == tenant_id,
+        ).delete()
+
         # 8. Persist terms.
         for field_name in CANONICAL_FIELDS:
             field = result.fields.get(field_name)
@@ -114,6 +121,21 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 needs_review=field.needs_review,
             )
             db.add(term)
+
+        # 8b. Persist clauses (DEC-026). Gemini returns a full clause list; Claude
+        #     fallback returns []. READ-ONLY verbatim text (D-06) — no page_num on
+        #     ClauseItem yet, so it stays NULL.
+        for clause_item in result.clauses:
+            db.add(
+                Clause(
+                    tenant_id=tenant_id,
+                    document_id=doc_id,
+                    clause_num=clause_item.num,
+                    title=clause_item.title,
+                    content=clause_item.content,
+                    page_num=None,
+                )
+            )
 
         # 9. Update document.
         doc.doc_type = result.doc_type.value

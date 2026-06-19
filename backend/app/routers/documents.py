@@ -293,15 +293,26 @@ def list_documents(
         .subquery()
     )
 
+    clause_subq = (
+        db.query(
+            Clause.document_id.label("doc_id"),
+            func.count(Clause.id).label("clause_count"),
+        )
+        .group_by(Clause.document_id)
+        .subquery()
+    )
+
     query = (
         db.query(
             Document,
             term_subq.c.term_count,
             term_subq.c.has_needs_review,
             obligation_subq.c.obligation_count,
+            clause_subq.c.clause_count,
         )
         .outerjoin(term_subq, term_subq.c.doc_id == Document.id)
         .outerjoin(obligation_subq, obligation_subq.c.doc_id == Document.id)
+        .outerjoin(clause_subq, clause_subq.c.doc_id == Document.id)
         .filter(Document.tenant_id == user.tenant_id)
     )
 
@@ -326,9 +337,10 @@ def list_documents(
     )
 
     items: list[DocumentListItem] = []
-    for doc, term_count, has_needs_review, obligation_count in rows:
+    for doc, term_count, has_needs_review, obligation_count, clause_count in rows:
         term_count = term_count or 0
         obligation_count = obligation_count or 0
+        clause_count = clause_count or 0
         needs_rev = bool(has_needs_review)
         items.append(
             DocumentListItem(
@@ -339,6 +351,7 @@ def list_documents(
                 needs_review=needs_rev,
                 term_count=term_count,
                 obligation_count=obligation_count,
+                clause_count=clause_count,
                 created_at=doc.created_at,
             )
         )
