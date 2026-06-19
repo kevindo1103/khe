@@ -1,10 +1,10 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 
 export type ToastKind = 'success' | 'error' | 'info';
 
 interface ToastProps {
   kind: ToastKind;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }
 

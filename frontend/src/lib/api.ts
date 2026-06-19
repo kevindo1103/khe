@@ -47,3 +47,40 @@ export async function apiFetch<T>(
 
   return res.json() as Promise<T>;
 }
+
+/** Fetch for multipart uploads (FormData). Browser sets Content-Type with boundary. */
+export async function apiFetchMultipart<T>(
+  path: string,
+  formData: FormData,
+  method: 'POST' | 'PUT' | 'PATCH' = 'POST'
+): Promise<T> {
+  const url = `${API_BASE}${path}`;
+  const token = getToken();
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err: ApiError = {
+      status: res.status,
+      message: body.detail || body.message || `HTTP ${res.status}`,
+      detail: JSON.stringify(body),
+    };
+    throw err;
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  return res.json() as Promise<T>;
+}

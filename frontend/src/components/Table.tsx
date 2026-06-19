@@ -1,4 +1,4 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 
 interface Column<T> {
   key: keyof T | string;
@@ -8,11 +8,11 @@ interface Column<T> {
 interface TableProps<T> {
   columns: Column<T>[];
   rows: T[];
-  renderCell?: (key: string, row: T) => React.ReactNode;
+  renderCell?: (key: string, row: T) => ReactNode;
   className?: string;
 }
 
-export function Table<T extends Record<string, unknown>>({
+export function Table<T extends object>({
   columns,
   rows,
   renderCell,
