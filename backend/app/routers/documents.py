@@ -14,6 +14,7 @@ from pathlib import Path
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -42,6 +43,7 @@ from app.schemas.documents import (
     UploadOut,
 )
 from app.services.consent import check_extraction_consent
+from app.services.extraction_runner import run_extraction
 
 # Split routers to match frozen contract #1.
 ingest_router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -90,9 +92,14 @@ def _log_event(
     db.commit()
 
 
-def _enqueue_extraction_stub(doc_id: int, tenant_id: str) -> None:
-    """PR-A stub — extraction worker implemented in PR-B (#25)."""
-    pass
+def _enqueue_extraction(
+    background_tasks: BackgroundTasks,
+    doc_id: int,
+    tenant_id: str,
+    doc_type: str | None,
+) -> None:
+    """Schedule the extraction worker in the background."""
+    background_tasks.add_task(run_extraction, doc_id, tenant_id, doc_type)
 
 
 def _persist_upload(
@@ -101,6 +108,7 @@ def _persist_upload(
     username: str,
     file: UploadFile,
     doc_type: str | None,
+    background_tasks: BackgroundTasks,
 ) -> UploadOut:
     """Shared upload logic: write temp file, then commit DB row atomically.
 
@@ -187,8 +195,8 @@ def _persist_upload(
         actor=username,
     )
 
-    # 6. Stub enqueue for PR-B
-    _enqueue_extraction_stub(doc.id, tenant_id)
+    # 6. Enqueue extraction worker (PR-B)
+    _enqueue_extraction(background_tasks, doc.id, tenant_id, doc_type)
 
     return UploadOut(doc_id=doc.id, file_name=doc.file_name, status=doc.status)
 
@@ -199,6 +207,7 @@ def _persist_upload(
 def upload_document(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     doc_type: str | None = None,
     user: TenantUser = Depends(get_current_user),
@@ -211,12 +220,13 @@ def upload_document(
             detail="SME consent for AI extraction not recorded. Log consent first.",
         )
 
-    return _persist_upload(db, user.tenant_id, user.username, file, doc_type)
+    return _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
 
 
 @ingest_router.post("/bulk", response_model=BulkUploadOut, status_code=status.HTTP_201_CREATED)
 def upload_bulk(
     request: Request,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     doc_type: str | None = None,
     user: TenantUser = Depends(get_current_user),
@@ -238,7 +248,9 @@ def upload_bulk(
 
     results: list[UploadOut] = []
     for file in files:
-        results.append(_persist_upload(db, user.tenant_id, user.username, file, doc_type))
+        results.append(
+            _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+        )
 
     return BulkUploadOut(count=len(results), documents=results)
 
