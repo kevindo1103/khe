@@ -39,7 +39,6 @@ jobs:
     name: Deploy Staging
     runs-on: ubuntu-latest
     needs: quality-gate
-    environment: staging
     steps:
       - uses: actions/checkout@v4
 

@@ -1,35 +1,50 @@
 # KHE_Infra — Session State
 
-_Last updated: 2026-06-11 | Sprint 0 COMPLETE_
+_Last updated: 2026-06-18 | Sprint 0 COMPLETE + post-Sprint-0 fixes_
 
 ---
 
-## Current Sprint: Sprint 0 — DONE ✅
+## Current Sprint: Sprint 0 — DONE ✅ + post-Sprint-0 ops
 
 ### Status
 
 | Item | Status | Notes |
 |---|---|---|
-| `pr-quality-gate.yml` | ✅ Done | All PRs (not just main/staging). Branch pattern + backend import + alembic single-head + frontend build. Long-lived branches exempted. |
-| `deploy-staging.yml` | ✅ Done | Push to `staging` → gate → bootstrap VPS dirs → rsync → write .env → systemctl restart. |
-| `deploy-main.yml` | ✅ Done | Push to `main` → gate → bootstrap VPS dirs → rsync → write .env → systemctl restart → Telegram notify. |
-| GitHub Actions secrets | ✅ Done | 8 secrets set: JWT_SECRET, GEMINI_API_KEY, CLAUDE_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, VPS_HOST, VPS_USER, VPS_SSH_KEY. |
-| GitHub Environments | ✅ Done | `staging` + `production` created. |
-| API key injection to VPS | ✅ Done | GEMINI_API_KEY, CLAUDE_API_KEY, JWT_SECRET, TELEGRAM_BOT_TOKEN written to `.env` on VPS via SSH stdin pipe on every deploy. |
-| VPS dir bootstrap | ✅ Done | `mkdir -p` + `python3 -m venv` before first rsync — idempotent. |
-| Telegram notify | ✅ Live | ✅/❌ messages firing on production deploy. |
-| Hotpatch playbook | ✅ Done | Documented below. |
-| `staging` sync ← `main` | ✅ Done | Fast-forward merge, staging now has all CI workflows. |
+| `pr-quality-gate.yml` | ✅ Done | All PRs. Branch pattern + backend import + alembic single-head + frontend build. Long-lived branches exempted. |
+| `deploy-staging.yml` | ✅ Done | bootstrap → rsync → .env (incl. CORS_ORIGINS) → migrate_all_tenants.py → systemctl → HTTPS check |
+| `deploy-main.yml` | ✅ Done | bootstrap → rsync → .env (incl. CORS_ORIGINS) → migrate_all_tenants.py → systemctl → Telegram notify |
+| GitHub Actions secrets | ✅ Done | 8 secrets set (see below) |
+| GitHub Environments | ✅ Done | `staging` + `production` created |
+| API key injection to VPS | ✅ Done | GEMINI_API_KEY, CLAUDE_API_KEY, JWT_SECRET, TELEGRAM_BOT_TOKEN, CORS_ORIGINS written to `.env` via SSH stdin pipe |
+| VPS dir bootstrap | ✅ Done | `mkdir -p` + `python3 -m venv` idempotent before first rsync |
+| Telegram notify | ✅ Live | ✅/❌ firing on production deploy |
+| Hotpatch playbook | ✅ Done | Documented below |
+| `staging` sync ← `main` | ✅ Done | Re-synced after PR #48 merge |
+| Per-tenant migrations wired | ✅ Done | `python scripts/migrate_all_tenants.py` after `alembic upgrade head` (PR #48) |
+| CORS_ORIGINS injected | ✅ Done | staging=`https://staging.khe.iceflow.cloud`, prod=`https://khe.iceflow.cloud` |
+| TLS / HTTPS | ✅ Done | certbot issued cert for `khe.iceflow.cloud` + `staging.khe.iceflow.cloud`. DNS A records set (`14.225.212.116`) |
+| HTTPS check in deploy-staging | ✅ Done | Non-blocking warning step — fires if staging TLS unreachable |
+
+### Bug + ops fixes post-Sprint-0
+
+| Fix | PR / action | Issue |
+|---|---|---|
+| Wire `migrate_all_tenants.py` into deploy | #48 | #45 item 1 — tenant_002+ schema not applying |
+| Triage phantom deploy failures | annotated | #45 item 2 — 0-job failure runs from feature branches (not real) |
+| Inject CORS_ORIGINS into .env | #48 | #45 item 3 — credentialed CORS broken with wildcard |
+| HTTPS staging warning step | #48 | #45 item 4 — auth cookie Secure flag needs TLS |
+| Domain khe.vn → khe.iceflow.cloud | #48 | domain not yet acquired |
+| DNS A records + certbot TLS | VPS ops | staging.khe.iceflow.cloud + khe.iceflow.cloud live |
 
 ### Bug fixes shipped Sprint 0
 
 | Fix | PR | Issue |
 |---|---|---|
 | Skip rsync when `backend/` absent | #8 | Deploy crash on empty repo |
-| Quality gate fires on all PRs (not just main/staging) | #13 | PR #12 had no check runs |
+| Quality gate fires on all PRs | #13 | PR #12 had no check runs |
 | Sync `staging` ← `main` | direct push | #15 — staging had no `.github/` |
 | Inject API keys into VPS `.env` | #18 | GEMINI/CLAUDE keys were None → 401 |
-| Exempt long-lived branches from pattern check | #21 | #20 — `staging→main` promote blocked |
+| Exempt long-lived branches from pattern check | #21 | #20 — staging→main promote blocked |
 | Bootstrap VPS dirs before rsync | #21 | #20 — rsync code 11 on first deploy |
 
 ---
