@@ -73,7 +73,7 @@ jobs:
             "mkdir -p /opt/khe/backend /opt/khe/frontend && \
              [ -d /opt/khe/backend/venv ] || python3 -m venv /opt/khe/backend/venv"
 
-          rsync -az --delete \
+          rsync -az --delete --exclude=venv --exclude=.env \
             -e "ssh -i ~/.ssh/deploy_key" \
             ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend/"
 
