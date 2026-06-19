@@ -55,6 +55,66 @@ def _seed_default_tenant():
         db.close()
 
 
+def _seed_uat_tenant():
+    """Seed a UAT demo tenant (non-production only). Idempotent.
+
+    Creates tenant `uat-demo` + user `demo`, initialises its tenant DB, and grants
+    `vision_extraction` consent so the upload→extract→obligation flow works in UAT
+    without the SME having to POST consent first (Admin web has no consent screen).
+    Credentials: tenant=`uat-demo`, user=`demo`, password=env UAT_DEMO_PASSWORD
+    (default `Khe@UAT2026`).
+    """
+    if settings.ENVIRONMENT == "production":
+        return
+
+    from app.core.security import get_password_hash
+    from app.db.database import MasterSessionLocal, get_tenant_session
+    from app.models.master import Tenant, TenantUser
+    from app.services.consent import check_consent, record_consent
+
+    tenant_id = "uat-demo"
+    password = os.getenv("UAT_DEMO_PASSWORD", "Khe@UAT2026")
+
+    db = MasterSessionLocal()
+    try:
+        if not db.query(Tenant).filter(Tenant.id == tenant_id).first():
+            db.add(Tenant(id=tenant_id, name="UAT Demo SME", db_path=f"tenants/{tenant_id}.db"))
+            db.commit()
+            print(f"[Main] Seeded UAT tenant: {tenant_id}")
+        if not db.query(TenantUser).filter(
+            TenantUser.tenant_id == tenant_id, TenantUser.username == "demo"
+        ).first():
+            db.add(
+                TenantUser(
+                    tenant_id=tenant_id,
+                    username="demo",
+                    hashed_password=get_password_hash(password),
+                    role="admin",
+                )
+            )
+            db.commit()
+            print(f"[Main] Seeded UAT user: demo@{tenant_id}")
+    except Exception as e:
+        print(f"[Main] UAT seed warning: {e}")
+    finally:
+        db.close()
+
+    try:
+        init_tenant_db(tenant_id)
+        tdb = get_tenant_session(tenant_id)
+        try:
+            if not check_consent(tdb, tenant_id, "vision_extraction"):
+                record_consent(
+                    tdb, tenant_id, "vision_extraction",
+                    actor="uat-seed", consent_text_version="nd13-v1",
+                )
+                print(f"[Main] Granted vision_extraction consent for {tenant_id}")
+        finally:
+            tdb.close()
+    except Exception as e:
+        print(f"[Main] UAT consent seed warning: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ---------- Startup ----------
@@ -65,6 +125,7 @@ async def lifespan(app: FastAPI):
     init_master_db()
     _seed_default_tenant()
     init_tenant_db(settings.DEFAULT_TENANT_ID)
+    _seed_uat_tenant()
 
     # Start daily reminder scheduler (#62). Disabled in test environment to avoid
     # AsyncIOScheduler side-effects during test runs.

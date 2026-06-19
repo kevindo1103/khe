@@ -24,10 +24,26 @@ from app.models.master import Tenant
 
 
 def _run_upgrade_for_tenant(tenant_id: str, db_path: str) -> None:
-    """Programmatically run alembic upgrade for a single tenant DB."""
+    """Programmatically run alembic upgrade for a single tenant DB.
+
+    Baseline-stamps DBs that were bootstrapped via create_all() (tables present
+    but no alembic_version) before upgrading — mirrors init_tenant_db so a
+    create_all'd tenant DB on the VPS doesn't fail with "table already exists".
+    """
+    from sqlalchemy import create_engine, inspect
+
     cfg = Config(str(backend_dir / "alembic_tenant.ini"))
     cfg.set_main_option("script_location", str(backend_dir / "alembic_tenant"))
     cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+
+    if os.path.exists(db_path):
+        eng = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+        names = inspect(eng).get_table_names()
+        eng.dispose()
+        if names and "alembic_version" not in names:
+            command.stamp(cfg, "tenant_001")
+            print(f"  [alembic] {tenant_id} baseline-stamped tenant_001")
+
     command.upgrade(cfg, "head")
     print(f"  [alembic] {tenant_id} -> head")
 
