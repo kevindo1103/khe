@@ -1,6 +1,6 @@
 # KHE_Infra — Session State
 
-_Last updated: 2026-06-18 | Sprint 0 COMPLETE + post-Sprint-0 fixes_
+_Last updated: 2026-06-19 | Sprint 0 COMPLETE + post-Sprint-0 ops + production VPS live_
 
 ---
 
@@ -24,6 +24,10 @@ _Last updated: 2026-06-18 | Sprint 0 COMPLETE + post-Sprint-0 fixes_
 | CORS_ORIGINS injected | ✅ Done | staging=`https://staging.khe.iceflow.cloud`, prod=`https://khe.iceflow.cloud` |
 | TLS / HTTPS | ✅ Done | certbot issued cert for `khe.iceflow.cloud` + `staging.khe.iceflow.cloud`. DNS A records set (`14.225.212.116`) |
 | HTTPS check in deploy-staging | ✅ Done | Non-blocking warning step — fires if staging TLS unreachable |
+| Production VPS bootstrap | ✅ Done | `/opt/khe/backend/` + venv + `khe-backend.service` enabled (2026-06-19) |
+| Production nginx config | ✅ Done | `/etc/nginx/sites-available/khe` rewritten + enabled in sites-enabled. Trailing slash on `proxy_pass`. |
+| `khe-backend-staging` stale proc fix | ✅ Done | Killed stale uvicorn holding port 8001, systemd service now owns port cleanly |
+| `migrate_all_tenants.py` guard | ✅ Done | deploy-main.yml guarded with `[ -f ... ] &&` — script on staging, not yet on main |
 
 ### Bug + ops fixes post-Sprint-0
 
@@ -70,6 +74,25 @@ Go to: **repo Settings → Secrets and variables → Actions → New repository 
 | `VPS_HOST` | ✅ Set |
 | `VPS_USER` | ✅ Set |
 | `VPS_SSH_KEY` | ✅ Set (`ed25519`, generated via `ssh-keygen -t ed25519 -C "khe-deploy"`) |
+
+---
+
+## VPS Port Allocation (CRITICAL — shared VPS với Bingxue ERP)
+
+**VPS IP:** `14.225.212.116`
+
+| Port | systemd service | Project | Path |
+|------|----------------|---------|------|
+| **8000** | `khe-backend` | **Khế production** | `/opt/khe/backend/` |
+| **8001** | `khe-backend-staging` | **Khế staging** | `/opt/khe/backend-staging/` |
+| **8002** | `bingxue-api-staging` | Bingxue ERP staging | — |
+| **8003** | `bingxue-api` | Bingxue ERP production | — |
+
+**KHÔNG dùng port 8002/8003 cho Khế** — đang được Bingxue ERP chiếm.
+
+nginx configs:
+- `/etc/nginx/sites-available/khe` → production (`khe.iceflow.cloud`, port 8000)
+- `/etc/nginx/sites-available/khe-staging` → staging (`staging.khe.iceflow.cloud`, port 8001)
 
 ---
 
