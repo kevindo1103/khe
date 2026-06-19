@@ -37,6 +37,19 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Post-merge: DOCS_INBOX #1 comment posted (frontend stack realized, login contract no-drift, lockfile-gitignore bug-pattern candidate, CLAUDE.md §Local dev now fillable).
 - **Next:** part 2/2 (upload, list, detail, obligations) blocked on #25/#26 response-shape freeze. Open Windsurf task once shapes confirmed on DOCS_INBOX. EPIC #31 stays open.
 
+### 2026-06-19 — M0 part 2/2 planned (#67)
+- #25/#26 merged to `staging`. Read backend schemas/routers directly (source of truth).
+- **Status-vocab ambiguity RESOLVED:** obligation status = `{pending, done, cancelled}`; urgency buckets FE-derived from `due_date`; no snooze endpoint. Posted to DOCS_INBOX #1 (suggest SRS/BRD align).
+- Opened **#67** (Windsurf task) with full verified contract embedded. Branch `windsurf/feat-frontend-m0-screens`, base `staging`.
+- Flagged 2 minor backend UX gaps (no doc name on ObligationOut; no party/expiry on DocumentListItem) — non-blocking, FE workarounds in #67.
+- **Awaiting:** Windsurf PR for #67 → review.
+
+## Verified API contract (staging, #25/#26)
+
+**Ingest:** `POST /ingest/upload` (multipart `file`, opt `doc_type`) → `{doc_id,file_name,status}`, 403 if no consent · `POST /ingest/bulk` (multipart `files[]` ≤20) → `{count,documents[]}`
+**Documents:** `GET /documents/?status=&needs_review=&q=&page=&page_size=` → `{items:[{id,file_name,doc_type,status,needs_review,term_count,obligation_count,created_at}],page,page_size,total}` · `GET /documents/{id}` → `{...,file_url,terms:[{id,field_name,field_value,confidence,needs_review}],obligations:[]}` · `GET /documents/{id}/file` · `PATCH /documents/{id}/terms/{term_id}` body `{field_value}` (D-07)
+**Obligations:** `GET /obligations/?due_within=&status=&page=&page_size=` → `{items:[{id,document_id,description,obligation_type,due_date,status,remind_before_days,source_doc_chain,resolution_method,created_at}],...}` · `PATCH /obligations/{id}` body `{status∈{pending,done,cancelled}}` → `{ok,obligation}`
+
 ## Open dependencies
 
 | Dep | Status | Note |
