@@ -79,10 +79,11 @@ jobs:
             ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend/"
 
           # Write secrets to .env on VPS via stdin pipe (values masked by GH Actions in logs)
-          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\n' \
+          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\nENVIRONMENT=%s\n' \
             "$GEMINI_API_KEY" "$CLAUDE_API_KEY" "$JWT_SECRET" "$TELEGRAM_BOT_TOKEN" \
             "https://khe.iceflow.cloud" \
             "/opt/khe/data" \
+            "production" \
             | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
               "cat > /opt/khe/backend/.env && chmod 600 /opt/khe/backend/.env"
 
