@@ -129,3 +129,12 @@ class ExtractionResult(BaseModel):
     @property
     def any_low_confidence(self) -> bool:
         return any(f.needs_review for f in self.fields.values())
+
+    @property
+    def is_error(self) -> bool:
+        """True when the provider FAILED to process the document (API error / no
+        structured output) — no tokens consumed + a warning emitted. Distinct from
+        a successful extraction that merely flags fields for review (D-08). Lets
+        Backend map a hard failure → 503/status=failed, and lets the fallback
+        chain advance to the next provider without re-charging the happy path."""
+        return bool(self.warnings) and self.usage.input_tokens == 0

@@ -1,0 +1,36 @@
+export const theme = {
+  colors: {
+    primary: '#1F6F5C',
+    primaryHover: '#185A4A',
+    primarySoft: '#E6F1ED',
+    warning: '#B26A00',
+    warningSoft: '#FBEFD9',
+    ink: '#1A1D1C',
+    inkMuted: '#5B6360',
+    inkSubtle: '#8A918E',
+    border: '#DADEDC',
+    surface: '#FFFFFF',
+    surfaceAlt: '#F5F7F6',
+    danger: '#C0392B',
+    dangerSoft: '#FDECEC',
+  },
+  font: "'Inter', 'Be Vietnam Pro', system-ui, sans-serif",
+  radius: {
+    sm: 6,
+    md: 10,
+    lg: 14,
+    xl: 20,
+    pill: 999,
+  },
+  space: {
+    1: 4,
+    2: 8,
+    3: 12,
+    4: 16,
+    5: 20,
+    6: 24,
+  },
+  shadow: {
+    md: '0 2px 8px rgba(20,29,28,0.10)',
+  },
+}
