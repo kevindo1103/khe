@@ -65,6 +65,13 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Frontend code healthy/merged — purely deploy/infra. Relayed **#70** (`from:frontend`+`for:infra`+`relay`+`blocker:human-needed`).
 - **Blocked on Infra** for staging verification. Will e2e-verify once routing up.
 
+### 2026-06-19 — BUG #89 (Admin 401 on upload) → assigned Windsurf #90
+- QC + Backend lead confirmed: Admin still on Bearer/localStorage; backend migrated to HttpOnly cookie (`khe_session`, #46) AFTER scaffold #47 → login stores `"undefined"`, fake-auth, upload 401. Frontend-only fix.
+- Verified backend surface on staging: `/auth/login`→`LoginOut{user,tenant_id}`, `/auth/me`→`UserOut{user_id,username,tenant_id,role}`, `/auth/logout`. PWA `api.js` = reference (credentials:'include').
+- Assigned **#90** `windsurf/fix-admin-cookie-auth` — 2-file migration (api.ts drop Bearer/+credentials; useAuth drop localStorage/+/auth/me) + ProtectedRoute isLoading guard + purge stale localStorage.
+- **Note:** this is debt from my #47 scaffold (shipped Bearer before #46 cookie migration). Lesson: re-verify auth contract when backend changes it.
+- Await Windsurf PR → review + staging verify per #89 repro.
+
 ## Open dependencies
 
 | Dep | Status | Note |
