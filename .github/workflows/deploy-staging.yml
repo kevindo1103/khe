@@ -69,7 +69,7 @@ jobs:
 
           # Bootstrap VPS dirs on first deploy
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
-            "mkdir -p /opt/khe/backend-staging /opt/khe/frontend-staging /opt/khe/pwa-staging && \
+            "mkdir -p /opt/khe/backend-staging /opt/khe/frontend-staging /opt/khe/pwa-staging /opt/khe/data-staging && \
              [ -d /opt/khe/backend-staging/venv ] || python3 -m venv /opt/khe/backend-staging/venv"
 
           rsync -az --delete --exclude=venv --exclude=.env \
@@ -78,9 +78,10 @@ jobs:
             ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend-staging/"
 
           # Write secrets to .env on VPS via stdin pipe (values masked by GH Actions in logs)
-          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\n' \
+          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\n' \
             "$GEMINI_API_KEY" "$CLAUDE_API_KEY" "$JWT_SECRET" "$TELEGRAM_BOT_TOKEN" \
             "https://staging.khe.iceflow.cloud" \
+            "/opt/khe/data-staging" \
             | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
               "cat > /opt/khe/backend-staging/.env && chmod 600 /opt/khe/backend-staging/.env"
 
