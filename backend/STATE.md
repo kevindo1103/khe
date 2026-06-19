@@ -21,10 +21,10 @@
 | 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic-v2` | ✅ **merged → staging** (PR #42 `11a24a9`, #10 closed) |
 | 2 | Consent gate + full tenant_002 schema | #22 | `windsurf/feat-backend-tenant002-consent` (PR-A) | ✅ **merged → staging** (PR #52 `824f660`, #22 closed) |
 | 3 | Doc relationships + chain logic (DEC-019/020/021) | #50 | `windsurf/feat-backend-doc-relationships` (PR-B) | 🟢 **unblocked** — schema on staging; logic only, no migration |
-| 4 | Ingest core (upload/storage/CRUD/consent gate) | #25 PR-A | `windsurf/feat-backend-ingest-core` (PR #54) | 🔴 **changes requested** — see consolidated checklist |
+| 4 | Ingest core (upload/storage/CRUD/consent gate) | #25 PR-A | `windsurf/feat-backend-ingest-core` (PR #54) | ✅ **merged → staging** (`badfd32`) |
+| 4b | Extraction worker (BackgroundTasks) | #25 PR-B | `windsurf/feat-backend-ingest-extraction` | ⏸ waits only on #53 factory landing on staging (schema/storage/consent ready) |
 
-> **PR #54 review (lead + PM_Assistant folded):** isolation chain verified sound. Required revision: 🔴 path split (`/ingest/*` upload+bulk vs top-level `/documents/*` + `file_url`) — breaks frozen #1 (PM missed this) · 🟠 apply `needs_review` filter · 🟠 **real** cross-tenant test (current one hits non-existent id, not other-tenant doc — exit-criterion gap PM caught) · 🟠 N+1 in list · 🟠 orphan Document on file-write failure. Compliance flag: PII (extracted values) in `events` term-PATCH payload → KHE_Compliance ack (known ledger flow). Follow-up **#56** (upload size limit + atomic event logging, non-blocking).
-| 4b | Extraction worker (BackgroundTasks) | #25 PR-B | `windsurf/feat-backend-ingest-extraction` | ⏸ blocked on #53 (AI factory) + PR-A |
+> **PR #54 — merged after 1 revision.** All findings resolved: path split (`/ingest/*` vs `/documents/*`, frozen #1), `needs_review` filter applied, **real** cross-tenant test (PM catch), N+1 → single GROUP-BY subquery, orphan-safe upload (temp→commit→rename). PM_Assistant verified isolation chain sound (but missed the path-drift blocker — lead caught). Compliance flag posted (DOCS_INBOX #1): PII (extracted values) in `events` term-PATCH payload → KHE_Compliance ack. Follow-up **#56** (upload size limit + atomic event logging, non-blocking). Tiny nit deferred: list route `/documents/` trailing slash (use `get("")`).
 | 5 | Obligation engine + reminder + Telegram | #26 | `claude/feat-backend-obligation-*` | ⏸ queued — consumes #25 Terms |
 | 6 | Chat query MVP (retrieve-only, D-08) | #27 | `claude/feat-backend-chat-*` | ⏸ queued — consumes #25/#26 |
 | ‖ | Auth → HttpOnly cookie JWT (#43 Option A) | #46 | `windsurf/feat-backend-auth-cookie` | ✅ **merged → staging** (PR #49 `b750c5b`, #46 closed) |
