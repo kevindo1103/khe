@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-19 | v1.1*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-19 | v1.2*
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
@@ -204,6 +204,24 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 ## INC Log / FM Log
 
 *No incidents or failure modes yet.*
+
+---
+
+## 🎯 M0 Core Loop Milestone — 2026-06-19
+
+**Confirmed live on staging** by Kevin + Backend lead (manual end-to-end verification):
+
+| Layer | Result | Notes |
+|---|---|---|
+| Auth (HttpOnly cookie) | ✅ | `POST /auth/login` + `GET /auth/me` working |
+| Ingest | ✅ | `status: processing → extracted` |
+| Real Gemini extraction | ✅ | 7 canonical fields, `doc_type=hd_nha_cung_cap` correct |
+| D-08 under real data | ✅ | `ngay_het_han=null + needs_review=true` — no fabrication |
+| **Obligation derivation** | ✅ | **`obligation_count=1` — FR-OB-01 fired** |
+
+**Remaining #75 UAT (open):** §B bulk, §D term edit, §F chat, §G D-10 (needs `uat-demo-b`), §H consent gate (needs `uat-demo-noconsent`), §I reminders, §J audit trail.
+
+**PRs open:** #44 (PWA — rebase + fixes needed). **Bugs open:** none critical post-#78.
 
 ---
 
