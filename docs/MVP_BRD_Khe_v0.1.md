@@ -9,8 +9,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.4 |
-| Trạng thái | Ratified — fold cycle 3 (quota guard FR-TN + ingest endpoints live + relationships) |
+| Phiên bản | v0.5 |
+| Trạng thái | Ratified — fold DEC-026 (LLM function-calling chat + clauses) per issue #100 |
 | Phạm vi | **Chỉ MVP** (tầng ingest + retrieve + deadline). Không phải full vision. |
 | Owner | Kevin (PM) |
 | Liên quan | Tái dùng hạ tầng SpurX (ledger, multi-tenant, infra v3) |
@@ -26,6 +26,7 @@
 | v0.2 | 2026-06-11 | KHE_Docs | Fold Strategy v2 (DEC-011..015): B2B2B firm-pays Phase 1, concierge onboarding, 2-firm pilot, positioning hậu sóng NĐ 337, 3-giai-đoạn roadmap, kill signals. Fold DEC-006: Telegram bot thay Zalo ZNS (FR-RM-01, §10, §11 A-3, §12 R-2, UC-02, AC-2). Fold KHE_AI insight: §6 Term/Field + §7 FR-EX/FR-OB-01 — `ngày_hết_hạn` derivable từ `ngày_hiệu_lực + thời_hạn`. **OPEN:** DEC-016 freemium paywall lever conflicts với DEC-006 — NOT folded, chờ PM quyết. `thoi_han_hd` phi-số policy (a/b/c) NOT folded — chờ PM. |
 | v0.3 | 2026-06-18 | KHE_Docs | Fold DEC-018 (Vertical = OPEN — không khóa F&B/bán lẻ; wedge chọn theo tín hiệu pilot). Revise §11 A-5 (vertical seed → wedge OPEN). Update §1 Executive summary + §10 R-1 wording. Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` (Personas, JTBD, Golden Circle, Dunford positioning). |
 | v0.4 | 2026-06-19 | KHE_Docs | Cycle 3 fold (8 DOCS_INBOX comments). Add **§7.11 FR-TN Tenant quota + billing** (FR-TN-01..03). Update §10 Tích hợp domain `khe.iceflow.cloud` (Infra PR #48). §7.2 FR-EX add CANONICAL_FIELDS 7 vocab (Backend M0 contract). §7.3 FR-DR add document_relationships (Backend PR #59 + DEC-019/020/021). §7.1 FR-IN reference ingest endpoints live (PR #54). |
+| v0.5 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** §7.6 FR-CQ-01..03 rewrite from regex/SQL pattern → LLM function-calling (Gemini Flash) với 3 tools (`search_terms`, `search_obligations`, `search_clauses`). D-08 hard fallback exact string. **FR-CQ-04 NEW:** doc_hint + multi-doc search routing. Cross-ref SRS §5.9 clauses table. |
 
 ---
 
@@ -198,10 +199,14 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 - **FR-RM-03** Ghi Event mỗi lần gửi nhắc (đã gửi / thất bại).
 - **FR-RM-04** Digest định kỳ: "tuần này / tháng này có gì sắp tới."
 
-### 7.6 Chat — query/read mode (FR-CQ)
-- **FR-CQ-01** Hỏi-đáp ngôn ngữ tự nhiên (tiếng Việt) trên kho: "cái gì sắp hết hạn quý này?", "tìm HĐ với bên ABC", "HĐ thuê Q7 còn hạn bao lâu?".
-- **FR-CQ-02** Chat **chỉ đọc** ở MVP; mọi câu trả lời truy ra Document/Obligation cụ thể (có dẫn nguồn, không bịa).
-- **FR-CQ-03** Không trả lời được → nói thẳng "không tìm thấy", không phỏng đoán.
+### 7.6 Chat — query/read mode (FR-CQ) — *DEC-026 LLM function-calling*
+- **FR-CQ-01** Hệ thống nhận query ngôn ngữ tự nhiên (tiếng Việt) → **LLM (Gemini Flash) phân tích intent → gọi tool phù hợp → format answer từ kết quả tool**. LLM KHÔNG tự sinh nội dung pháp lý (D-06). Chat **chỉ đọc** ở MVP; mọi câu trả lời truy ra Document / Obligation / Clause cụ thể (có dẫn nguồn, không bịa).
+- **FR-CQ-02** **3 tools available** (LLM function-calling surface):
+  - `search_terms(field_name, doc_hint)` — tìm trong 7 CANONICAL_FIELDS (xem §7.2 FR-EX-02).
+  - `search_obligations(due_within_days, status)` — tìm deadline/nghĩa vụ.
+  - `search_clauses(query, doc_hint)` — full-text search trong `clauses` table per-tenant (xem SRS §5.9).
+- **FR-CQ-03 (D-08 hard fallback):** Nếu **tất cả tools trả empty** → trả về **exact string** `"Không tìm thấy thông tin này trong hồ sơ của bạn."` LLM KHÔNG được improvise/paraphrase fallback. KHÔNG phỏng đoán.
+- **FR-CQ-04 (new):** Query có tên file hoặc tên đối tác → LLM extract làm `doc_hint` filter. Query không có hint + tenant có >1 doc → multi-doc search qua `search_clauses` + `search_obligations` (không hạn ở 1 doc).
 
 ### 7.7 Search & retrieval (FR-SR)
 - **FR-SR-01** Tìm theo: loại, đối tác, khoảng ngày hết hạn, từ khóa nội dung.
@@ -316,4 +321,4 @@ M-1 → M3 chạy, **2 firm partner trả tiền** + **≥20 SME** kích hoạt 
 
 ---
 
-*Hết v0.4 — cycle 3 fold: FR-TN quota guard, CANONICAL_FIELDS 7, DocType enum, FR-DR-03 document_relationships. Bước kế tiếp: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7 trước launch.*
+*Hết v0.5 — DEC-026 chat LLM function-calling + clauses fold. Bước kế tiếp: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7 trước launch.*
