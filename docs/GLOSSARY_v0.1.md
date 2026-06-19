@@ -8,8 +8,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.3 |
-| Trạng thái | Fold cycle 3 — Backend M0 vocab, relationships, extraction module, quota |
+| Phiên bản | v0.4 |
+| Trạng thái | Fold DEC-026 — Clause entity (gate Backend #99 per issue #100) |
 | Owner | KHE_Docs |
 
 ---
@@ -21,6 +21,7 @@
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Extract BRD §6 terms + fold Backend schema field map (entry 7/8), AI extraction concept (entry 9), Strategy v2 terms (entry 4), Telegram bot (entry 2). |
 | v0.2 | 2026-06-18 | KHE_Docs | Fold DOCS_INBOX 13/14: add §G Strategy framework terms — Persona, JTBD, Golden Circle (Why-How-What), Dunford Positioning Thesis, B2B2B channel motion vs PLG, Obligation OS, Vertical wedge (DEC-018), Plan B contingency. |
 | v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Add §H Backend M0 vocab — CANONICAL_FIELDS (7), DocType enum. Add §I Document relationships — amends vs references_framework, last_writer_wins, source_doc_chain. Update §C Extraction — `get_extraction_provider`, `ExtractionUnavailable`, `is_error` vs `needs_review`. Add §J Tenant quota — FR-TN-01..03, doc_quota nullable, calendar reset, hard block 429. |
+| v0.4 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §A `Clause` entity — text nguyên gốc từ Document, distinct from Term/Field (structured). Per-tenant `clauses` table (SRS §5.9). Powers `search_clauses` tool (BRD FR-CQ-02). Rename old `Template / Clause` row → `Template (GĐ2)` to avoid name collision. |
 
 ---
 
@@ -46,8 +47,11 @@ Cam kết rời rạc, có ngày, có trạng thái, suy ra từ Document.
 ### Event (Ledger)
 Append-only bản ghi mọi thay đổi trạng thái (ingest, sửa term, hoàn thành nghĩa vụ, đã gửi nhắc…). Sửa = ghi event mới (reversal), **không edit-in-place**. Pattern tái dùng từ SpurX.
 
-### Template / Clause
-Mẫu/điều khoản do firm thẩm định, có version. *Định nghĩa sẵn nhưng chưa kích hoạt ở MVP — mở GĐ2.*
+### Clause (DEC-026)
+Điều khoản rời từ Document, có số thứ tự (`clause_num`, vd `"Điều 8"`) + tiêu đề (`title`, vd `"Chấm dứt hợp đồng"`) + nội dung đầy đủ (`content`) + vị trí trang. **Phân biệt với Term/Field:** Term = giá trị có cấu trúc (CANONICAL_FIELDS, date/numeric coercion). Clause = **text nguyên gốc**, preserve wording. Per-tenant table `clauses` (SRS §5.9). Populated từ `VisionExtractionResult.clauses[]` cùng vision call. Powers `search_clauses` tool (FR-CQ-02).
+
+### Template (GĐ2)
+Mẫu HĐ do firm thẩm định, có version. *Định nghĩa sẵn nhưng chưa kích hoạt ở MVP — mở GĐ2 (lawyer-in-loop drafting).*
 
 ---
 
@@ -283,4 +287,4 @@ Roadmap PRODUCT_STRATEGY §7.1. Phase 1 manual invoice (~50-100k/client/năm). P
 
 ---
 
-*Hết v0.3. Bước kế tiếp: thêm UI terms khi Frontend session spawn.*
+*Hết v0.4 — DEC-026 Clause entity. Bước kế tiếp: thêm UI terms khi Frontend session spawn.*
