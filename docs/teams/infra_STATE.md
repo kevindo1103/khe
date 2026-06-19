@@ -26,6 +26,8 @@ _Last updated: 2026-06-19 | Sprint 0 COMPLETE + post-Sprint-0 ops + production V
 | HTTPS check in deploy-staging | ✅ Done | Non-blocking warning step — fires if staging TLS unreachable |
 | Production VPS bootstrap | ✅ Done | `/opt/khe/backend/` + venv + `khe-backend.service` enabled (2026-06-19) |
 | Production nginx config | ✅ Done | `/etc/nginx/sites-available/khe` rewritten + enabled in sites-enabled. Trailing slash on `proxy_pass`. |
+| PWA build + deploy wired | ✅ Done | `deploy-staging.yml` + `deploy-main.yml` build `frontend/pwa/` → rsync to `/opt/khe/pwa{,-staging}/` |
+| nginx PWA/Admin routing (#86) | ✅ Done | PWA→`/`, Admin→`/admin`, API→`/api/`. `client_max_body_size 50M` (#88). Both vhosts live. |
 | `khe-backend-staging` stale proc fix | ✅ Done | Killed stale uvicorn holding port 8001, systemd service now owns port cleanly |
 | `migrate_all_tenants.py` guard | ✅ Done | deploy-main.yml guarded with `[ -f ... ] &&` — script on staging, not yet on main |
 
@@ -183,18 +185,23 @@ server {
     }
 }
 
-# Staging vhost (staging.khe.iceflow.cloud)
+# Staging vhost — /etc/nginx/sites-available/khe-staging
+server {
+    listen 80;
+    server_name staging.khe.iceflow.cloud;
+    return 301 https://$host$request_uri;
+}
+
 server {
     listen 443 ssl;
     server_name staging.khe.iceflow.cloud;
 
     ssl_certificate /etc/letsencrypt/live/staging.khe.iceflow.cloud/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/staging.khe.iceflow.cloud/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
     client_max_body_size 50M;  # PDF upload limit (#88)
-
-    root /opt/khe/frontend-staging;
-    index index.html;
 
     location /api/ {
         proxy_pass http://127.0.0.1:8001/;
@@ -202,8 +209,14 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 
+    location /admin {
+        alias /opt/khe/frontend-staging/;
+        try_files $uri $uri/ /admin/index.html;
+    }
+
     location / {
-        try_files $uri $uri/ /index.html;
+        root /opt/khe/pwa-staging;
+        try_files $uri /index.html;
     }
 }
 ```
