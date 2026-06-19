@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Default tenant for dev
     DEFAULT_TENANT_ID: str = os.getenv("DEFAULT_TENANT_ID", "local-dev")
 
+    # File storage (per-tenant PDF storage)
+    STORAGE_DIR: Path = BASE_DIR / "storage"
+
     # CORS
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
 
