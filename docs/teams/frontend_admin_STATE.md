@@ -92,6 +92,13 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Filed **#92** chore: remove re-tracked `vite.config.js`/.d.ts artifact (low priority, after #70).
 - **Still blocked on #70** (deploy-staging 0-jobs + vhost) for live e2e verify. Verify queued: /admin/login → cookie → upload 201 → refresh → logout 401.
 
+### 2026-06-19 — DEC-025 Option A: remove base:'/admin/' (#95)
+- PM locked **Option A**: Admin at `/`, PWA at `/pwa/`. PM authorized lead to implement directly (1-line change).
+- Removed `base: '/admin/'` from `frontend/vite.config.ts`. Also `git rm frontend/vite.config.js` (artifact cleanup, #92).
+- `npm run build` verified locally. **PR #95** → staging. CI 3/3 green.
+- Updated #86 comment with corrected nginx topology (no `/admin` block needed). Posted DOCS_INBOX #1.
+- **Awaiting:** merge #95 → Infra #70 deploy fix → e2e verify on staging.
+
 ## Open dependencies
 
 | Dep | Status | Note |
