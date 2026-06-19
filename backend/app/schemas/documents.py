@@ -50,6 +50,7 @@ class DocumentDetailOut(BaseModel):
     file_url: str | None = None
     terms: list[TermOut] = []
     obligations: list[Any] = []
+    clause_count: int = 0
     # When status == "failed", populated from the most recent extraction_failed
     # Event's payload.reason — surfaces the exact failure path (#79 follow-up)
     # so UAT can self-diagnose without VPS access. Null for non-failed docs.

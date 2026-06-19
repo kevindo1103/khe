@@ -32,7 +32,7 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
-from app.models.tenant import Document, Event, Obligation, Term
+from app.models.tenant import Clause, Document, Event, Obligation, Term
 from app.schemas.documents import (
     BulkUploadOut,
     DocumentDetailOut,
@@ -380,6 +380,12 @@ def get_document(
         .all()
     )
 
+    clause_count = (
+        db.query(Clause)
+        .filter(Clause.document_id == doc_id, Clause.tenant_id == user.tenant_id)
+        .count()
+    )
+
     # When the doc failed extraction, surface the reason from the latest
     # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
     failure_reason: str | None = None
@@ -410,6 +416,7 @@ def get_document(
         file_url=f"/documents/{doc.id}/file",
         terms=[TermOut.model_validate(t) for t in terms],
         obligations=[ObligationOut.model_validate(o) for o in obligations],
+        clause_count=clause_count,
         failure_reason=failure_reason,
     )
 

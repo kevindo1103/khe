@@ -123,6 +123,19 @@ class Employee(TenantBase):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class Clause(TenantBase):
+    __tablename__ = "clauses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    clause_num = Column(String, nullable=True)        # e.g. "Điều 8", "Khoản 2.3"
+    title = Column(String, nullable=True)             # e.g. "Chấm dứt hợp đồng"
+    content = Column(Text, nullable=False)            # full clause text
+    page_num = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class DocumentRelationship(TenantBase):
     __tablename__ = "document_relationships"
 

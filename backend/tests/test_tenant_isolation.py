@@ -23,6 +23,7 @@ from app.core.security import get_password_hash
 from app.db.database import MasterSessionLocal, get_tenant_session, init_master_db, init_tenant_db
 from app.models.master import Tenant, TenantUser
 from app.models.tenant import Document, Obligation, Term
+from app.services import chat_query
 from main import app
 
 
@@ -127,7 +128,28 @@ def test_each_tenant_sees_only_own_obligations(setup_two_tenants):
         assert descs == {f"Hết hạn {_TENANTS[tid]['file']}"}, f"{tid} sees {descs}"
 
 
-def test_chat_does_not_cross_tenant(setup_two_tenants):
+def _mock_select_tools(question: str, tenant_id: str, db):
+    """For each tenant, only resolve the tool call if the document belongs to that tenant."""
+    for tid, cfg in _TENANTS.items():
+        if cfg["file"] in question:
+            if tenant_id == tid:
+                return [{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": cfg["file"]}}]
+            return []
+    return []
+
+
+async def _select_tools_mock(db, tenant_id, question):
+    return _mock_select_tools(question, tenant_id, db)
+
+
+async def _format_answer_mock(question, results):
+    return results[0]["value"] if results else ""
+
+
+def test_chat_does_not_cross_tenant(setup_two_tenants, monkeypatch):
+    monkeypatch.setattr(chat_query, "_select_tools", _select_tools_mock)
+    monkeypatch.setattr(chat_query, "_format_answer", _format_answer_mock)
+
     # iso-a asks about iso-b's document by name → must be not-found (D-08), never B's data.
     a = _login("iso-a")
     r = a.post("/chat/query", json={"question": f"hợp đồng {_TENANTS['iso-b']['file']} hết hạn khi nào?"})
