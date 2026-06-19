@@ -9,8 +9,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.3 |
-| Trạng thái | Ratified — fold DEC-018 (Vertical OPEN) + cascade upstream Product Strategy |
+| Phiên bản | v0.4 |
+| Trạng thái | Ratified — fold cycle 3 (quota guard FR-TN + ingest endpoints live + relationships) |
 | Phạm vi | **Chỉ MVP** (tầng ingest + retrieve + deadline). Không phải full vision. |
 | Owner | Kevin (PM) |
 | Liên quan | Tái dùng hạ tầng SpurX (ledger, multi-tenant, infra v3) |
@@ -25,6 +25,7 @@
 | v0.1 | 2026-06-09 | Kevin (PM) / ERP_PM_Assistant | Initial draft. Scope MVP ingest + retrieve + deadline. Topology 10 sessions. D-rules P-1..P-5. |
 | v0.2 | 2026-06-11 | KHE_Docs | Fold Strategy v2 (DEC-011..015): B2B2B firm-pays Phase 1, concierge onboarding, 2-firm pilot, positioning hậu sóng NĐ 337, 3-giai-đoạn roadmap, kill signals. Fold DEC-006: Telegram bot thay Zalo ZNS (FR-RM-01, §10, §11 A-3, §12 R-2, UC-02, AC-2). Fold KHE_AI insight: §6 Term/Field + §7 FR-EX/FR-OB-01 — `ngày_hết_hạn` derivable từ `ngày_hiệu_lực + thời_hạn`. **OPEN:** DEC-016 freemium paywall lever conflicts với DEC-006 — NOT folded, chờ PM quyết. `thoi_han_hd` phi-số policy (a/b/c) NOT folded — chờ PM. |
 | v0.3 | 2026-06-18 | KHE_Docs | Fold DEC-018 (Vertical = OPEN — không khóa F&B/bán lẻ; wedge chọn theo tín hiệu pilot). Revise §11 A-5 (vertical seed → wedge OPEN). Update §1 Executive summary + §10 R-1 wording. Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` (Personas, JTBD, Golden Circle, Dunford positioning). |
+| v0.4 | 2026-06-19 | KHE_Docs | Cycle 3 fold (8 DOCS_INBOX comments). Add **§7.11 FR-TN Tenant quota + billing** (FR-TN-01..03). Update §10 Tích hợp domain `khe.iceflow.cloud` (Infra PR #48). §7.2 FR-EX add CANONICAL_FIELDS 7 vocab (Backend M0 contract). §7.3 FR-DR add document_relationships (Backend PR #59 + DEC-019/020/021). §7.1 FR-IN reference ingest endpoints live (PR #54). |
 
 ---
 
@@ -169,11 +170,12 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 ### 7.1 Ingestion (FR-IN)
 - **FR-IN-01** Upload qua: ảnh chụp (camera), kéo-thả PDF/Word, forward email tới địa chỉ riêng của tenant.
 - **FR-IN-02** Lưu file gốc bất biến; mọi xử lý sau dựa trên bản gốc này.
-- **FR-IN-03** Hàng đợi xử lý bất đồng bộ; hiển thị trạng thái "đang đọc…" cho từng tài liệu.
+- **FR-IN-03** Hàng đợi xử lý bất đồng bộ; hiển thị trạng thái "đang đọc…" cho từng tài liệu. *(MVP impl PR #54/#60: FastAPI `BackgroundTasks` schedule `run_extraction` sau response 201; `status: processing → extracted | failed`.)*
+- **FR-IN-04** Endpoints live (staging): `POST /ingest/upload` (single, multipart) + `POST /ingest/bulk` (≤20 files) — xem SRS §2.
 
 ### 7.2 Extraction — AI safe-read (FR-EX)
-- **FR-EX-01** Tự nhận **loại tài liệu** (MVP hỗ trợ tối thiểu: HĐ thuê mặt bằng, HĐ nhà cung cấp, HĐ lao động).
-- **FR-EX-02** Bóc các Term tối thiểu: đối tác, **ngày hiệu lực**, **thời hạn**, **ngày hết hạn** (nếu có tường minh — nullable), giá trị, điều khoản gia hạn. *(KHE_AI insight: HĐ VN thường ghi `ngày_hiệu_lực + thời_hạn`, không ghi thẳng `ngày_hết_hạn` → derive ở Obligation tier, xem FR-OB-01.)*
+- **FR-EX-01** Tự nhận **loại tài liệu** — `DocType` enum (Backend M0): `hd_thue_mat_bang` (HĐ thuê mặt bằng), `hd_nha_cung_cap` (HĐ nhà cung cấp), `hd_lao_dong` (HĐ lao động), `khac` (other).
+- **FR-EX-02** Bóc **7 CANONICAL_FIELDS** (Backend M0 contract): `doi_tac`, `ngay_hieu_luc`, `ngay_het_han` (nullable, derivable per FR-OB-01), `gia_tri_hd`, `thoi_han_hd`, `dieu_khoan_gia_han`, `dieu_khoan_thanh_toan`. *(KHE_AI insight: HĐ VN thường ghi `ngày_hiệu_lực + thời_hạn`, không ghi thẳng `ngày_hết_hạn` → derive ở Obligation tier, xem FR-OB-01.)*
 - **FR-EX-03** AI **chỉ đọc** — không sinh/sửa nội dung pháp lý (P-1).
 - **FR-EX-04** Mọi field bóc ra phải **cho người sửa**; sửa → ghi Event (P-2).
 - **FR-EX-05** Hiện độ tin cậy / cờ "cần kiểm tra" khi không chắc.
@@ -181,6 +183,7 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 ### 7.3 Document record & IR (FR-DR)
 - **FR-DR-01** Mỗi Document có trang chi tiết: file gốc + các Term có cấu trúc + danh sách Obligation phát sinh.
 - **FR-DR-02** Liên kết quan hệ cơ bản: phụ lục → hợp đồng gốc (MVP: thủ công cũng được).
+- **FR-DR-03 Document relationships** (Backend PR #59, DEC-019/020/021): AI suggest `pending` edges ingest-time, SME confirm (D-02). Types: `amends` (phụ lục) vs `references_framework` (HĐ khung). Orphan amendments (`to_doc_id=null`) late-link khi parent arrives. Confirm trigger chain resolution `last_writer_wins` qua amends topology — supersede overlapping terms với `is_superseded` + `overrides_term_id` + `inherited_from_doc_id`. **Không tự tạo Obligation từ relationship** (out of scope MVP M0).
 
 ### 7.4 Obligation & deadline engine (FR-OB) — *trái tim MVP*
 - **FR-OB-01** Tự sinh Obligation từ Term (vd: `ngày_hết_hạn` → nghĩa vụ "gia hạn/chấm dứt trước N ngày"). **Derivation rule:** nếu `ngày_hết_hạn IS NULL` AND cả `ngày_hiệu_lực` + `thời_hạn` (dạng số tháng/năm) đều có → derive `ngày_hết_hạn = ngày_hiệu_lực + thời_hạn`. Nếu `thời_hạn` phi-số ("vô thời hạn", "kể từ khi nghiệm thu") → policy chờ PM (tracked ambiguity v0.2 — engine fallback: skip expiry obligation, vẫn sinh được recurring obligations độc lập như BHXH).
@@ -217,6 +220,14 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 ### 7.10 Audit / ledger (FR-AU)
 - **FR-AU-01** Ledger append-only cho mọi thay đổi trạng thái (tái dùng SpurX).
 - **FR-AU-02** Xem lịch sử một Document: ai sửa term gì, lúc nào.
+
+### 7.11 Tenant quota & billing (FR-TN) — *cost-control MVP*
+
+- **FR-TN-01 Quota check trước ingest:** Mọi `POST /ingest/upload` + `/ingest/bulk` MUST check `docs_used_month < doc_quota` của tenant TRƯỚC khi nhận file. Vượt → HTTP **429 Too Many Requests**, không proceed extraction (hard block per D-11). Phòng cost runaway (Gemini/Claude vision per-doc cost).
+- **FR-TN-02 Monthly reset:** APScheduler cron mùng 1 mỗi tháng reset `docs_used_month = 0` cho mọi tenant. `quota_reset_at` cập nhật mốc tiếp theo. Calendar month (không rolling).
+- **FR-TN-03 Firm portal usage view:** Firm thấy `docs_used_month / doc_quota` per SME client trong firm portal (sau khi consent grant). Tín hiệu cho firm upsell quota khi SME tiến gần limit.
+- **Default quota:** firm-configurable per SME (override per tenant) — không hard-code global default. Quota field do firm set khi onboard tenant.
+- **Phase 1 billing:** manual invoice firm (~50-100k VND/client/năm). **Phase 2 (post-MVP):** automated billing (Stripe/VNPay) — xem `PRODUCT_STRATEGY_Khe_v0.2.md` §7.1.
 
 ---
 
@@ -305,4 +316,4 @@ M-1 → M3 chạy, **2 firm partner trả tiền** + **≥20 SME** kích hoạt 
 
 ---
 
-*Hết v0.2 — fold Strategy v2 + AI extraction insight + DEC-006 Telegram. Bước kế tiếp đề xuất: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7 trước launch.*
+*Hết v0.4 — cycle 3 fold: FR-TN quota guard, CANONICAL_FIELDS 7, DocType enum, FR-DR-03 document_relationships. Bước kế tiếp: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7 trước launch.*
