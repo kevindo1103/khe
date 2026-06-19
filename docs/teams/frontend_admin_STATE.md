@@ -84,6 +84,14 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - NOT merged. Await rebased PR → re-review.
 - **Lesson:** Windsurf must branch from fresh origin/staging, not from another feature branch.
 
+### 2026-06-19 — PR #91 rebased clean → MERGED (#89 + #86 base)
+- Windsurf rebased onto clean origin/staging (dropped backend chat commits), added `base:'/admin/'`. Diff 6 files frontend-only, CI green.
+- Reviewed → approved → **merged to staging** (squash `14ce575`). #89 + #90 closed.
+- Admin now on HttpOnly cookie auth (resolves upload 401) + serves under `/admin` (DEC-025). Commented #86 → Infra unblocked for nginx routing.
+- DOCS_INBOX #1 post-merge note posted.
+- Filed **#92** chore: remove re-tracked `vite.config.js`/.d.ts artifact (low priority, after #70).
+- **Still blocked on #70** (deploy-staging 0-jobs + vhost) for live e2e verify. Verify queued: /admin/login → cookie → upload 201 → refresh → logout 401.
+
 ## Open dependencies
 
 | Dep | Status | Note |
