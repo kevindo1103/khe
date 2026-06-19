@@ -99,6 +99,15 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Updated #86 comment with corrected nginx topology (no `/admin` block needed). Posted DOCS_INBOX #1.
 - **Awaiting:** merge #95 → Infra #70 deploy fix → e2e verify on staging.
 
+### 2026-06-19 — clause_count badge relay (DEC-026 / #99) → assigned Windsurf #106
+- PM relay: add `clause_count` badge. Two corrections to relay before assigning:
+  1. "bundle vào vite base fix (#86)" **stale** — that PR (#95) already merged → own PR.
+  2. "cạnh term_count + obligation_count **hiện có**" — those render on **list table** (DocumentList cols), NOT detail page (DocumentDetail header has no counts; DocumentDetailOut has no count fields).
+- **PM decision (AskUserQuestion): Both** — DocumentList column + DocumentDetail header.
+- Field sources: detail term/oblig counts derive client-side (`doc.terms.length`/`doc.obligations.length`); `clause_count` needs #99.
+- **Backend gap flagged on #99:** AC only adds clause_count to `GET /documents/{id}` (detail), NOT list endpoint. List column needs `clause_count` per `DocumentListItem` → asked Backend to extend list endpoint (watch N+1). If declined, ship detail-header half alone, list-column as follow-up.
+- Opened **#106** Windsurf task (`windsurf/feat-frontend-clause-count`, base staging). `blocker:waiting-dependency` on #99.
+
 ## Open dependencies
 
 | Dep | Status | Note |
