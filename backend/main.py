@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.database import init_master_db, init_tenant_db
-from app.routers import auth, consent, documents, health, obligations, relationships
+from app.routers import auth, consent, documents, health, obligations, relationships, reminders
+from app.services.scheduler import create_scheduler
 
 
 def _seed_default_tenant():
@@ -65,9 +66,17 @@ async def lifespan(app: FastAPI):
     _seed_default_tenant()
     init_tenant_db(settings.DEFAULT_TENANT_ID)
 
+    # Start daily reminder scheduler (#62). It is lightweight and no-ops if
+    # Telegram is not configured.
+    scheduler = create_scheduler()
+    scheduler.start()
+    app.state.scheduler = scheduler
+
     yield  # Application runs here
 
     # ---------- Shutdown ----------
+    if hasattr(app.state, "scheduler") and app.state.scheduler.running:
+        app.state.scheduler.shutdown()
     print("[Main] Goodbye.")
 
 
@@ -93,6 +102,7 @@ app.include_router(documents.ingest_router)
 app.include_router(documents.docs_router)
 app.include_router(relationships.router)
 app.include_router(obligations.router)
+app.include_router(reminders.router)
 app.include_router(health.router)
 
 
