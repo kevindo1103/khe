@@ -13,6 +13,9 @@ from pathlib import Path
 from ..schemas import (
     BENCHMARK_TARGET_FIELDS,
     CANONICAL_FIELDS,
+    ClauseItem,
+    ContractExtractionLLM,
+    ContractExtractionLLMFull,
     DocType,
     ExtractedField,
     ExtractionResult,
@@ -248,6 +251,85 @@ def test_fallback_returns_last_error_when_all_fail() -> None:
     b = _FakeProvider("b", fail=True)
     res = asyncio.run(factory._FallbackProvider([a, b]).extract(b"img"))
     assert res.is_error is True and res.provider == "b"
+
+
+# --- clauses (issue #101 / DEC-026) -----------------------------------------
+
+
+def test_clause_item_schema() -> None:
+    c = ClauseItem(num="Điều 8", title="Chấm dứt", content="Bên A có thể...")
+    assert c.content == "Bên A có thể..." and c.num == "Điều 8"
+    # num + title optional; content required.
+    c2 = ClauseItem(content="...")
+    assert c2.num is None and c2.title is None
+    try:
+        ClauseItem()  # type: ignore[call-arg] — content is required
+    except Exception:  # pydantic ValidationError
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("ClauseItem.content must be required")
+
+
+def test_extraction_result_clauses_default_empty() -> None:
+    # Backward compatible: callers that never set clauses keep working.
+    r = ExtractionResult(fields={}, doc_type="khac")
+    assert r.clauses == []
+
+
+def test_extraction_result_accepts_clauses() -> None:
+    r = ExtractionResult(
+        fields={}, doc_type=DocType.LEASE,
+        clauses=[ClauseItem(num="Điều 1", content="Phạm vi...")],
+    )
+    assert isinstance(r.clauses, list) and len(r.clauses) == 1
+    assert r.clauses[0].num == "Điều 1"
+
+
+def test_llm_schema_full_has_clauses_and_defaults_empty() -> None:
+    # ContractExtractionLLMFull (Gemini schema) carries clauses, defaults to [].
+    llm = ContractExtractionLLMFull(doc_type=DocType.OTHER)
+    assert llm.clauses == []
+
+
+def test_llm_schema_base_has_no_clauses() -> None:
+    # ContractExtractionLLM (Claude flat schema) must NOT have clauses — grammar
+    # compiler timeout on list[ClauseItem] in Claude structured outputs.
+    llm = ContractExtractionLLM(doc_type=DocType.OTHER)
+    assert not hasattr(llm, "clauses")
+
+
+def test_to_result_maps_clauses_through_full_schema() -> None:
+    from ..providers.base import to_result
+
+    llm = ContractExtractionLLMFull(
+        doc_type=DocType.LABOR,
+        clauses=[ClauseItem(num="Điều 3", title="Lương", content="...")],
+    )
+    res = to_result(
+        llm, provider="gemini_flash", model="gemini-2.5-flash",
+        latency_ms=10.0, usage=TokenUsage(input_tokens=5, output_tokens=2), cost=1.0,
+    )
+    assert len(res.clauses) == 1 and res.clauses[0].num == "Điều 3"
+
+
+def test_to_result_clauses_empty_for_flat_schema() -> None:
+    # Claude flat schema → ExtractionResult.clauses = [] (backward compat).
+    from ..providers.base import to_result
+
+    llm = ContractExtractionLLM(doc_type=DocType.LEASE)
+    res = to_result(
+        llm, provider="claude_haiku", model="claude-haiku-4-5",
+        latency_ms=5.0, usage=TokenUsage(input_tokens=3, output_tokens=1), cost=0.5,
+    )
+    assert res.clauses == []
+
+
+def test_prompt_requests_clauses() -> None:
+    from ..prompts import build_instruction
+
+    instr = build_instruction("hd_lao_dong")
+    assert "clauses" in instr
+    assert "Điều" in instr and "Khoản" in instr  # asks for numbered articles/clauses
 
 
 def _run_all() -> None:
