@@ -115,15 +115,25 @@ def _seed(db):
 
 
 class TestChatQuery:
+    def _assert_source_shape(self, source):
+        assert "type" in source
+        assert "document_id" in source
+        assert "file_name" in source
+        assert "field_name" in source
+        assert "value" in source
+
     def test_expiry_from_obligation(self, auth_client, db):
-        _seed(db)
+        doc = _seed(db)
 
         r = auth_client.post("/chat/query", json={"question": "hợp đồng lease_2026 hết hạn khi nào?"})
         assert r.status_code == 200
         data = r.json()
         assert data["found"] is True
         assert "2026-12-31" in data["answer"]
-        assert any(s["source"] == "obligation" for s in data["sources"])
+        assert any(s["type"] == "obligation" for s in data["sources"])
+        for s in data["sources"]:
+            self._assert_source_shape(s)
+            assert s["file_name"] == "lease_2026.pdf"
 
     def test_expiry_fallback_to_term(self, auth_client, db):
         doc = Document(tenant_id="chat-tenant", file_name="fallback.pdf", file_path="x/y.pdf", status="extracted")
@@ -146,6 +156,9 @@ class TestChatQuery:
         data = r.json()
         assert data["found"] is True
         assert "2027-06-30" in data["answer"]
+        for s in data["sources"]:
+            self._assert_source_shape(s)
+            assert s["file_name"] == "fallback.pdf"
 
     def test_d_08_not_found(self, auth_client, db):
         _seed(db)
@@ -163,6 +176,19 @@ class TestChatQuery:
         db.refresh(doc)
 
         r = auth_client.post("/chat/query", json={"question": "hợp đồng noinfo hết hạn khi nào?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert "Không tìm thấy" in data["answer"]
+
+    def test_d_08_no_hint_multiple_docs(self, auth_client, db):
+        """Without a document hint and >1 extracted docs, the engine must not guess."""
+        _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="second.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+
+        r = auth_client.post("/chat/query", json={"question": "hợp đồng hết hạn khi nào?"})
         assert r.status_code == 200
         data = r.json()
         assert data["found"] is False
@@ -208,6 +234,8 @@ class TestChatQuery:
         data = r.json()
         assert data["found"] is True
         assert "2026-01-01" in data["answer"]
+        for s in data["sources"]:
+            self._assert_source_shape(s)
 
     def test_duration_intent(self, auth_client, db):
         _seed(db)
@@ -217,6 +245,8 @@ class TestChatQuery:
         data = r.json()
         assert data["found"] is True
         assert "12 tháng" in data["answer"]
+        for s in data["sources"]:
+            self._assert_source_shape(s)
 
     def test_parties_intent(self, auth_client, db):
         _seed(db)
@@ -226,6 +256,8 @@ class TestChatQuery:
         data = r.json()
         assert data["found"] is True
         assert "Công ty A" in data["answer"]
+        for s in data["sources"]:
+            self._assert_source_shape(s)
 
     def test_status_intent(self, auth_client, db):
         _seed(db)
@@ -235,3 +267,5 @@ class TestChatQuery:
         data = r.json()
         assert data["found"] is True
         assert "extracted" in data["answer"]
+        for s in data["sources"]:
+            self._assert_source_shape(s)

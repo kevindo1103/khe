@@ -85,24 +85,45 @@ def _find_document_by_hint(db: Session, tenant_id: str, hint: str) -> Document |
             Document.tenant_id == tenant_id,
             Document.file_name.ilike(hint),
         )
+        .order_by(Document.created_at.desc())
         .first()
     )
     if doc:
         return doc
 
-    # Substring
+    # Substring — deterministic "most recent match".
     return (
         db.query(Document)
         .filter(
             Document.tenant_id == tenant_id,
             Document.file_name.ilike(f"%{hint}%"),
         )
+        .order_by(Document.created_at.desc())
         .first()
     )
 
 
+def _count_extracted_documents(db: Session, tenant_id: str) -> int:
+    """Return the number of extracted documents for the tenant."""
+    return (
+        db.query(Document)
+        .filter(
+            Document.tenant_id == tenant_id,
+            Document.status == "extracted",
+        )
+        .count()
+    )
+
+
 def _find_document_without_hint(db: Session, tenant_id: str) -> Document | None:
-    """Fallback: return the most recent document with obligations."""
+    """Fallback: only safe when the tenant has exactly one extracted document.
+
+    D-08: if multiple documents exist and none is named, we must not guess which
+    document the user means.
+    """
+    if _count_extracted_documents(db, tenant_id) != 1:
+        return None
+
     return (
         db.query(Document)
         .filter(
@@ -129,7 +150,15 @@ def _answer_expiry(db: Session, tenant_id: str, doc: Document) -> tuple[str, lis
     if ob and ob.due_date:
         return (
             f"Hợp đồng {doc.file_name} hết hạn ngày {ob.due_date}.",
-            [{"source": "obligation", "id": ob.id, "due_date": ob.due_date}],
+            [
+                {
+                    "type": "obligation",
+                    "document_id": doc.id,
+                    "file_name": doc.file_name,
+                    "field_name": "due_date",
+                    "value": ob.due_date,
+                }
+            ],
         )
 
     # Fallback to term if obligation missing.
@@ -147,7 +176,15 @@ def _answer_expiry(db: Session, tenant_id: str, doc: Document) -> tuple[str, lis
     if term and term.field_value:
         return (
             f"Hợp đồng {doc.file_name} hết hạn ngày {term.field_value}.",
-            [{"source": "term", "id": term.id, "field_name": "ngay_het_han", "value": term.field_value}],
+            [
+                {
+                    "type": "term",
+                    "document_id": doc.id,
+                    "file_name": doc.file_name,
+                    "field_name": "ngay_het_han",
+                    "value": term.field_value,
+                }
+            ],
         )
 
     return _NOT_FOUND, []
@@ -168,7 +205,15 @@ def _answer_start_date(db: Session, tenant_id: str, doc: Document) -> tuple[str,
     if term and term.field_value:
         return (
             f"Hợp đồng {doc.file_name} có hiệu lực từ ngày {term.field_value}.",
-            [{"source": "term", "id": term.id, "field_name": "ngay_hieu_luc", "value": term.field_value}],
+            [
+                {
+                    "type": "term",
+                    "document_id": doc.id,
+                    "file_name": doc.file_name,
+                    "field_name": "ngay_hieu_luc",
+                    "value": term.field_value,
+                }
+            ],
         )
     return _NOT_FOUND, []
 
@@ -188,7 +233,15 @@ def _answer_duration(db: Session, tenant_id: str, doc: Document) -> tuple[str, l
     if term and term.field_value:
         return (
             f"Thời hạn hợp đồng {doc.file_name}: {term.field_value}.",
-            [{"source": "term", "id": term.id, "field_name": "thoi_han_hd", "value": term.field_value}],
+            [
+                {
+                    "type": "term",
+                    "document_id": doc.id,
+                    "file_name": doc.file_name,
+                    "field_name": "thoi_han_hd",
+                    "value": term.field_value,
+                }
+            ],
         )
     return _NOT_FOUND, []
 
@@ -209,7 +262,16 @@ def _answer_parties(db: Session, tenant_id: str, doc: Document) -> tuple[str, li
         values = [t.field_value for t in terms if t.field_value]
         return (
             f"Đối tác trong hợp đồng {doc.file_name}: {', '.join(values)}.",
-            [{"source": "term", "id": t.id, "field_name": "doi_tac", "value": t.field_value} for t in terms],
+            [
+                {
+                    "type": "term",
+                    "document_id": doc.id,
+                    "file_name": doc.file_name,
+                    "field_name": "doi_tac",
+                    "value": t.field_value,
+                }
+                for t in terms
+            ],
         )
     return _NOT_FOUND, []
 
@@ -217,7 +279,15 @@ def _answer_parties(db: Session, tenant_id: str, doc: Document) -> tuple[str, li
 def _answer_status(db: Session, tenant_id: str, doc: Document) -> tuple[str, list[dict]]:
     return (
         f"Trạng thái hợp đồng {doc.file_name}: {doc.status}.",
-        [{"source": "document", "id": doc.id, "status": doc.status}],
+        [
+            {
+                "type": "document",
+                "document_id": doc.id,
+                "file_name": doc.file_name,
+                "field_name": "status",
+                "value": doc.status,
+            }
+        ],
     )
 
 
