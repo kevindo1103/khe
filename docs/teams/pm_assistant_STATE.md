@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-18 | v1.0*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-19 | v1.1*
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
@@ -69,6 +69,8 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | DEC-020 | **Q-1 thời hạn phi-số:** HĐ "vô thời hạn"/"đến khi thanh lý" → KHÔNG tạo deadline alert giả. Flag rõ "vô thời hạn" cho SME + 1 nhắc review/năm (tùy chọn). Vẫn track nghĩa vụ định kỳ khác (thanh toán) nếu có. Tinh thần D-08: không bịa deadline. | **Ratified** (Kevin 2026-06-18) | 2026-06-18 |
 | DEC-021 | **Q-2 orphan amendment:** SME upload phụ lục/amendment khi chưa có HĐ gốc → KHÔNG block. Lưu với relationship pending, flag "chưa tìm thấy HĐ gốc", cho link sau (concierge/SME). Hợp DEC-012 (bỏ ma sát upload). | **Ratified** (Kevin 2026-06-18) | 2026-06-18 |
 | DEC-022 | **Q-3 conflict UI = timeline đầy đủ:** Hiển thị lịch sử thay đổi từng field (HĐ gốc → PL01 → PL02), KHÔNG chỉ final value + badge. Phục vụ audit + firm/luật sư. Tăng scope UI Sprint 2 (KHE_Designer #24 + Frontend_Admin #30). | **Ratified** (Kevin 2026-06-18) | 2026-06-18 |
+| DEC-023 | **Quota guard in MVP scope** (issue #63): Soft doc quota per tenant/month để prevent vision extraction cost runaway. `effective_quota = firm_tenant_access.custom_quota ?? tenants.doc_quota` (default 500). Calendar month reset (cron ngày 1). Hard 429 khi exceeded. Atomic UPDATE (no read-then-write TOCTOU). Bulk upload: per-file accept/reject, không fail cả batch. No quota refund on extraction failure (slot = upload accepted). D-11 mới: quota check bắt buộc trước ingest. | **Ratified** (Kevin 2026-06-19) | 2026-06-19 |
+| DEC-024 | **Firm portal descoped từ #63** → issue #65 riêng. Firm auth + `GET/PUT /firm/tenants/{id}/quota` chờ #63 schema merge xong. Sequencing: PR-A (#26 ingest) → PR-B (#62 scheduler) → #63 quota → #65 firm portal. | **Ratified** (PM triage 2026-06-19) | 2026-06-19 |
 
 **Giữ nguyên (user confirm 2026-06-10):** DEC-002 (VisionExtractionProvider Gemini+Claude), DEC-006 (Telegram), DEC-010 (NĐ 13 Phase 1).
 
@@ -202,6 +204,24 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 ## INC Log / FM Log
 
 *No incidents or failure modes yet.*
+
+---
+
+## Quota Guard Triage Log (2026-06-19)
+
+**Issue #63** — triage by Backend lead trước khi assign Windsurf. Kết quả:
+
+| Item | Decision |
+|---|---|
+| Firm portal endpoint | Descoped → #65 (separate task, dep #63) |
+| Path drift | `POST /documents/upload` → thực tế `POST /ingest/upload` — Windsurf phải verify pre-PR |
+| Sequencing | PR-A (#26) → PR-B (#62) → #63 → #65 |
+| TOCTOU | Atomic UPDATE `WHERE docs_used_month < doc_quota`, rowcount==1 gate |
+| Bulk near-quota | Per-file accept/reject array, không fail batch |
+| Quota refund on failure | No refund — slot = upload accepted |
+| DEC-016 freemium | `doc_quota` sẽ là freemium lever Phase 2 (flag only, không block MVP) |
+
+**Status #63:** `blocker:waiting-dependency` (chờ PR-A merge)
 
 ---
 
