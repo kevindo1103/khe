@@ -6,6 +6,8 @@ Covers schemas, metric normalization/matching, scoring, and report rendering.
 
 from __future__ import annotations
 
+import asyncio
+import os
 from pathlib import Path
 
 from ..schemas import (
@@ -14,7 +16,10 @@ from ..schemas import (
     DocType,
     ExtractedField,
     ExtractionResult,
+    TokenUsage,
 )
+from .. import factory
+from ..factory import ExtractionUnavailable, get_extraction_provider
 from ..benchmark import metrics
 from ..benchmark.runner import render_report
 from ..benchmark.metrics import field_match, normalize, score
@@ -122,6 +127,127 @@ def test_render_report_smoke() -> None:
     )
     md = render_report([ps], ["a note"], Path("manifest.json"))
     assert "# Benchmark results" in md and "gemini_flash" in md and "a note" in md
+
+
+# --- factory (issue #53) ----------------------------------------------------
+
+
+def _ok_result(provider: str = "fake") -> ExtractionResult:
+    r = _result({"ngay_het_han": "2026-12-31"})
+    r.provider = provider
+    r.usage = TokenUsage(input_tokens=100, output_tokens=20)  # success → tokens used
+    return r
+
+
+def _err_result(provider: str = "fake") -> ExtractionResult:
+    # Mirrors providers.base.empty_result: warning + zero tokens.
+    return ExtractionResult(
+        doc_type=DocType.OTHER, fields={}, provider=provider,
+        usage=TokenUsage(), warnings=[f"{provider} boom"],
+    )
+
+
+def test_is_error_distinguishes_failure_from_needs_review() -> None:
+    assert _err_result().is_error is True
+    # A successful extraction that flags fields for review is NOT an error.
+    ok = _ok_result()
+    assert ok.is_error is False and ok.any_low_confidence is False
+    # warning present but tokens consumed → not a hard failure.
+    ok.warnings = ["partial page"]
+    assert ok.is_error is False
+
+
+def test_resolve_chain_prefers_then_defaults() -> None:
+    assert factory._resolve_chain("gemini_flash") == ("gemini_flash", "claude_haiku")
+    assert factory._resolve_chain("claude_haiku") == ("claude_haiku", "gemini_flash")
+    # prefer outside the default chain still leads, defaults follow.
+    assert factory._resolve_chain("claude_sonnet")[0] == "claude_sonnet"
+
+
+def test_get_provider_unknown_prefer_raises() -> None:
+    try:
+        get_extraction_provider("does_not_exist")
+    except ValueError as exc:
+        assert "Unknown provider" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected ValueError")
+
+
+def test_get_provider_unavailable_when_no_keys() -> None:
+    saved = {k: os.environ.pop(k, None)
+             for k in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY")}
+    try:
+        get_extraction_provider()
+    except ExtractionUnavailable as exc:
+        assert "No vision-extraction provider configured" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected ExtractionUnavailable")
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+
+
+class _FakeProvider:
+    """Minimal VisionExtractionProvider for factory wiring tests (no SDK/keys)."""
+
+    def __init__(self, name: str, *, fail: bool) -> None:
+        self.name = name
+        self._fail = fail
+        self.calls = 0
+
+    async def extract(self, image_bytes: bytes, doc_type: str = "auto") -> ExtractionResult:
+        self.calls += 1
+        return _err_result(self.name) if self._fail else _ok_result(self.name)
+
+
+def _with_registry(entries: dict, fn):
+    saved = factory._REGISTRY.copy()
+    factory._REGISTRY.clear()
+    factory._REGISTRY.update(entries)
+    try:
+        return fn()
+    finally:
+        factory._REGISTRY.clear()
+        factory._REGISTRY.update(saved)
+
+
+def test_get_provider_single_when_one_configured() -> None:
+    os.environ["FAKE_PRIMARY"] = "x"
+    try:
+        prov = _with_registry(
+            {"gemini_flash": (lambda: _FakeProvider("primary", fail=False), ("FAKE_PRIMARY",))},
+            lambda: get_extraction_provider("gemini_flash"),
+        )
+        assert isinstance(prov, _FakeProvider) and prov.name == "primary"
+    finally:
+        os.environ.pop("FAKE_PRIMARY", None)
+
+
+def test_fallback_advances_only_on_hard_failure() -> None:
+    primary = _FakeProvider("primary", fail=True)
+    backup = _FakeProvider("backup", fail=False)
+    fb = factory._FallbackProvider([primary, backup])
+    assert fb.name == "fallback:primary>backup"
+    res = asyncio.run(fb.extract(b"img"))
+    assert res.provider == "backup" and res.is_error is False
+    assert primary.calls == 1 and backup.calls == 1
+
+
+def test_fallback_charges_once_on_success() -> None:
+    primary = _FakeProvider("primary", fail=False)
+    backup = _FakeProvider("backup", fail=False)
+    fb = factory._FallbackProvider([primary, backup])
+    res = asyncio.run(fb.extract(b"img"))
+    assert res.provider == "primary"
+    assert primary.calls == 1 and backup.calls == 0  # backup never touched
+
+
+def test_fallback_returns_last_error_when_all_fail() -> None:
+    a = _FakeProvider("a", fail=True)
+    b = _FakeProvider("b", fail=True)
+    res = asyncio.run(factory._FallbackProvider([a, b]).extract(b"img"))
+    assert res.is_error is True and res.provider == "b"
 
 
 def _run_all() -> None:
