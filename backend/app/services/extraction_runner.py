@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.db.database import get_tenant_session
 from app.models.tenant import Document, Event, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
+from app.services.obligation_engine import derive_obligations
 from modules.extraction import CANONICAL_FIELDS, ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,9 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # Single commit: DELETE + INSERTs + UPDATE + audit Event.
         db.commit()
+
+        # Derive obligations from the freshly extracted terms (chain-aware).
+        derive_obligations(db, tenant_id, doc_id)
     finally:
         db.close()
 

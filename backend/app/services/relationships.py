@@ -462,4 +462,12 @@ def confirm_relationship(
     # Trigger chain resolution for the source document.
     resolve_chain(db, tenant_id, rel.from_doc_id)
 
+    # Re-derive obligations for the chain (full re-resolution path #61).
+    # Lazy import to break the circular dependency with the obligation engine.
+    from app.services.obligation_engine import derive_obligations
+
+    derive_obligations(db, tenant_id, rel.from_doc_id)
+    if rel.to_doc_id:
+        derive_obligations(db, tenant_id, rel.to_doc_id)
+
     return rel
