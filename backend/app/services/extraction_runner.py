@@ -65,8 +65,12 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         # 4. Get provider.
         try:
             provider = get_extraction_provider()
-        except ExtractionUnavailable:
-            _mark_failed(db, doc_id, tenant_id, "No vision-extraction provider configured")
+        except ExtractionUnavailable as exc:
+            # Preserve the factory's detail so the Event payload names exactly
+            # which env vars were missing — turns #79-style mysteries into a
+            # self-explaining audit row. The factory message itself never
+            # contains a key value, only the env-var NAMES the caller must set.
+            _mark_failed(db, doc_id, tenant_id, f"No vision-extraction provider configured: {exc}")
             return
 
         # 5. Extract. Provider is async; bridge inside this sync thread.

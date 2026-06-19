@@ -127,6 +127,19 @@ async def lifespan(app: FastAPI):
     init_tenant_db(settings.DEFAULT_TENANT_ID)
     _seed_uat_tenant()
 
+    # Boot-time visibility for extraction provider env (NĐ 13: no key VALUES logged).
+    # Hits journald so Infra/QC can spot a missing-key deploy without first-upload UX.
+    _gem = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    _cla = bool(os.environ.get("CLAUDE_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+    print(
+        f"[Main] Extraction providers configured: "
+        f"gemini_flash={'yes' if _gem else 'NO'}, "
+        f"claude_haiku/sonnet={'yes' if _cla else 'NO'}. "
+        + ("" if (_gem or _cla) else
+           "WARNING: every upload will status=failed until systemd EnvironmentFile= "
+           "loads the .env into the process env (see GET /health/extraction).")
+    )
+
     # Start daily reminder scheduler (#62). Disabled in test environment to avoid
     # AsyncIOScheduler side-effects during test runs.
     if settings.ENVIRONMENT != "test":
