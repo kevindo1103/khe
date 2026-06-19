@@ -15,10 +15,10 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/query", response_model=ChatQueryOut)
-def query_chat(
+async def query_chat(
     payload: ChatQueryIn,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Answer a natural-language question using only extracted tenant data."""
-    return answer_question(db, user.tenant_id, payload.question)
+    return await answer_question(db, user.tenant_id, payload.question)
