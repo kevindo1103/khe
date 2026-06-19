@@ -317,15 +317,20 @@ def _tool_search_clauses(db: Session, tenant_id: str, query_text: str, doc_hint:
 # ---------------------------------------------------------------------------
 
 def _get_llm_client():
-    """Lazy import google-genai so `import main` works without an API key."""
+    """Lazy import google-genai so `import main` works without an API key.
+
+    Returns None on any init failure so the chat path degrades gracefully to a
+    deterministic fallback instead of surfacing a 500 to the PWA.
+    """
     try:
         from google import genai
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError(
-            "google-genai SDK not installed — `pip install google-genai` to use Gemini."
-        ) from exc
+    except Exception:  # noqa: BLE001 - graceful degradation
+        return None
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    return genai.Client(api_key=api_key)
+    try:
+        return genai.Client(api_key=api_key)
+    except Exception:  # noqa: BLE001 - missing key / invalid credentials
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -335,10 +340,19 @@ def _get_llm_client():
 async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict]:
     """Ask the LLM which tools to call. Returns a list of {"name": ..., "args": ...}.
 
+    Any failure (missing SDK, network, malformed JSON, invalid tool name) returns []
+    so the caller falls back to D-08 instead of raising a 500.
+
     Deterministic tests can monkeypatch this function; no live call is required.
     """
     client = _get_llm_client()
-    from google.genai import types
+    if client is None:
+        return []
+
+    try:
+        from google.genai import types
+    except Exception:  # noqa: BLE001
+        return []
 
     system_prompt = (
         "Bạn là trợ lý hợp đồng. Dựa vào câu hỏi của người dùng, quyết định nên gọi "
@@ -354,17 +368,21 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
         + "\n\nTrả về JSON với tool_calls."
     )
 
-    config = types.GenerateContentConfig(
-        system_instruction=system_prompt,
-        response_mime_type="application/json",
-        temperature=0.0,
-    )
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[types.Part.from_text(text=user_prompt)],
-        config=config,
-    )
-    text = getattr(response, "text", "") or ""
+    try:
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            temperature=0.0,
+        )
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[types.Part.from_text(text=user_prompt)],
+            config=config,
+        )
+        text = getattr(response, "text", "") or ""
+    except Exception:  # noqa: BLE001 - network/5xx/timeout/rate-limit
+        return []
+
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
@@ -389,14 +407,35 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
 # LLM step 2: format answer from tool results
 # ---------------------------------------------------------------------------
 
+def _format_answer_deterministic(tool_results: list[dict]) -> str:
+    """Fallback formatter used when the LLM formatting step fails.
+
+    Returns a plain Vietnamese answer built only from the provided tool results.
+    """
+    parts = []
+    for r in tool_results:
+        label = r.get("field_name", "")
+        if r["type"] == "clause":
+            label = f"{r.get('clause_num') or ''} {r.get('clause_title') or ''}".strip() or "điều khoản"
+        parts.append(f"{label}: {r['value']}")
+    return "\n".join(parts)
+
+
 async def _format_answer(question: str, tool_results: list[dict]) -> str:
     """Ask the LLM to format a concise Vietnamese answer from the tool results.
 
     D-06/D-08: the LLM is instructed to only use the provided data and never
-    fabricate legal interpretations.
+    fabricate legal interpretations. Falls back to a deterministic formatter on
+    any failure so the endpoint never raises a 500.
     """
     client = _get_llm_client()
-    from google.genai import types
+    if client is None:
+        return _format_answer_deterministic(tool_results)
+
+    try:
+        from google.genai import types
+    except Exception:  # noqa: BLE001
+        return _format_answer_deterministic(tool_results)
 
     system_prompt = (
         "Bạn là trợ lý hợp đồng. Dựa vào dữ liệu công cụ được cung cấp, hãy trả lời "
@@ -409,17 +448,22 @@ async def _format_answer(question: str, tool_results: list[dict]) -> str:
         + json.dumps(tool_results, ensure_ascii=False, indent=2)
     )
 
-    config = types.GenerateContentConfig(
-        system_instruction=system_prompt,
-        response_mime_type="text/plain",
-        temperature=0.0,
-    )
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[types.Part.from_text(text=user_prompt)],
-        config=config,
-    )
-    return (getattr(response, "text", "") or "").strip()
+    try:
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="text/plain",
+            temperature=0.0,
+        )
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[types.Part.from_text(text=user_prompt)],
+            config=config,
+        )
+        text = (getattr(response, "text", "") or "").strip()
+    except Exception:  # noqa: BLE001 - network/5xx/timeout/rate-limit
+        return _format_answer_deterministic(tool_results)
+
+    return text or _format_answer_deterministic(tool_results)
 
 
 # ---------------------------------------------------------------------------

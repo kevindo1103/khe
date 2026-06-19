@@ -278,6 +278,34 @@ class TestChatQuery:
         assert data["found"] is False
         assert "Không tìm thấy" in data["answer"]
 
+    def test_llm_unavailable_select_tools_returns_empty(self, auth_client, db, monkeypatch):
+        """When the LLM client cannot be created, tool selection returns [] → D-08."""
+        _seed(db)
+        monkeypatch.setattr(chat_query, "_get_llm_client", lambda: None)
+
+        r = auth_client.post("/chat/query", json={"question": "hợp đồng lease_2026 hết hạn khi nào?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert data["answer"] == "Không tìm thấy thông tin này trong hồ sơ của bạn."
+
+    def test_llm_format_failure_uses_deterministic_fallback(self, auth_client, db, monkeypatch):
+        """When the LLM formatter fails, the endpoint still returns data from tool results."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": "lease_2026"}}]),
+        )
+        monkeypatch.setattr(chat_query, "_get_llm_client", lambda: None)
+
+        r = auth_client.post("/chat/query", json={"question": "hợp đồng lease_2026 hết hạn khi nào?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert "2026-12-31" in data["answer"]
+        assert any(s["type"] == "term" for s in data["sources"])
+
 
 class TestDocumentClauseCount:
     def test_clause_count_in_detail(self, auth_client, db):
