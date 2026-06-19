@@ -380,6 +380,27 @@ def get_document(
         .all()
     )
 
+    # When the doc failed extraction, surface the reason from the latest
+    # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
+    failure_reason: str | None = None
+    if doc.status == "failed":
+        latest_fail = (
+            db.query(Event)
+            .filter(
+                Event.tenant_id == user.tenant_id,
+                Event.entity_type == "document",
+                Event.entity_id == doc.id,
+                Event.event_type == "extraction_failed",
+            )
+            .order_by(Event.created_at.desc(), Event.id.desc())
+            .first()
+        )
+        if latest_fail and latest_fail.payload:
+            try:
+                failure_reason = json.loads(latest_fail.payload).get("reason")
+            except (ValueError, TypeError):
+                failure_reason = None
+
     return DocumentDetailOut(
         id=doc.id,
         file_name=doc.file_name,
@@ -389,6 +410,7 @@ def get_document(
         file_url=f"/documents/{doc.id}/file",
         terms=[TermOut.model_validate(t) for t in terms],
         obligations=[ObligationOut.model_validate(o) for o in obligations],
+        failure_reason=failure_reason,
     )
 
 
