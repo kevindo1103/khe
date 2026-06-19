@@ -140,7 +140,19 @@ class TestDeriveObligations:
         assert len(obs) == 1
         assert obs[0].obligation_type == "open_ended_review"
         assert obs[0].due_date is None
+        # DEC-020: annual review nudge → 365 days, not the `once` default of 30.
+        assert obs[0].remind_before_days == 365
         assert "vô thời hạn" in obs[0].description
+
+    def test_once_obligation_uses_30day_window(self, db):
+        """Regression: a `once` obligation keeps the 30-day reminder window
+        (the DEC-020 365d branch is for open_ended_review only)."""
+        doc = _make_doc(db, "once_30d.pdf")
+        _make_term(db, doc.id, "ngay_het_han", "2026-12-31")
+        derive_obligations(db, "obligation-tenant", doc.id)
+        ob = db.query(Obligation).filter(Obligation.document_id == doc.id).first()
+        assert ob.obligation_type == "once"
+        assert ob.remind_before_days == 30
 
     def test_insufficient_data_skips(self, db):
         doc = _make_doc(db, "insufficient.pdf")
