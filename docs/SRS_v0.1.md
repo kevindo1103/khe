@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.2 |
-| Trạng thái | Fold cycle 3 — ingest endpoints + relationships + CANONICAL_FIELDS + quota schema + extraction module API |
+| Phiên bản | v0.3 |
+| Trạng thái | Fold DEC-026 (chat LLM function-calling + clauses table per issue #100) |
 | Owner | KHE_Docs |
-| Source of truth | BRD v0.4 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
+| Source of truth | BRD v0.5 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
 
 ---
 
@@ -21,6 +21,7 @@
 |---|---|---|---|
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Fold Sprint 0 backend scaffold: API contract `/auth/login` + `/health`, JWT claims, master.db (4 bảng) + per-tenant (7 bảng) schema. Fold FR-OB-01 derivation rule (entry 9). |
 | v0.2 | 2026-06-19 | KHE_Docs | Cycle 3 fold (5 Backend + 1 AI + 1 PM comments). Add §2 ingest/documents/relationships API (PR #54 + #59 + #60 — staging live). Add §4 tenants quota columns (FR-TN). Update §5.2 terms CANONICAL_FIELDS 7 + §5.1 doc_type enum. Add §5.8 `document_relationships` table. Add §9 Extraction module API (`get_extraction_provider` factory, `ExtractionUnavailable`, `is_error` vs `needs_review`). Add §10 Audit Events (`extraction_performed` w/ `consent_reference`, term `updated` PII). |
+| v0.3 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §5.9 `clauses` table per-tenant (`doc_id` FK CASCADE, `clause_num`, `title`, `content`, `page_num`; idx_clauses_doc; migration `tenant_003_clauses.py` down_revision `tenant_002`). Populated từ `VisionExtractionResult.clauses[]` (same vision call). Powers `search_clauses` tool in FR-CQ-02. |
 
 ---
 
@@ -306,6 +307,30 @@ Edges between Documents (amendments, framework references). AI suggests `pending
 
 **Open caveat (#61):** re-extraction may invalidate `is_superseded` invariants. Full re-resolution lands with #26.
 
+### 5.9 `clauses` (Backend #99, DEC-026)
+
+Per-Document clause storage — text nguyên gốc (text-as-extracted), phục vụ `search_clauses` tool (FR-CQ-02). Populated từ `VisionExtractionResult.clauses[]` (cùng vision call, không tốn thêm API).
+
+| Column | Type | Note |
+|---|---|---|
+| `id` | INTEGER | PK AUTOINCREMENT |
+| `doc_id` | INTEGER | NOT NULL, FK → `documents(id)` **ON DELETE CASCADE** |
+| `clause_num` | TEXT | NULLABLE — vd `"Điều 8"`, `"Khoản 2.3"` |
+| `title` | TEXT | NULLABLE — vd `"Chấm dứt hợp đồng"` |
+| `content` | TEXT | NOT NULL — text nguyên gốc, đầy đủ |
+| `page_num` | INTEGER | NULLABLE — vị trí trong file gốc |
+| `created_at` | DATETIME | DEFAULT `CURRENT_TIMESTAMP` |
+
+**Index:** `idx_clauses_doc ON clauses(doc_id)`.
+
+**Migration:** `tenant_003_clauses.py` (`down_revision = "tenant_002"`).
+
+**Distinction vs `terms`:**
+- `terms` = EAV structured fields (CANONICAL_FIELDS vocab, date/numeric coercion).
+- `clauses` = raw text passages preserving original wording. Search by full-text (LIKE / FTS5 future), not field_name.
+
+**Tool consumption:** `search_clauses(query, doc_hint)` — substring/full-text search trong `content`; filter `doc_hint` qua join `documents.file_name LIKE` hoặc `clauses.doc_id IN (...)`.
+
 ---
 
 ## 6. Derivation rules — Obligation engine
@@ -419,4 +444,4 @@ Events in per-tenant `events` ledger. Append-only.
 
 ---
 
-*Hết v0.2 — cycle 3 fold: ingest/documents/relationships endpoints + CANONICAL_FIELDS + DocType enum + quota schema + extraction module API + Audit Events. Bước kế tiếp: Sprint 1 obligation engine + reminder scheduler spec (issue #26).*
+*Hết v0.3 — DEC-026 fold: §5.9 clauses table. Bước kế tiếp: Sprint 1 obligation engine + reminder scheduler spec (issue #26) + chat LLM API surface (issue #99).*
