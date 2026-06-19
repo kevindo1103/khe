@@ -51,6 +51,10 @@ def to_result(
         doc_type=parsed.doc_type,
         doc_type_confidence=parsed.doc_type_confidence,
         fields=parsed.as_field_map(),
+        # DEC-026: Gemini uses ContractExtractionLLMFull (has clauses); Claude uses
+        # the flat base ContractExtractionLLM (no clauses — grammar compiler timeout).
+        # getattr defaults to [] so both paths produce a valid ExtractionResult.
+        clauses=list(getattr(parsed, "clauses", [])),
         provider=provider,
         model=model,
         latency_ms=round(latency_ms, 2),

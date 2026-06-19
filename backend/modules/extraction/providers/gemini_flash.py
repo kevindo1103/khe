@@ -1,7 +1,10 @@
 """GeminiFlashProvider — primary extractor (~150đ/doc target).
 
 Gemini 2.5 Flash via google-genai. Single `generate_content` call with the image
-inline + structured output (response_schema=ContractExtractionLLM) → response.parsed.
+inline + structured output (response_schema=ContractExtractionLLMFull) → response.parsed.
+Uses ContractExtractionLLMFull (with clauses list) because Gemini handles nested object
+arrays fine. Claude providers use the flat ContractExtractionLLM base (grammar timeout
+on list[ClauseItem]).
 (gemini-2.0-flash was retired by Google — returns 404.)
 
 Pricing (verified 2026-06-11): $0.30 in / $2.50 out per 1M tokens.
@@ -14,7 +17,7 @@ import os
 import time
 
 from ..prompts import SYSTEM_GUARDRAIL, build_instruction
-from ..schemas import ContractExtractionLLM, ExtractionResult, TokenUsage
+from ..schemas import ContractExtractionLLMFull, ExtractionResult, TokenUsage
 from .base import cost_vnd, empty_result, sniff_mime, to_result
 
 
@@ -46,7 +49,7 @@ class GeminiFlashProvider:
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_GUARDRAIL,
             response_mime_type="application/json",
-            response_schema=ContractExtractionLLM,
+            response_schema=ContractExtractionLLMFull,
             temperature=0.0,  # deterministic extraction (Gemini still accepts this)
         )
         contents = [
@@ -70,7 +73,7 @@ class GeminiFlashProvider:
         latency_ms = (time.perf_counter() - started) * 1000
 
         parsed = getattr(response, "parsed", None)
-        if not isinstance(parsed, ContractExtractionLLM):
+        if not isinstance(parsed, ContractExtractionLLMFull):
             return empty_result(
                 provider=self.name,
                 model=self.model,

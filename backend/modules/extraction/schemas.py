@@ -77,15 +77,44 @@ class TokenUsage(BaseModel):
     output_tokens: int = 0
 
 
-# --- LLM-facing structured-output schema -----------------------------------
-# Flat object, fixed keys, no recursion → compatible with Claude structured
-# outputs and Gemini response_schema. The model fills value/confidence/needs_review
-# per field. `doi_tac` is a single text field (semicolon-separated if multiple
-# parties) to stay within structured-output constraints.
+class ClauseItem(BaseModel):
+    """One numbered clause/article lifted verbatim from the document (DEC-026).
+
+    Feeds the `clauses` table (Backend #99) so chat function-calling has full clause
+    text. READ-ONLY like every other extracted value (D-06): `content` is the clause
+    text exactly as written — never translated, summarized, or paraphrased."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    num: Optional[str] = Field(
+        default=None, description='Số hiệu điều/khoản/mục, vd "Điều 8", "Khoản 2.3", "Mục IV". null nếu không có.'
+    )
+    title: Optional[str] = Field(
+        default=None, description='Tiêu đề điều khoản, vd "Chấm dứt hợp đồng". null nếu không có.'
+    )
+    content: str = Field(
+        description="Toàn văn điều khoản, giữ nguyên tiếng Việt — KHÔNG dịch/tóm tắt."
+    )
+
+
+# --- LLM-facing structured-output schemas ----------------------------------
+# Two tiers:
+#
+# ContractExtractionLLM — **flat**, no nested arrays.
+#   Used by Claude providers (claude-haiku-4-5 / claude-sonnet-4-6 via messages.parse /
+#   output_format). Claude's grammar compiler times out on list[ClauseItem], so the
+#   base schema stays flat — same constraint as the original design.
+#   Result: ExtractionResult.clauses = [] for Claude fallbacks.
+#
+# ContractExtractionLLMFull(ContractExtractionLLM) — adds clauses list.
+#   Used by GeminiFlashProvider (response_schema=). Gemini handles nested object
+#   arrays without issue. Both Terms AND clauses come back in ONE vision call
+#   (DEC-026 — no extra API call). `to_result()` reads clauses via getattr so it
+#   works with both schemas.
 
 
 class ContractExtractionLLM(BaseModel):
-    """Exactly what we ask the model to emit. Mapped → ExtractionResult by providers."""
+    """Flat schema for Claude structured outputs (output_format=). No nested arrays."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -106,6 +135,18 @@ class ContractExtractionLLM(BaseModel):
         return {name: getattr(self, name) for name in CANONICAL_FIELDS}
 
 
+class ContractExtractionLLMFull(ContractExtractionLLM):
+    """Extended schema for Gemini (response_schema=). Adds clauses list (DEC-026).
+
+    Gemini supports nested object arrays; Claude grammar compiler times out on
+    list[ClauseItem], so Claude providers continue using the base flat schema."""
+
+    clauses: list[ClauseItem] = Field(
+        default_factory=list,
+        description="Danh sách MỌI điều/khoản/mục trong tài liệu, nguyên văn (DEC-026).",
+    )
+
+
 class ExtractionResult(BaseModel):
     """Provider output consumed by the rest of Khế.
 
@@ -118,6 +159,9 @@ class ExtractionResult(BaseModel):
     doc_type: DocType
     doc_type_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     fields: dict[str, ExtractedField] = Field(default_factory=dict)
+    # Full clause list from the same vision call (DEC-026). Default empty →
+    # backward-compatible: existing callers that ignore `clauses` keep working.
+    clauses: list[ClauseItem] = Field(default_factory=list)
 
     provider: str = ""             # e.g. "gemini_flash"
     model: str = ""                # e.g. "gemini-2.5-flash"

@@ -37,6 +37,18 @@ Phân loại doc_type:
 - khac: không thuộc 3 loại trên (đặt needs_review cao).
 """
 
+# Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
+# array of the response schema — no extra API call.
+_CLAUSES_SPEC = """\
+Ngoài ra, bóc TẤT CẢ điều/khoản/mục có đánh số thành danh sách "clauses":
+- Mỗi phần tử gồm: num (số hiệu, vd "Điều 1", "Khoản 2.3", "Mục IV"), title (tiêu đề
+  nếu có), content (TOÀN VĂN nội dung điều khoản, nguyên gốc).
+- Bao gồm MỌI Điều / Khoản / Mục xuất hiện trong tài liệu, theo đúng thứ tự.
+- Nếu điều khoản không có tiêu đề, đặt title = null.
+- GIỮ NGUYÊN tiếng Việt — TUYỆT ĐỐI không dịch, không tóm tắt, không diễn giải (D-06).
+- Nếu tài liệu không có điều khoản đánh số, để clauses = [].
+"""
+
 
 def build_instruction(doc_type: str = "auto") -> str:
     """Main user-turn instruction. `doc_type` is a hint; the model still returns its
@@ -49,6 +61,6 @@ def build_instruction(doc_type: str = "auto") -> str:
         )
     return (
         "Đọc ảnh tài liệu hợp đồng bên dưới và bóc tách thông tin theo schema JSON yêu cầu.\n"
-        f"{hint}\n{_FIELD_SPEC}\n"
+        f"{hint}\n{_FIELD_SPEC}\n{_CLAUSES_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )
