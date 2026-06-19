@@ -73,6 +73,7 @@ jobs:
              [ -d /opt/khe/backend-staging/venv ] || python3 -m venv /opt/khe/backend-staging/venv"
 
           rsync -az --delete --exclude=venv --exclude=.env \
+            --exclude=master.db --exclude='tenants/' --exclude='storage/' \
             -e "ssh -i ~/.ssh/deploy_key" \
             ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend-staging/"
 
