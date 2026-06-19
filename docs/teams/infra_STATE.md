@@ -167,6 +167,8 @@ server {
     ssl_certificate /etc/letsencrypt/live/khe.iceflow.cloud/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/khe.iceflow.cloud/privkey.pem;
 
+    client_max_body_size 50M;  # PDF upload limit (#88)
+
     root /opt/khe/frontend;
     index index.html;
 
@@ -188,6 +190,8 @@ server {
 
     ssl_certificate /etc/letsencrypt/live/staging.khe.iceflow.cloud/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/staging.khe.iceflow.cloud/privkey.pem;
+
+    client_max_body_size 50M;  # PDF upload limit (#88)
 
     root /opt/khe/frontend-staging;
     index index.html;
