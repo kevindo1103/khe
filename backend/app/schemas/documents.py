@@ -30,6 +30,7 @@ class DocumentListItem(BaseModel):
     needs_review: bool = False
     term_count: int = 0
     obligation_count: int = 0
+    clause_count: int = 0
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
