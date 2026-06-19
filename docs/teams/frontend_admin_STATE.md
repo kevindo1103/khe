@@ -72,6 +72,11 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - **Note:** this is debt from my #47 scaffold (shipped Bearer before #46 cookie migration). Lesson: re-verify auth contract when backend changes it.
 - Await Windsurf PR → review + staging verify per #89 repro.
 
+### 2026-06-19 — #86 dep: Admin `base:'/admin/'` (DEC-025 routing)
+- Infra #86 blocked on FE adding `base:'/admin/'` to vite.config (PWA→`/`, Admin→`/admin`). Verified: no base today, routes already `/admin/*`-prefixed, no BrowserRouter basename → 1-line change, no router refactor.
+- **Folded into #90** (one Admin staging-readiness PR: cookie-auth + base). Commented #86 with lockstep coordination: #70 deploy/vhost fix → #90 merge → Infra nginx `/admin`+`/` blocks → joint verify.
+- No PWA dep on FE side.
+
 ## Open dependencies
 
 | Dep | Status | Note |
