@@ -24,7 +24,11 @@ def extraction_config_diagnostic():
 
     Wired for #79: lets QC self-diagnose `status=failed` without VPS access.
     """
-    if settings.ENVIRONMENT == "production":
+    # Allowlist (not denylist) — fails closed on unknown / mistyped ENVIRONMENT
+    # values (e.g. "prod", "Production"). Per QC review on #80. Info leak here
+    # is bounded to env-var NAMES that already live in the repo, but
+    # defense-in-depth wins over a one-character config typo.
+    if settings.ENVIRONMENT not in {"development", "staging", "test", "local"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
 
     # Mirror the factory _REGISTRY env-var tuples without importing it
