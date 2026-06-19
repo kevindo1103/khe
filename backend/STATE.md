@@ -20,7 +20,9 @@
 |---|---|---|---|---|
 | 1 | Per-tenant Alembic foundation | #10 | `windsurf/feat-backend-tenant-alembic-v2` | ✅ **merged → staging** (PR #42 `11a24a9`, #10 closed) |
 | 2 | Consent gate + full tenant_002 schema | #22 | `windsurf/feat-backend-tenant002-consent` (PR-A) | ✅ **merged → staging** (PR #52 `824f660`, #22 closed) |
-| 3 | Doc relationships + chain logic (DEC-019/020/021) | #50 | `windsurf/feat-backend-doc-relationships` (PR #59) | 🟠 **changes requested** — `resolve_chain` orders by `created_at` not amends-topology → wrong winner in DEC-021 orphan case |
+| 3 | Doc relationships + chain logic (DEC-019/020/021) | #50 | `windsurf/feat-backend-doc-relationships` (PR #59) | ✅ **merged → staging** (`072d4c8`, #50 closed) — lead hotfix applied |
+
+> **PR #59 (#50) — merged after lead hotfix** (`14db75d`, applied by lead since Windsurf was on #25 PR-B; authorized by Kevin). Fixed: chain order = amends topology not `created_at` (DEC-021 orphan winner, my finding), multi-parent `dict[int,list[int]]` (PM blocker), `references_framework` classification, late-link matching, 422→400. +3 tests, 64/64, CI green. New API: `GET`/`PATCH /documents/{id}/relationships` (DOCS_INBOX #1 posted). Deferred (Sprint 2/follow-up): supersedes/renews/related types, DEC-022 conflict UI, `_log_event` DRY, two `/documents`-prefix routers.
 | 4 | Ingest core (upload/storage/CRUD/consent gate) | #25 PR-A | `windsurf/feat-backend-ingest-core` (PR #54) | ✅ **merged → staging** (`badfd32`) |
 | 4b | Extraction worker (BackgroundTasks) | #25 PR-B | `windsurf/feat-backend-ingest-extraction` | 🟡 **assigned/UNBLOCKED** — factory on staging (#58 `9462f61`) + PR-A merged; kickoff posted |
 
