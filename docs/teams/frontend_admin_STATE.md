@@ -114,6 +114,12 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Re-raised list-endpoint ask on #99: either add `clause_count` to list query (grouped COUNT, no N+1) OR defer list column to Phase 2 (narrows "Both" → detail-only). Awaiting PM/Backend call.
 - Note: `failure_reason` also shipped in #104 (#79 follow-up) — added to FE types for parity, render optional.
 
+### 2026-06-19 — PR #107 (clause_count detail header) MERGED
+- Reviewed #107: 2 files FE-only (+5), types mirror backend exactly (`clause_count`/`failure_reason`), graceful `?? 0`, no DocumentList changes, CI 3/3 green, clean base staging.
+- Approved (as comment — self-approve blocked) → **squash-merged `2f5c223`**. #106 closed.
+- Detail header now shows 3 counts: 📋 thuộc tính · ⏰ nghĩa vụ · 📄 điều khoản.
+- **List-column half:** still deferred, awaiting PM/Backend call on #99 (add `clause_count` to list endpoint vs defer Phase 2).
+
 ## Open dependencies
 
 | Dep | Status | Note |
