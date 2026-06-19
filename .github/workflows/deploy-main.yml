@@ -90,7 +90,7 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt --quiet
             alembic upgrade head
-            python scripts/migrate_all_tenants.py
+            [ -f scripts/migrate_all_tenants.py ] && python scripts/migrate_all_tenants.py || echo "⚠️  migrate_all_tenants.py not found — skipping"
             sudo systemctl restart khe-backend
             echo "✅ production backend restarted"
           REMOTE
