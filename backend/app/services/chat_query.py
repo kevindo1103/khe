@@ -23,6 +23,12 @@ from app.models.tenant import Clause, Document, Obligation, Term
 logger = logging.getLogger(__name__)
 _NOT_FOUND = "Không tìm thấy thông tin này trong hồ sơ của bạn."
 
+# Canonical party field name.  `CANONICAL_FIELDS` in `modules/extraction/schemas.py`
+# lists `doi_tac` as the single party/bên ký field, so no alias expansion is needed.
+PARTY_FIELDS: tuple[str, ...] = ("doi_tac",)
+
+# Max rows returned by search_terms before truncation.
+_MAX_TERM_ROWS = 10
 
 # ---------------------------------------------------------------------------
 # LIKE wildcard escaping
@@ -58,8 +64,18 @@ _TOOLS = [
                         "type": ["string", "null"],
                         "description": "Từ khóa để tìm trong giá trị trường (field_value) — dùng khi người dùng tìm theo tên công ty/đối tác trong dữ liệu, ví dụ: 'ALASKA'. Không dùng cùng lúc với doc_hint.",
                     },
+                    "party_filter": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Lọc tài liệu theo đối tác/công ty — tìm docs có DOI_TAC chứa chuỗi này, "
+                            "sau đó trả field_name trên những docs đó. "
+                            "Dùng khi user hỏi về field của hợp đồng với công ty cụ thể. "
+                            "Ví dụ: party_filter='ALASKA' để tìm ngày hiệu lực của HĐ với ALASKA. "
+                            "Null nếu không lọc theo đối tác."
+                        ),
+                    },
                 },
-                "required": ["field_name", "doc_hint", "value_contains"],
+                "required": ["field_name", "doc_hint", "value_contains", "party_filter"],
             },
         },
     },
@@ -215,53 +231,59 @@ def _tool_search_terms(
     field_name: str,
     doc_hint: str | None,
     value_contains: str | None = None,
+    party_filter: str | None = None,
 ) -> list[dict]:
-    """Return term rows for a canonical field, optionally scoped to a document hint or value substring."""
-    # Cross-document value search: when user asks by party/company/value, not filename.
-    if value_contains and not doc_hint:
-        escaped = _escape_like(value_contains)
-        rows = (
-            db.query(Term, Document)
-            .join(Document, Document.id == Term.document_id)
-            .filter(
-                Term.tenant_id == tenant_id,
-                Term.field_name == field_name,
-                Term.is_superseded == False,
-                Term.field_value.ilike(f"%{escaped}%", escape="\\"),
-            )
-            .order_by(Term.created_at.desc())
-            .limit(10)
-            .all()
-        )
-        results = []
-        for term, doc in rows:
-            if not term.field_value:
-                continue
-            results.append(
-                {
-                    "type": "term",
-                    "document_id": doc.id,
-                    "file_name": doc.file_name,
-                    "field_name": term.field_name,
-                    "value": term.field_value,
-                }
-            )
-        return results
+    """Return term rows for a canonical field, optionally scoped to a document hint, value substring, or party filter.
 
+    All filters are composed with AND. `value_contains` is a substring filter on the
+    requested field itself (field_name), while `party_filter` is a cross-field filter
+    that restricts documents by their party field(s) before returning the requested field.
+    """
     query = db.query(Term, Document).join(
         Document, Document.id == Term.document_id
     ).filter(
         Term.tenant_id == tenant_id,
         Term.field_name == field_name,
         Term.is_superseded == False,
+        Term.field_value.isnot(None),
+        Term.field_value != "",
     )
+
     if doc_hint:
         doc = _find_document_by_hint(db, tenant_id, doc_hint)
         if doc is None:
             return []
         query = query.filter(Term.document_id == doc.id)
 
-    rows = query.order_by(Term.created_at.desc()).all()
+    if value_contains:
+        escaped = _escape_like(value_contains)
+        query = query.filter(Term.field_value.ilike(f"%{escaped}%", escape="\\"))
+
+    # Cross-field party filter: pre-filter documents by party fields, then return the requested field.
+    if party_filter:
+        safe_party = _escape_like(party_filter)
+        party_doc_ids = [
+            row.document_id
+            for row in db.query(Term.document_id)
+            .filter(
+                Term.tenant_id == tenant_id,
+                Term.field_name.in_(PARTY_FIELDS),
+                Term.field_value.isnot(None),
+                Term.field_value != "",
+                Term.field_value.ilike(f"%{safe_party}%", escape="\\"),
+            )
+            .distinct()
+            .all()
+        ]
+        if not party_doc_ids:
+            return []
+        query = query.filter(Term.document_id.in_(party_doc_ids))
+
+    total = query.count()
+    rows = query.order_by(Term.created_at.desc()).limit(_MAX_TERM_ROWS).all()
+    if total > _MAX_TERM_ROWS:
+        logger.info(f"chat_query search_terms truncated: tenant={tenant_id} field={field_name} total={total}")
+
     results = []
     for term, doc in rows:
         if not term.field_value:
@@ -273,6 +295,17 @@ def _tool_search_terms(
                 "file_name": doc.file_name,
                 "field_name": term.field_name,
                 "value": term.field_value,
+            }
+        )
+
+    if total > _MAX_TERM_ROWS:
+        results.append(
+            {
+                "type": "truncation_hint",
+                "document_id": None,
+                "file_name": None,
+                "field_name": field_name,
+                "value": f"Tổng số: {total} kết quả, hiển thị {_MAX_TERM_ROWS} mới nhất.",
             }
         )
     return results
@@ -413,6 +446,9 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
         "Quy tắc quan trọng: doc_hint PHẢI là tên/gợi ý filename của hợp đồng (ví dụ: 'Mau HDV FLC'), "
         "KHÔNG được là tên công ty, đối tác, hay từ khóa trong câu hỏi. "
         "Khi người dùng tìm theo tên công ty/đối tác, dùng value_contains trong search_terms, KHÔNG đưa tên công ty vào doc_hint. "
+        "Khi user hỏi 'field X của hợp đồng với công ty Y', dùng party_filter=Y để lọc docs có đối tác Y, "
+        "sau đó trả field X của những docs đó. "
+        "Ví dụ: 'ngày hiệu lực HĐ với ALASKA' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA'). "
         "Không tự bịa dữ liệu."
     )
 
@@ -471,6 +507,9 @@ def _format_answer_deterministic(tool_results: list[dict]) -> str:
     """
     parts = []
     for r in tool_results:
+        if r["type"] == "truncation_hint":
+            parts.append(r["value"])
+            continue
         label = r.get("field_name", "")
         if r["type"] == "clause":
             label = f"{r.get('clause_num') or ''} {r.get('clause_title') or ''}".strip() or "điều khoản"
@@ -497,7 +536,9 @@ async def _format_answer(question: str, tool_results: list[dict]) -> str:
     system_prompt = (
         "Bạn là trợ lý hợp đồng. Dựa vào dữ liệu công cụ được cung cấp, hãy trả lời "
         "câu hỏi bằng tiếng Việt một cách ngắn gọn. Chỉ được dùng dữ liệu đã cung cấp, "
-        "không được tự bịa hoặc diễn giải pháp lý."
+        "không được tự bịa hoặc diễn giải pháp lý. "
+        "Nếu dữ liệu có truncation_hint 'Tổng số: N kết quả, hiển thị 10 mới nhất', "
+        "NÊU rõ tổng số và mời user thu hẹp, KHÔNG nói chắc chắn 'tất cả'."
     )
     user_prompt = (
         f"Câu hỏi: {question}\n\n"
@@ -551,6 +592,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                     args.get("field_name", ""),
                     args.get("doc_hint"),
                     args.get("value_contains"),
+                    args.get("party_filter"),
                 )
             )
         elif name == "search_obligations":
@@ -582,7 +624,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
     if not answer:
         answer = _NOT_FOUND
 
-    # Step 4: build provenance sources.
+    # Step 4: build provenance sources (exclude internal truncation hints from the response).
     sources = [
         {
             "type": r["type"],
@@ -594,6 +636,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
             "clause_title": r.get("clause_title"),
         }
         for r in all_results
+        if r["type"] != "truncation_hint"
     ]
 
     return {"answer": answer, "sources": sources, "found": True}

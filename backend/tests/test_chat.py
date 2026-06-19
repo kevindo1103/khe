@@ -415,6 +415,247 @@ class TestChatQuery:
         assert data["found"] is False
         assert "Không tìm thấy" in data["answer"]
 
+    def test_party_filter_returns_field_for_docs_matching_party(self, auth_client, db, monkeypatch):
+        """party_filter pre-filters docs by doi_tac, then returns requested field with provenance."""
+        _seed(db)
+        # chat-tenant lease_2026.pdf has doi_tac "Công ty A" by default from _seed.
+        # Add a second doc with ALASKA party and an ngay_hieu_luc term.
+        doc2 = Document(tenant_id="chat-tenant", file_name="alaska_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="ngay_hieu_luc",
+                field_value="2024-01-15",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hợp đồng với ALASKA có hiệu lực từ 2024-01-15."))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực của hợp đồng với ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["type"] == "term" and s["field_name"] == "ngay_hieu_luc" and s["value"] == "2024-01-15" and s["file_name"] == "alaska_lease.pdf" for s in data["sources"])
+
+    def test_party_filter_no_match_returns_d08(self, auth_client, db, monkeypatch):
+        """party_filter with no matching party returns D-08."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "NONEXISTENT"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực của hợp đồng với NONEXISTENT?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert data["answer"] == "Không tìm thấy thông tin này trong hồ sơ của bạn."
+
+    def test_party_filter_escapes_like_wildcards(self, auth_client, db, monkeypatch):
+        """A literal % or _ in party_filter must not broaden the match."""
+        _seed(db)
+        # Add a doc whose party value actually contains a literal percent.
+        doc2 = Document(tenant_id="chat-tenant", file_name="pct_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="50% ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="ngay_hieu_luc",
+                field_value="2024-02-01",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        # Search for the literal "%" — should NOT match rows that simply have any characters.
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "%"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực HĐ với đối tác chứa %?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["file_name"] == "pct_lease.pdf" for s in data["sources"])
+
+        # Search for "_" literal — should NOT match every single-char party.
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "_"}}]
+            ),
+        )
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực HĐ với đối tác chứa _?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+
+    def test_party_filter_cross_tenant_isolation(self, auth_client, db, monkeypatch):
+        """party_filter must not match party data in another tenant."""
+        _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="alaska_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        init_tenant_db("other-chat-tenant")
+        mdb = MasterSessionLocal()
+        if not mdb.query(Tenant).filter(Tenant.id == "other-chat-tenant").first():
+            mdb.add(Tenant(id="other-chat-tenant", name="Other", db_path="tenants/other-chat-tenant.db"))
+            mdb.commit()
+        if not mdb.query(TenantUser).filter(TenantUser.tenant_id == "other-chat-tenant", TenantUser.username == "otherchatuser").first():
+            mdb.add(
+                TenantUser(
+                    tenant_id="other-chat-tenant",
+                    username="otherchatuser",
+                    hashed_password=get_password_hash("otherchatpass"),
+                    role="staff",
+                )
+            )
+            mdb.commit()
+        mdb.close()
+
+        other = TestClient(app)
+        other.post(
+            "/auth/login",
+            json={"tenant_id": "other-chat-tenant", "username": "otherchatuser", "password": "otherchatpass"},
+        )
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = other.post("/chat/query", json={"question": "Ngày hiệu lực HĐ với ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert "Không tìm thấy" in data["answer"]
+
+    def test_party_filter_and_value_contains_compose(self, auth_client, db, monkeypatch):
+        """value_contains AND party_filter compose together (both filter the same result)."""
+        _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="alaska_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="ngay_hieu_luc",
+                field_value="2024-01-15",
+                confidence=0.9,
+            )
+        )
+        # Another ALASKA doc with a different ngay_hieu_luc that should be excluded by value_contains.
+        doc3 = Document(tenant_id="chat-tenant", file_name="alaska_lease_2025.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc3)
+        db.commit()
+        db.refresh(doc3)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc3.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc3.id,
+                field_name="ngay_hieu_luc",
+                field_value="2025-01-15",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": "2024", "party_filter": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực năm 2024 của hợp đồng với ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["file_name"] == "alaska_lease.pdf" for s in data["sources"])
+        assert not any(s["file_name"] == "alaska_lease_2025.pdf" for s in data["sources"])
+
 
 class TestDocumentClauseCount:
     def test_clause_count_in_detail(self, auth_client, db):
