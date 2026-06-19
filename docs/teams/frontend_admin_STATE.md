@@ -50,6 +50,13 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 **Documents:** `GET /documents/?status=&needs_review=&q=&page=&page_size=` → `{items:[{id,file_name,doc_type,status,needs_review,term_count,obligation_count,created_at}],page,page_size,total}` · `GET /documents/{id}` → `{...,file_url,terms:[{id,field_name,field_value,confidence,needs_review}],obligations:[]}` · `GET /documents/{id}/file` · `PATCH /documents/{id}/terms/{term_id}` body `{field_value}` (D-07)
 **Obligations:** `GET /obligations/?due_within=&status=&page=&page_size=` → `{items:[{id,document_id,description,obligation_type,due_date,status,remind_before_days,source_doc_chain,resolution_method,created_at}],...}` · `PATCH /obligations/{id}` body `{status∈{pending,done,cancelled}}` → `{ok,obligation}`
 
+### 2026-06-19 — M0 data screens MERGED (#69), EPIC #31 CLOSED
+- Reviewed PR #69 (4 screens + types + multipart api). CI 3/3 green, base staging, contract-accurate.
+- **Approved + merged to `staging`** (squash `66ffca9`). #67 + EPIC #31 closed.
+- M0 admin UI complete: auth + upload + list + detail (D-07 edit) + obligations (buckets + mark-done).
+- Non-blocking polish noted on #69: search debounce, wire/remove "Hủy" (→cancelled), confirm backend clears needs_review on term patch (asked Backend on DOCS_INBOX #1).
+- **Next frontend work:** firm partner portal `pages/firm/**` (FR-FP, D-09/D-10 consent) when scheduled. No open `for:frontend` tasks.
+
 ## Open dependencies
 
 | Dep | Status | Note |
