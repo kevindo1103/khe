@@ -153,6 +153,15 @@ Có hai motion đưa sản phẩm tới SME:
 - **SME-pays mở ở GĐ2** khi mở tầng soạn/review (lawyer-in-loop).
 - Tầng reminder **đẻ việc cho firm** thay vì cướp việc → firm không sợ bị thay thế.
 
+### 7.1 Billing roadmap (DEC-2026-06-19)
+
+| Phase | Billing motion | Tech |
+|---|---|---|
+| **Phase 1 (MVP)** | **Manual invoice** firm theo đầu client (~50-100k/client/năm). Cycle quý/năm. Quota guard ở backend ngăn cost runaway (FR-TN-01..03 BRD). | Excel/email invoice. Quota schema only. |
+| **Phase 2 (post-MVP)** | **Automated billing** — Stripe / VN payment gateway. Per-client metering từ quota counter. Firm self-serve subscription. | Stripe/VNPay integration. Webhook → master.db `tenants.billing_status`. |
+
+**Phase 1 cost-control:** D-11 (CLAUDE.md) bắt buộc quota check trước mọi ingest. Default quota **firm-configurable per SME** (override per tenant). Reset **calendar month — mùng 1** via APScheduler. Over-quota → **hard block 429** (no extraction proceeds — DEC-2026-06-19 ratified).
+
 ---
 
 ## 8. Phạm vi sản phẩm (MVP)
@@ -208,6 +217,7 @@ Có hai motion đưa sản phẩm tới SME:
 
 ## Changelog
 
+- **v0.2 cycle-3 fold (2026-06-19, KHE_Docs):** Add §7.1 Billing roadmap (Phase 1 manual / Phase 2 automated). Quota guard policy ratified per Kevin: firm-configurable per SME, calendar-month reset, hard block 429. Folds DOCS_INBOX comment 22.
 - **v0.2 canonical-adoption (2026-06-18, KHE_Docs):** Pulled từ PM draft branch `claude/pm-assistant` vào docs lane. File rename: `PRODUCT_STRATEGY_Khe.md` → `PRODUCT_STRATEGY_Khe_v0.2.md` (version-in-filename per docs convention). No content edits — chỉ update §0 status line. Folded DOCS_INBOX comments 13 + 14 (DEC-018 + PRODUCT_STRATEGY adoption).
 - **v0.2 (2026-06-18, KHE_PM_Assistant):** Tái cấu trúc thành **tài liệu nền độc lập** (bỏ framing thảo luận). Thêm **§2 Personas · §3 Jobs to be Done · §4 Why-How-What (Golden Circle)** + mapping WHAT→JTBD. Mục GTM motion viết lại trung tính (kênh B2B vs self-serve). Khẳng định vai trò: nền → BRD → SRS.
 - **v0.1 (2026-06-18, KHE_PM_Assistant):** Bản đầu — định vị April Dunford 5-component + Positioning Thesis; vertical chuyển OPEN (DEC-018); roadmap 3 giai đoạn + kill signals.
