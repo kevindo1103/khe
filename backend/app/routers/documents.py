@@ -32,7 +32,7 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
-from app.models.tenant import Document, Event, Term
+from app.models.tenant import Document, Event, Obligation, Term
 from app.schemas.documents import (
     BulkUploadOut,
     DocumentDetailOut,
@@ -42,6 +42,7 @@ from app.schemas.documents import (
     TermPatchIn,
     UploadOut,
 )
+from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
 
@@ -272,7 +273,7 @@ def list_documents(
     needs_review=True filters to documents with at least one term flagged for review.
     needs_review=False filters to documents with no terms flagged for review.
     """
-    # Single-query rollup: count terms and detect any needs_review flag.
+    # Single-query rollups: term count + any needs_review; obligation count.
     term_subq = (
         db.query(
             Term.document_id.label("doc_id"),
@@ -283,9 +284,24 @@ def list_documents(
         .subquery()
     )
 
+    obligation_subq = (
+        db.query(
+            Obligation.document_id.label("doc_id"),
+            func.count(Obligation.id).label("obligation_count"),
+        )
+        .group_by(Obligation.document_id)
+        .subquery()
+    )
+
     query = (
-        db.query(Document, term_subq.c.term_count, term_subq.c.has_needs_review)
+        db.query(
+            Document,
+            term_subq.c.term_count,
+            term_subq.c.has_needs_review,
+            obligation_subq.c.obligation_count,
+        )
         .outerjoin(term_subq, term_subq.c.doc_id == Document.id)
+        .outerjoin(obligation_subq, obligation_subq.c.doc_id == Document.id)
         .filter(Document.tenant_id == user.tenant_id)
     )
 
@@ -310,8 +326,9 @@ def list_documents(
     )
 
     items: list[DocumentListItem] = []
-    for doc, term_count, has_needs_review in rows:
+    for doc, term_count, has_needs_review, obligation_count in rows:
         term_count = term_count or 0
+        obligation_count = obligation_count or 0
         needs_rev = bool(has_needs_review)
         items.append(
             DocumentListItem(
@@ -321,7 +338,7 @@ def list_documents(
                 status=doc.status,
                 needs_review=needs_rev,
                 term_count=term_count,
-                obligation_count=0,  # populated in #26
+                obligation_count=obligation_count,
                 created_at=doc.created_at,
             )
         )
@@ -357,6 +374,12 @@ def get_document(
         .all()
     )
 
+    obligations = (
+        db.query(Obligation)
+        .filter(Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id)
+        .all()
+    )
+
     return DocumentDetailOut(
         id=doc.id,
         file_name=doc.file_name,
@@ -365,7 +388,7 @@ def get_document(
         created_at=doc.created_at,
         file_url=f"/documents/{doc.id}/file",
         terms=[TermOut.model_validate(t) for t in terms],
-        obligations=[],
+        obligations=[ObligationOut.model_validate(o) for o in obligations],
     )
 
 
