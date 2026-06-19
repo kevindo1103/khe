@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import date, timedelta
@@ -19,7 +20,17 @@ from sqlalchemy.orm import Session
 from app.models.tenant import Clause, Document, Obligation, Term
 
 
+logger = logging.getLogger(__name__)
 _NOT_FOUND = "Không tìm thấy thông tin này trong hồ sơ của bạn."
+
+
+# ---------------------------------------------------------------------------
+# LIKE wildcard escaping
+# ---------------------------------------------------------------------------
+
+def _escape_like(value: str, escape_char: str = "\\") -> str:
+    """Escape SQL LIKE wildcards (% _) and the escape character itself."""
+    return value.replace(escape_char, escape_char + escape_char).replace("%", escape_char + "%").replace("_", escape_char + "_")
 
 
 # ---------------------------------------------------------------------------
@@ -41,10 +52,14 @@ _TOOLS = [
                     },
                     "doc_hint": {
                         "type": ["string", "null"],
-                        "description": "Tên/gợi ý hợp đồng nếu người dùng đề cập cụ thể (ví dụ: 'lease_2026'). Null nếu không rõ.",
+                        "description": "Tên/gợi ý HỢP ĐỒNG (filename keyword) nếu người dùng đề cập cụ thể, ví dụ: 'lease_2026', 'Mau HDV FLC'. KHÔNG phải tên công ty, đối tác, hay từ khóa trong câu hỏi. Null nếu không rõ.",
+                    },
+                    "value_contains": {
+                        "type": ["string", "null"],
+                        "description": "Từ khóa để tìm trong giá trị trường (field_value) — dùng khi người dùng tìm theo tên công ty/đối tác trong dữ liệu, ví dụ: 'ALASKA'. Không dùng cùng lúc với doc_hint.",
                     },
                 },
-                "required": ["field_name", "doc_hint"],
+                "required": ["field_name", "doc_hint", "value_contains"],
             },
         },
     },
@@ -194,8 +209,45 @@ def _find_document_without_hint(db: Session, tenant_id: str) -> Document | None:
 # Tool implementations — every query MUST filter by tenant_id
 # ---------------------------------------------------------------------------
 
-def _tool_search_terms(db: Session, tenant_id: str, field_name: str, doc_hint: str | None) -> list[dict]:
-    """Return term rows for a canonical field, optionally scoped to a document hint."""
+def _tool_search_terms(
+    db: Session,
+    tenant_id: str,
+    field_name: str,
+    doc_hint: str | None,
+    value_contains: str | None = None,
+) -> list[dict]:
+    """Return term rows for a canonical field, optionally scoped to a document hint or value substring."""
+    # Cross-document value search: when user asks by party/company/value, not filename.
+    if value_contains and not doc_hint:
+        escaped = _escape_like(value_contains)
+        rows = (
+            db.query(Term, Document)
+            .join(Document, Document.id == Term.document_id)
+            .filter(
+                Term.tenant_id == tenant_id,
+                Term.field_name == field_name,
+                Term.is_superseded == False,
+                Term.field_value.ilike(f"%{escaped}%", escape="\\"),
+            )
+            .order_by(Term.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        results = []
+        for term, doc in rows:
+            if not term.field_value:
+                continue
+            results.append(
+                {
+                    "type": "term",
+                    "document_id": doc.id,
+                    "file_name": doc.file_name,
+                    "field_name": term.field_name,
+                    "value": term.field_value,
+                }
+            )
+        return results
+
     query = db.query(Term, Document).join(
         Document, Document.id == Term.document_id
     ).filter(
@@ -358,6 +410,9 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
         "Bạn là trợ lý hợp đồng. Dựa vào câu hỏi của người dùng, quyết định nên gọi "
         "công cụ nào để lấy dữ liệu từ hệ thống. Chỉ trả về JSON: "
         '{"tool_calls": [{"name": "tool_name", "args": {...}}]}. '
+        "Quy tắc quan trọng: doc_hint PHẢI là tên/gợi ý filename của hợp đồng (ví dụ: 'Mau HDV FLC'), "
+        "KHÔNG được là tên công ty, đối tác, hay từ khóa trong câu hỏi. "
+        "Khi người dùng tìm theo tên công ty/đối tác, dùng value_contains trong search_terms, KHÔNG đưa tên công ty vào doc_hint. "
         "Không tự bịa dữ liệu."
     )
 
@@ -380,12 +435,14 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
             config=config,
         )
         text = getattr(response, "text", "") or ""
-    except Exception:  # noqa: BLE001 - network/5xx/timeout/rate-limit
+    except Exception as exc:  # noqa: BLE001 - network/5xx/timeout/rate-limit
+        logger.warning(f"_select_tools LLM error: {exc}")
         return []
 
     try:
         parsed = json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        logger.warning(f"_select_tools LLM JSON decode error: {exc}")
         return []
 
     calls = parsed.get("tool_calls", []) if isinstance(parsed, dict) else []
@@ -493,6 +550,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                     tenant_id,
                     args.get("field_name", ""),
                     args.get("doc_hint"),
+                    args.get("value_contains"),
                 )
             )
         elif name == "search_obligations":

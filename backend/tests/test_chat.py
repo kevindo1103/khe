@@ -306,6 +306,115 @@ class TestChatQuery:
         assert "2026-12-31" in data["answer"]
         assert any(s["type"] == "term" for s in data["sources"])
 
+    def test_search_terms_value_contains(self, auth_client, db, monkeypatch):
+        """search_terms value_contains finds party data across documents by value substring."""
+        doc = _seed(db)
+        # Add a second doc with a different party to prove cross-document search.
+        doc2 = Document(tenant_id="chat-tenant", file_name="second.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "doi_tac", "doc_hint": None, "value_contains": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có hợp đồng với ALASKA."))
+
+        r = auth_client.post("/chat/query", json={"question": "Hợp đồng nào có đối tác là CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        sources = [s for s in data["sources"] if s["type"] == "term" and "ALASKA" in s["value"]]
+        assert sources
+        assert any(s["file_name"] == "second.pdf" for s in sources)
+
+    def test_search_terms_value_contains_cross_tenant_isolation(self, auth_client, db, monkeypatch):
+        """value_contains must not match terms in another tenant."""
+        # chat-tenant has ALASKA; other-tenant has a different party. Querying as other-tenant must return D-08.
+        _seed(db)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=db.query(Document).filter(Document.tenant_id == "chat-tenant", Document.file_name == "lease_2026.pdf").first().id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        init_tenant_db("other-chat-tenant")
+        mdb = MasterSessionLocal()
+        if not mdb.query(Tenant).filter(Tenant.id == "other-chat-tenant").first():
+            mdb.add(Tenant(id="other-chat-tenant", name="Other", db_path="tenants/other-chat-tenant.db"))
+            mdb.commit()
+        if not mdb.query(TenantUser).filter(TenantUser.tenant_id == "other-chat-tenant", TenantUser.username == "otherchatuser").first():
+            mdb.add(
+                TenantUser(
+                    tenant_id="other-chat-tenant",
+                    username="otherchatuser",
+                    hashed_password=get_password_hash("otherchatpass"),
+                    role="staff",
+                )
+            )
+            mdb.commit()
+        mdb.close()
+
+        # Seed a different party in the other tenant.
+        other_db = get_tenant_session("other-chat-tenant")
+        try:
+            other_doc = Document(tenant_id="other-chat-tenant", file_name="other.pdf", file_path="x/y.pdf", status="extracted")
+            other_db.add(other_doc)
+            other_db.commit()
+            other_db.refresh(other_doc)
+            other_db.add(
+                Term(
+                    tenant_id="other-chat-tenant",
+                    document_id=other_doc.id,
+                    field_name="doi_tac",
+                    field_value="CÔNG TY B",
+                    confidence=0.9,
+                )
+            )
+            other_db.commit()
+        finally:
+            other_db.close()
+
+        other = TestClient(app)
+        other.post(
+            "/auth/login",
+            json={"tenant_id": "other-chat-tenant", "username": "otherchatuser", "password": "otherchatpass"},
+        )
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "doi_tac", "doc_hint": None, "value_contains": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = other.post("/chat/query", json={"question": "Hợp đồng nào có đối tác ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert "Không tìm thấy" in data["answer"]
+
 
 class TestDocumentClauseCount:
     def test_clause_count_in_detail(self, auth_client, db):
