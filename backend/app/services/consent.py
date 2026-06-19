@@ -153,3 +153,40 @@ def get_active_consent_reference(db: Session, tenant_id: str, purpose: str) -> s
     if revoked is not None and revoked.created_at > logged.created_at:
         return None
     return logged.consent_reference
+
+
+def get_active_consent_channel(db: Session, tenant_id: str, purpose: str) -> Event | None:
+    """Return the latest active consent Event for (tenant, purpose).
+
+    Returns None if no consent is logged or it has been revoked.
+    Caller can read consent_reference / channel / channel_target_ref.
+    """
+    if purpose not in VALID_PURPOSES:
+        return None
+
+    logged = (
+        db.query(Event)
+        .filter(
+            Event.tenant_id == tenant_id,
+            Event.event_type == "consent_logged",
+            Event.purpose == purpose,
+        )
+        .order_by(Event.created_at.desc(), Event.id.desc())
+        .first()
+    )
+    if logged is None:
+        return None
+
+    revoked = (
+        db.query(Event)
+        .filter(
+            Event.tenant_id == tenant_id,
+            Event.event_type == "consent_revoked",
+            Event.purpose == purpose,
+        )
+        .order_by(Event.created_at.desc(), Event.id.desc())
+        .first()
+    )
+    if revoked is not None and revoked.created_at > logged.created_at:
+        return None
+    return logged

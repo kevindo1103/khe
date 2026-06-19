@@ -13,7 +13,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.db.database import MasterSessionLocal, get_tenant_session
 from app.models.master import Tenant
 from app.services.reminders import send_reminders_for_tenant
@@ -35,7 +34,6 @@ async def run_daily_reminder_job() -> None:
             await send_reminders_for_tenant(
                 tenant_db,
                 tenant.id,
-                settings.TELEGRAM_CHAT_ID,
             )
         except Exception as exc:
             logger.exception("Daily reminder job failed for tenant %s: %s", tenant.id, exc)

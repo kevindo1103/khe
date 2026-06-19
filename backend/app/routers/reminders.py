@@ -33,6 +33,5 @@ async def test_reminders(
     result = await send_reminders_for_tenant(
         db,
         user.tenant_id,
-        settings.TELEGRAM_CHAT_ID,
     )
     return {"ok": True, **result}

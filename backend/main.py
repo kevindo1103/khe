@@ -66,16 +66,17 @@ async def lifespan(app: FastAPI):
     _seed_default_tenant()
     init_tenant_db(settings.DEFAULT_TENANT_ID)
 
-    # Start daily reminder scheduler (#62). It is lightweight and no-ops if
-    # Telegram is not configured.
-    scheduler = create_scheduler()
-    scheduler.start()
-    app.state.scheduler = scheduler
+    # Start daily reminder scheduler (#62). Disabled in test environment to avoid
+    # AsyncIOScheduler side-effects during test runs.
+    if settings.ENVIRONMENT != "test":
+        scheduler = create_scheduler()
+        scheduler.start()
+        app.state.scheduler = scheduler
 
     yield  # Application runs here
 
     # ---------- Shutdown ----------
-    if hasattr(app.state, "scheduler") and app.state.scheduler.running:
+    if hasattr(app.state, "scheduler") and getattr(app.state.scheduler, "running", False):
         app.state.scheduler.shutdown()
     print("[Main] Goodbye.")
 

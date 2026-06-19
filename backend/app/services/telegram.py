@@ -6,8 +6,8 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-import time
 from typing import cast
 
 from app.core.config import settings
@@ -49,15 +49,22 @@ class _LazyBot:
 _lazy_bot = _LazyBot()
 
 
-def _should_retry(exc: Exception) -> bool:
-    """Return True for network/5xx/telegram server errors."""
-    import httpx
+def _should_retry(exc: Exception) -> tuple[bool, int]:
+    """Return (retryable, sleep_seconds) for Telegram/HTTP errors.
 
-    if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code >= 500
-    if isinstance(exc, httpx.NetworkError):
-        return True
-    return False
+    python-telegram-bot wraps transport errors in telegram.error.* classes.
+    RetryAfter carries the server's suggested retry interval.
+    """
+    try:
+        from telegram.error import NetworkError, RetryAfter, TimedOut
+    except ImportError:
+        return False, 0
+
+    if isinstance(exc, RetryAfter):
+        return True, getattr(exc, "retry_after", 1)
+    if isinstance(exc, (NetworkError, TimedOut)):
+        return True, 2
+    return False, 0
 
 
 async def send_obligation_reminder(
@@ -69,11 +76,12 @@ async def send_obligation_reminder(
 ) -> bool:
     """Send a single obligation reminder via Telegram.
 
-    Returns True if sent (or skipped because no chat_id), False if delivery failed
-    after retries. Exceptions are never raised.
+    Returns True if sent, False if delivery failed after retries.
+    Returns True when chat_id is None so the caller can count it as skipped.
+    Exceptions are never raised.
     """
     if not chat_id:
-        logger.info("No TELEGRAM_CHAT_ID for tenant %s; skipping reminder %s", tenant_id, obligation_id)
+        logger.info("No chat_id for tenant %s; skipping reminder %s", tenant_id, obligation_id)
         return True
 
     text = f"📅 *Nhắc nhở hợp đồng*\n\n{description}"
@@ -91,8 +99,8 @@ async def send_obligation_reminder(
             return False
         except Exception as exc:
             last_exc = exc
-            if _should_retry(exc) and attempt < 2:
-                sleep_seconds = 2 ** attempt
+            retryable, sleep_seconds = _should_retry(exc)
+            if retryable and attempt < 2:
                 logger.warning(
                     "Telegram send failed (attempt %s) for obligation %s: %s. Retrying in %ss",
                     attempt + 1,
@@ -100,7 +108,7 @@ async def send_obligation_reminder(
                     exc,
                     sleep_seconds,
                 )
-                time.sleep(sleep_seconds)
+                await asyncio.sleep(sleep_seconds)
             else:
                 break
 

@@ -13,8 +13,9 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.tenant import Event, Obligation
-from app.services.consent import check_consent
+from app.services.consent import check_consent, get_active_consent_channel
 from app.services.telegram import send_obligation_reminder
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,6 @@ def _log_reminder_sent(
     obligation_id: int,
     channel: str,
     channel_target_ref: str,
-    success: bool,
 ) -> None:
     event = Event(
         tenant_id=tenant_id,
@@ -56,7 +56,30 @@ def _log_reminder_sent(
         purpose="reminder_send",
         channel=channel,
         channel_target_ref=channel_target_ref,
-        payload=json.dumps({"success": success}),
+        payload=json.dumps({"success": True}),
+    )
+    db.add(event)
+    db.commit()
+
+
+def _log_reminder_failed(
+    db: Session,
+    tenant_id: str,
+    obligation_id: int,
+    channel: str,
+    channel_target_ref: str,
+    reason: str,
+) -> None:
+    event = Event(
+        tenant_id=tenant_id,
+        entity_type="obligation",
+        entity_id=obligation_id,
+        event_type="reminder_failed",
+        actor="system",
+        purpose="reminder_send",
+        channel=channel,
+        channel_target_ref=channel_target_ref,
+        payload=json.dumps({"success": False, "reason": reason}),
     )
     db.add(event)
     db.commit()
@@ -88,6 +111,42 @@ def _log_reminder_batch(
     db.commit()
 
 
+def _flip_overdue_status(
+    db: Session,
+    tenant_id: str,
+    reference_date: date | None = None,
+) -> int:
+    """Flip status='overdue' for pending obligations whose due_date < today.
+
+    Returns the number of rows flipped.
+    """
+    today = reference_date or _today()
+    pending = (
+        db.query(Obligation)
+        .filter(
+            Obligation.tenant_id == tenant_id,
+            Obligation.status == "pending",
+        )
+        .all()
+    )
+
+    flipped = 0
+    for ob in pending:
+        if ob.due_date is None:
+            continue
+        try:
+            ob_date = date.fromisoformat(ob.due_date)
+        except ValueError:
+            continue
+        if ob_date < today:
+            ob.status = "overdue"
+            flipped += 1
+
+    if flipped:
+        db.commit()
+    return flipped
+
+
 def compute_due_window(
     db: Session,
     tenant_id: str,
@@ -95,7 +154,7 @@ def compute_due_window(
 ) -> list[Obligation]:
     """Return pending obligations whose due_date falls within remind_before_days.
 
-    Also flips status="overdue" for any pending obligation with due_date < today.
+    Does NOT mutate status. Call _flip_overdue_status separately.
     """
     today = reference_date or _today()
     pending = (
@@ -108,7 +167,6 @@ def compute_due_window(
     )
 
     result: list[Obligation] = []
-    modified = False
     for ob in pending:
         if ob.due_date is None:
             # open_ended_review obligations are never due-window reminders;
@@ -119,18 +177,10 @@ def compute_due_window(
         except ValueError:
             continue
 
-        if ob_date < today:
-            ob.status = "overdue"
-            modified = True
-            continue
-
         window_start = today
         window_end = today + timedelta(days=ob.remind_before_days)
         if window_start <= ob_date <= window_end:
             result.append(ob)
-
-    if modified:
-        db.commit()
 
     return result
 
@@ -138,27 +188,45 @@ def compute_due_window(
 async def send_reminders_for_tenant(
     db: Session,
     tenant_id: str,
-    chat_id: str | None,
     reference_date: date | None = None,
 ) -> dict:
     """Send reminders for one tenant.
 
     - Consent gate: skips entirely if no active reminder_send consent.
     - Idempotent: skips obligations already logged as reminder_sent.
-    - Returns counts: attempted, sent, skipped.
+    - Per-tenant routing: chat_id from consent.channel_target_ref (dev fallback to
+      settings.TELEGRAM_CHAT_ID).
+    - Returns counts: attempted, sent, skipped, failed, skipped_no_destination.
     """
     if not check_consent(db, tenant_id, "reminder_send"):
         logger.info("No reminder_send consent for tenant %s; skipping batch", tenant_id)
-        return {"attempted": 0, "sent": 0, "skipped": 0, "consent": False}
+        return {"attempted": 0, "sent": 0, "skipped": 0, "failed": 0, "skipped_no_destination": 0, "consent": False}
 
+    # Resolve destination from consent. Production must route via consent record;
+    # global env var is dev-only fallback.
+    consent_event = get_active_consent_channel(db, tenant_id, "reminder_send")
+    channel = consent_event.channel if consent_event else "telegram"
+    chat_id = (
+        consent_event.channel_target_ref
+        if consent_event and consent_event.channel_target_ref
+        else (settings.TELEGRAM_CHAT_ID if settings.ENVIRONMENT == "development" else None)
+    )
+
+    overdue_flipped = _flip_overdue_status(db, tenant_id, reference_date)
     due_obs = compute_due_window(db, tenant_id, reference_date)
     attempted = 0
     sent = 0
     skipped = 0
+    failed = 0
+    skipped_no_destination = 0
 
     for ob in due_obs:
         if _reminder_already_sent(db, ob.id):
             skipped += 1
+            continue
+
+        if not chat_id:
+            skipped_no_destination += 1
             continue
 
         attempted += 1
@@ -174,8 +242,26 @@ async def send_reminders_for_tenant(
         except Exception as exc:
             logger.exception("Unexpected error sending reminder for obligation %s: %s", ob.id, exc)
 
-        _log_reminder_sent(db, tenant_id, ob.id, "telegram", chat_id or "", success)
         if success:
+            _log_reminder_sent(db, tenant_id, ob.id, channel or "telegram", chat_id)
             sent += 1
+        else:
+            _log_reminder_failed(db, tenant_id, ob.id, channel or "telegram", chat_id, "delivery_failed")
+            failed += 1
 
-    return {"attempted": attempted, "sent": sent, "skipped": skipped, "consent": True}
+    _log_reminder_batch(
+        db,
+        tenant_id,
+        attempted=attempted,
+        sent=sent,
+        overdue_flipped=overdue_flipped,
+    )
+
+    return {
+        "attempted": attempted,
+        "sent": sent,
+        "skipped": skipped,
+        "failed": failed,
+        "skipped_no_destination": skipped_no_destination,
+        "consent": True,
+    }
