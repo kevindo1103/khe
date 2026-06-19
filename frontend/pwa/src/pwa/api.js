@@ -89,17 +89,21 @@ export async function chatQuery({ question }) {
   return res.json()
 }
 
-// TODO(#22): POST /consent not yet implemented on backend — consent gate enforced server-side when shipped
-export async function postConsent({ purpose = 'vision_extraction', consent_text_version = 'nd13-v1' }) {
+// POST /consent — purpose:'vision_extraction' or 'reminder_send'.
+// reminder_send: channel='telegram', channel_target_ref=null (chat_id captured later by bot /start).
+export async function postConsent({ purpose = 'vision_extraction', consent_text_version = 'nd13-v1', channel, channel_target_ref }) {
   if (MOCK) {
     await mockDelay()
     return { ok: true, purpose, consent_text_version }
   }
+  const body = { purpose, consent_text_version }
+  if (channel !== undefined) body.channel = channel
+  if (channel_target_ref !== undefined) body.channel_target_ref = channel_target_ref
   const res = await fetch(`${BASE_URL}/consent`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ purpose, consent_text_version }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))

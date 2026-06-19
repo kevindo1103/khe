@@ -36,7 +36,14 @@ export default function ConsentFlow() {
     navigate('/chat', { replace: true })
   }
 
-  const handleTelegram = () => {
+  const handleTelegram = async () => {
+    // Record reminder_send intent before opening bot link.
+    // channel_target_ref is null — Telegram chat_id is captured when user sends /start to the bot.
+    try {
+      await postConsent({ purpose: 'reminder_send', channel: 'telegram', channel_target_ref: null })
+    } catch {
+      // Non-blocking: open the deep-link regardless; backend captures chat_id on /start.
+    }
     window.open(`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${tenantId}`, '_blank', 'noopener')
   }
 
@@ -244,7 +251,7 @@ export default function ConsentFlow() {
             </button>
           </div>
           <div style={s.telegramNote}>
-            Khế sẽ nhắc bạn trước khi hợp đồng hết hạn.
+            Sau khi nhắn /start cho bot, Khế sẽ nhắc bạn trước khi hợp đồng hết hạn.
           </div>
         </div>
       </div>
