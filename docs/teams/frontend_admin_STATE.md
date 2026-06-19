@@ -57,6 +57,14 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Non-blocking polish noted on #69: search debounce, wire/remove "Hủy" (→cancelled), confirm backend clears needs_review on term patch (asked Backend on DOCS_INBOX #1).
 - **Next frontend work:** firm partner portal `pages/firm/**` (FR-FP, D-09/D-10 consent) when scheduled. No open `for:frontend` tasks.
 
+### 2026-06-19 — staging not serving frontend → relayed to Infra (#70)
+- User screenshot: `staging.khe.iceflow.cloud` shows default nginx page (domain resolved = iceflow.cloud, not khe.vn).
+- Diagnosis (read-only, infra scope — did NOT edit workflows/nginx):
+  1. `deploy-staging.yml` last 3 runs failed at startup, **0 jobs** (run #102 `27808283740` after #69). Deploy job (`environment: staging`) never runs → frontend dist never rsynced.
+  2. No nginx vhost for staging host → default site serving. Needs root `/opt/khe/frontend-staging` + SPA try_files + `/api/`→:8001 proxy.
+- Frontend code healthy/merged — purely deploy/infra. Relayed **#70** (`from:frontend`+`for:infra`+`relay`+`blocker:human-needed`).
+- **Blocked on Infra** for staging verification. Will e2e-verify once routing up.
+
 ## Open dependencies
 
 | Dep | Status | Note |
