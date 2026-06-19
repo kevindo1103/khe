@@ -209,13 +209,13 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 
-    location /admin {
-        alias /opt/khe/frontend-staging/;
-        try_files $uri $uri/ /admin/index.html;
+    location /pwa {
+        alias /opt/khe/pwa-staging/;
+        try_files $uri $uri/ /pwa/index.html;
     }
 
     location / {
-        root /opt/khe/pwa-staging;
+        root /opt/khe/frontend-staging;
         try_files $uri /index.html;
     }
 }
