@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-18 (v0.3 — fold DOCS_INBOX 13/14: DEC-018 + PRODUCT_STRATEGY adoption) — Upstream PRODUCT_STRATEGY v0.2 + MVP BRD v0.3 reference*
+*Last updated: 2026-06-19 (v0.4 — fold cycle 3: FR-TN quota + Backend M0 contract + Infra domain + extraction module) — Upstream PRODUCT_STRATEGY v0.2 + MVP BRD v0.4 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,7 +9,7 @@
 
 ## Project context
 
-**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (upstream — Why/Personas/JTBD/Positioning) · `docs/MVP_BRD_Khe_v0.1.md` (v0.3) · `docs/SRS_v0.1.md` · `docs/GLOSSARY_v0.1.md` (v0.2) · `docs/PROJECT_PLAN_v0.1.md` (v0.2)
+**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (upstream — Why/Personas/JTBD/Positioning + §7.1 Billing) · `docs/MVP_BRD_Khe_v0.1.md` (v0.4) · `docs/SRS_v0.1.md` (v0.2) · `docs/GLOSSARY_v0.1.md` (v0.3) · `docs/PROJECT_PLAN_v0.1.md` (v0.3)
 
 **Doc cascade:** PRODUCT_STRATEGY → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup. PRODUCT_STRATEGY thắng về *tại sao / cho ai / job gì*; BRD thắng về *hệ thống phải làm gì*.
 
@@ -173,6 +173,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | **`pkg[extra]` removal drops transitive import** | `import main` fails on clean env / CI dù pass local; vd gỡ `passlib[bcrypt]` làm mất `bcrypt` mà code dùng `import bcrypt` (PR #12 case) | Declare TRỰC TIẾP mọi package mà code import — không dựa vào `[extra]` của package khác để pull transitive. |
 | **`pull_request` workflow reads HEAD branch YAML, không phải base** | Fix workflow trên `main` không apply ngay cho PR `staging → main`; gate cũ vẫn chạy từ `staging` HEAD | Forward-merge fix workflow vào tất cả long-lived branches (vd `main → staging`) TRƯỚC khi mở promote PR. Tránh hotfix workflow chỉ trên main. |
 | **rsync exit code 11 = target dir chưa tồn tại trên VPS** | Deploy workflow fail với `rsync error: errno 11` | Bootstrap `mkdir -p /opt/khe/backend{,-staging}` trên VPS qua SSH step TRƯỚC rsync. Đã wired in `deploy-*.yml` Sprint 0. |
+| **Phantom deploy failures (0 jobs run) từ feature branch push** | GitHub Actions UI hiển thị workflow run "failed" với 0 job chạy khi push branch không match `paths`/`branches` filter | Không phải real failure — GitHub evaluates workflow YAML **từ branch HEAD** đang push, không phải workflow đang tồn tại trên `main`. Nếu branch không có YAML hoặc YAML filter loại trừ → 0 jobs. Ignore hoặc filter UI by branch. Infra PR #48. |
 
 ---
 
@@ -201,8 +202,14 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | File | Trigger | Hành động |
 |---|---|---|
 | `pr-quality-gate.yml` | mọi PR | Branch name pattern check (long-lived branches exempt) + backend `python -c "import main"` + alembic single-head + frontend build |
-| `deploy-staging.yml` | push `staging` | Bootstrap VPS dirs → rsync `backend/` → ghi `.env` secrets via SSH stdin (masked) → `systemctl restart khe-backend-staging` |
+| `deploy-staging.yml` | push `staging` | Bootstrap VPS dirs → rsync `backend/` → ghi `.env` secrets via SSH stdin (masked, incl. `CORS_ORIGINS`) → `alembic upgrade head` (master.db) → `python migrate_all_tenants.py` (per-tenant loop) → HTTPS check (warn-only) → `systemctl restart khe-backend-staging` |
 | `deploy-main.yml` | push `main` | Same as staging với target `khe-backend` + Telegram notify ✅/❌ |
+
+### Domain (Infra PR #48)
+
+- **Production:** `khe.iceflow.cloud` (DNS A → `14.225.212.116`, TLS via certbot)
+- **Staging:** `staging.khe.iceflow.cloud` (DNS A → `14.225.212.116`, TLS via certbot)
+- ~~`khe.vn`~~ deprecated — never provisioned.
 
 ### VPS layout
 
@@ -213,11 +220,12 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 ### Secrets (GitHub repository secrets)
 
-`JWT_SECRET`, `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`. Two environments: `staging` + `production`.
+`JWT_SECRET`, `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `CORS_ORIGINS` (staging=`https://staging.khe.iceflow.cloud`, prod=`https://khe.iceflow.cloud` — ngăn browser reject credentialed requests khi `allow_credentials=True`). Two environments: `staging` + `production`.
 
 ### Alembic
 
-Master.db migrations via deploy workflow only (not direct VPS). Per-tenant migration loop is Sprint 1 carry-over (currently `create_all` for skeleton).
+- **master.db:** `alembic upgrade head` chạy mỗi deploy.
+- **Per-tenant:** `python migrate_all_tenants.py` chạy SAU `upgrade head` trên cả 2 deploy workflows (Infra PR #48). Bắt buộc để tenant_002+ schema changes (consent columns, `document_relationships`) apply trên VPS. Replaces Sprint 0 `create_all` skeleton.
 
 ---
 
@@ -270,6 +278,8 @@ Pattern (mirror Bingxue):
 
 **D-10 (FR-AC-03):** Quyền partner xuyên-tenant chỉ mở khi SME consent rõ ràng, thu hồi được.
 
+**D-11 (FR-TN-01):** Quota check BẮT BUỘC trước mọi `POST /ingest/*` endpoint. `docs_used_month >= doc_quota` → HTTP **429** ngay, KHÔNG proceed extraction (no LLM call). Phòng cost runaway (Gemini/Claude per-doc vision cost). Default firm-configurable per SME (override in `master.db tenants.doc_quota`). Reset calendar-month mùng 1 via APScheduler.
+
 *(Sẽ grow theo Sprint 1+ implementation.)*
 
 ---
@@ -279,7 +289,7 @@ Pattern (mirror Bingxue):
 **Pattern reuse từ SpurX (BRD A-1).** 2-database structure:
 
 - **`master.db`** — global tenant registry
-  - `tenants` table: tenant_id, name, plan, status, created_at
+  - `tenants` table: tenant_id, name, plan, status, created_at, **doc_quota** (nullable, firm-configurable per SME — FR-TN-01), **docs_used_month**, **quota_reset_at** (calendar mùng 1 reset)
   - `tenant_users` table: tenant_id FK, username, hashed_password, role, is_active
   - `firm_partners` table: firm_id, name, contact (Khế-new vs SpurX)
   - `firm_tenant_access` table: firm_id, tenant_id, consent_status, granted_at, revoked_at (Khế-new)
@@ -340,6 +350,8 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.4 — folded DOCS_INBOX 15-22 (cycle 3 — Backend M0 contract + ingest/relationships endpoints + extraction module factory + quota guard + Infra domain + PM billing roadmap). Cascade: PRODUCT_STRATEGY v0.2 → BRD v0.4 → SRS v0.2 → Glossary v0.3 → PROJECT_PLAN v0.3 → CLAUDE.md v0.4.*
 
 *v0.3 — folded DOCS_INBOX 13/14 (DEC-018 Vertical OPEN + PRODUCT_STRATEGY canonical adoption). Cascade: PRODUCT_STRATEGY v0.2 → BRD v0.3 → SRS v0.1 → Glossary v0.2 → PROJECT_PLAN v0.2 → CLAUDE.md v0.3.*
 
