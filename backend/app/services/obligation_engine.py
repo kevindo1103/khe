@@ -157,7 +157,9 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         obligation_type=obligation_type,
         due_date=due_str,
         status="pending",
-        remind_before_days=30,
+        # DEC-020: open_ended_review = annual review nudge, 365d window.
+        # `once` (default) = 30d before a real deadline.
+        remind_before_days=365 if obligation_type == "open_ended_review" else 30,
         source_doc_chain=json.dumps(chain_ids),
         resolution_method="last_writer_wins" if len(chain_ids) > 1 else None,
     )
