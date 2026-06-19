@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.1 |
-| Trạng thái | Initial — fold Sprint 0 backend scaffold (DOCS_INBOX entries 7, 8) |
+| Phiên bản | v0.2 |
+| Trạng thái | Fold cycle 3 — ingest endpoints + relationships + CANONICAL_FIELDS + quota schema + extraction module API |
 | Owner | KHE_Docs |
-| Source of truth | BRD v0.2 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
+| Source of truth | BRD v0.4 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
 
 ---
 
@@ -20,6 +20,7 @@
 | Phiên bản | Ngày | Tác giả | Thay đổi |
 |---|---|---|---|
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Fold Sprint 0 backend scaffold: API contract `/auth/login` + `/health`, JWT claims, master.db (4 bảng) + per-tenant (7 bảng) schema. Fold FR-OB-01 derivation rule (entry 9). |
+| v0.2 | 2026-06-19 | KHE_Docs | Cycle 3 fold (5 Backend + 1 AI + 1 PM comments). Add §2 ingest/documents/relationships API (PR #54 + #59 + #60 — staging live). Add §4 tenants quota columns (FR-TN). Update §5.2 terms CANONICAL_FIELDS 7 + §5.1 doc_type enum. Add §5.8 `document_relationships` table. Add §9 Extraction module API (`get_extraction_provider` factory, `ExtractionUnavailable`, `is_error` vs `needs_review`). Add §10 Audit Events (`extraction_performed` w/ `consent_reference`, term `updated` PII). |
 
 ---
 
@@ -80,6 +81,59 @@ Liveness probe (no auth).
 
 Root endpoint — service metadata (name, version). No auth.
 
+### 2.4 Ingest endpoints — M0 (Backend PR #54, staging live `badfd32`)
+
+Auth: cookie-based (per Backend M0 frozen contract).
+
+#### `POST /ingest/upload`
+Multipart: `file` (required), `doc_type?` (optional, see DocType §5.1).
+- **201:** `{doc_id, file_name, status: "processing"}`
+- **403:** no `vision_extraction` consent for tenant
+- **429:** quota exceeded (FR-TN-01) — hard block, no extraction proceeds
+- **Side effect (PR #60):** FastAPI `BackgroundTasks` schedules `run_extraction(doc_id, tenant_id, doc_type)` after 201 response. Status `processing → extracted | failed` poll-able via §2.5.
+
+#### `POST /ingest/bulk`
+Multipart: `files[]` (≤20 — `422` otherwise).
+- **201:** `{count, documents: [{doc_id, file_name, status}, ...]}`
+- Same 403/429 semantics as `/upload`. Each file scheduled independently.
+
+### 2.5 Document endpoints (Backend PR #54)
+
+#### `GET /documents?status&needs_review&q&page&page_size`
+Filter + paginate. Default `page=1, page_size=20`.
+- **200:** `{items: [{id, file_name, doc_type, status, needs_review, term_count, obligation_count, created_at}], page, page_size, total}`
+- `obligation_count` returns `0` until issue #26 (FR-OB) lands.
+
+#### `GET /documents/{id}`
+- **200:** `{id, file_name, doc_type, status, needs_review, file_url: "/documents/{id}/file", terms: [...], obligations: [], created_at}`
+- `terms[]`: `{id, field_name (CANONICAL_FIELDS §5.2), field_value, confidence, needs_review}`
+- `obligations[]` empty until #26.
+
+#### `GET /documents/{id}/file`
+Streams PDF bytes (original file).
+
+#### `PATCH /documents/{id}/terms/{term_id}`
+Body: `{field_value}` — updates term, clears `needs_review=false`, logs `Event(event_type="updated", entity_type="term", payload={"old", "new"})`.
+- **D-07 enforcement:** every edit ghi Event với old/new values.
+- **⚠️ Compliance flag (Backend PR #54):** Event `payload.old/new` carries extracted contract values = **PII** in append-only `events` ledger. Intended NĐ 13/2023 audit trail (who-changed-what), retained per policy. Approved data-flow.
+
+### 2.6 Document relationships (Backend PR #59, DEC-019/020/021)
+
+#### `GET /documents/{id}/relationships`
+- **200:** `{items: [{id, from_doc_id, to_doc_id, unresolved_ref, relationship_type, status, confirmed_by_sme, confidence, created_at}]}`
+- `relationship_type`: `"amends"` | `"references_framework"`
+- `status`: `"pending"` (AI suggested) | `"confirmed"` (SME ratified per D-02)
+
+#### `PATCH /documents/{id}/relationships/{rel_id}`
+Body: `{confirmed_by_sme: true}` — only `true` accepted.
+- **200:** confirms + triggers `resolve_chain` (last_writer_wins overrides terms across amends topology, writes `is_superseded` / `overrides_term_id` / `inherited_from_doc_id` / `source_doc_chain`).
+- **400:** `{confirmed_by_sme: false}` rejected (one-way confirm).
+- **404:** cross-tenant or not-found.
+
+### 2.7 Public API surface boundary
+
+Cookie auth (not Bearer). All endpoints above except `/auth/*` + `/health` + `/` require active session.
+
 ---
 
 ## 3. Auth & tenancy boundary
@@ -122,6 +176,9 @@ Global registry. Migration `001_initial_master.py` (single head, `down_revision=
 | `plan` | VARCHAR | DEFAULT `'free'` | `free` (MVP) / future paid tier |
 | `is_active` | BOOLEAN | DEFAULT `true` | Soft delete |
 | `created_at` | DATETIME | DEFAULT now | |
+| `doc_quota` | INTEGER | NULLABLE | FR-TN-01. Quota docs/month per tenant. Firm-configurable per SME (set at onboarding). `NULL` = unlimited (admin tenants). |
+| `docs_used_month` | INTEGER | DEFAULT `0` | FR-TN-01. Counter incremented on every successful `POST /ingest/*`. Reset mùng 1 via APScheduler. |
+| `quota_reset_at` | DATE | NULLABLE | FR-TN-02. Next reset boundary (mùng 1 tháng tới). |
 
 ### 4.2 `tenant_users`
 
@@ -172,18 +229,38 @@ Implements FR-AC-03 / D-10 — partner xuyên-tenant chỉ mở khi SME consent.
 Skeleton landed in Sprint 0 via `create_all()` (no Alembic per-tenant loop yet — carry-over Sprint 1). Mọi bảng có cột `tenant_id` (indexed) cho query parity dù DB file đã cô lập.
 
 ### 5.1 `documents`
-File metadata + phân loại. Fields per BRD §6 (file path bất biến, loại HĐ, upload_at, uploader_id, status `processing` / `ready` / `failed`).
+File metadata + phân loại.
 
-### 5.2 `terms`
-Extracted Term per Document. Khớp FR-EX-02:
-- `doi_tac` (party)
-- `ngay_hieu_luc` (DATE, nullable)
-- `thoi_han_hd` (string, có thể số hoặc phi-số)
-- `ngay_het_han` (DATE, **nullable** — derivable, xem FR-OB-01)
-- `gia_tri` (numeric)
-- `dieu_khoan_gia_han` (text)
-- `confidence` (FLOAT, per FR-EX-05)
-- `needs_review` (BOOLEAN, D-08 / FR-EX-05)
+| Column | Note |
+|---|---|
+| `id` | PK |
+| `file_name` | Original filename |
+| `file_path` | Immutable storage path under `STORAGE_DIR` |
+| `doc_type` | `DocType` enum (M0 contract): `hd_thue_mat_bang` (lease), `hd_nha_cung_cap` (supplier), `hd_lao_dong` (labor), `khac` (other) |
+| `status` | `processing` (BG task pending) / `extracted` (Terms populated) / `failed` (extraction error per D-08) |
+| `needs_review` | Aggregate flag — `true` if any child Term has `needs_review=true` |
+| `created_at` | Upload timestamp |
+
+### 5.2 `terms` — EAV with CANONICAL_FIELDS vocab (Backend M0 contract)
+
+Per-Document extracted Term rows. Schema is **EAV** (entity-attribute-value); `field_name` is constrained to `CANONICAL_FIELDS` vocab (7 values, Backend `modules/extraction/schemas.py`):
+
+1. `doi_tac` — đối tác
+2. `ngay_hieu_luc` — ngày hiệu lực
+3. `ngay_het_han` — ngày hết hạn (**nullable**, derivable per §6.1)
+4. `gia_tri_hd` — giá trị HĐ *(renamed from `gia_tri` per Backend correction 2026-06-18)*
+5. `thoi_han_hd` — thời hạn HĐ
+6. `dieu_khoan_gia_han` — điều khoản gia hạn
+7. `dieu_khoan_thanh_toan` — điều khoản thanh toán *(new per Backend correction 2026-06-18)*
+
+| Column | Note |
+|---|---|
+| `id` | PK |
+| `document_id` | FK → `documents` |
+| `field_name` | VARCHAR, value ∈ CANONICAL_FIELDS above |
+| `field_value` | TEXT (free form; date/numeric coercion at consumer) |
+| `confidence` | FLOAT, per FR-EX-05 |
+| `needs_review` | BOOLEAN, D-08 / FR-EX-05 |
 
 ### 5.3 `obligations` (trái tim MVP)
 
@@ -208,6 +285,26 @@ Per-branch khi SME multi-location.
 
 ### 5.7 `employees`
 Per-tenant employee directory (optional usage).
+
+### 5.8 `document_relationships` (Backend PR #59, DEC-019/020/021)
+
+Edges between Documents (amendments, framework references). AI suggests `pending`; SME confirms (D-02).
+
+| Column | Note |
+|---|---|
+| `id` | PK |
+| `from_doc_id` | FK → `documents` (the amending/referencing doc) |
+| `to_doc_id` | FK → `documents` (parent). **Nullable** — orphan amendments late-link when parent arrives. |
+| `unresolved_ref` | TEXT — filename or phrase awaiting resolution (when `to_doc_id IS NULL`) |
+| `relationship_type` | `amends` (phụ lục) / `references_framework` (HĐ khung) — classified by phrasing heuristic, conservative per DEC-019 no-legal-judgment |
+| `status` | `pending` (AI suggested) / `confirmed` (SME ratified per D-02) |
+| `confirmed_by_sme` | BOOLEAN — only `true` accepted via PATCH (one-way) |
+| `confidence` | FLOAT |
+| `created_at` | DATETIME |
+
+**Chain resolution (on confirm):** `resolve_chain` traverses amends topology (not upload time) → supersedes overlapping Terms in parent chain via `terms.is_superseded` + `terms.overrides_term_id` + `terms.inherited_from_doc_id`. Existing Obligations get `source_doc_chain` + `resolution_method="last_writer_wins"` annotations.
+
+**Open caveat (#61):** re-extraction may invalidate `is_superseded` invariants. Full re-resolution lands with #26.
 
 ---
 
@@ -250,6 +347,66 @@ THEN
 
 ---
 
+## 9. Extraction module API (KHE_AI PR #55/#58 — currently on `staging`, not `main`)
+
+Backend tiêu thụ extraction qua **public factory** trong scope KHE_AI. **KHÔNG** construct provider trực tiếp.
+
+### 9.1 Factory entry point
+
+```python
+from modules.extraction import get_extraction_provider, ExtractionUnavailable
+
+provider = get_extraction_provider(prefer="gemini_flash")
+result = await provider.extract(file_bytes, doc_type_hint="auto")
+```
+
+- `prefer` parameter: `"gemini_flash"` (default) | `"claude_haiku"` | `"claude_sonnet"`.
+- Factory handles **provider selection + key handling + DEC-002 fallback** (Gemini primary → Claude Haiku). Backend stays policy-free.
+- **`VisionExtractionProvider` Protocol unchanged** — interface scope-locked, additive change only.
+
+### 9.2 Error semantics — `is_error` vs `needs_review`
+
+Two distinct concepts. Do **NOT** conflate.
+
+| Concept | Where | Meaning | Backend response |
+|---|---|---|---|
+| `ExtractionUnavailable` exception | Raised by factory | No API key / SDK missing — provider not constructable | Map to **503 Service Unavailable** + `documents.status="failed"` |
+| `ExtractionResult.is_error` | Property on result | Extraction completed but hit hard error (no fabrication per D-08) | `documents.status="failed"`, no Terms persisted |
+| Per-field `needs_review` | `terms[].needs_review` | Extraction succeeded but field confidence low — human verify queue | `documents.needs_review=true`, Term persisted with confidence + flag |
+
+### 9.3 Worker integration (Backend PR #60)
+
+`app/services/extraction_runner.run_extraction(doc_id, tenant_id, doc_type)`:
+1. Open own tenant session (`get_tenant_session`).
+2. Defensive consent re-check — revoked since upload → `status="failed"`, no LLM call.
+3. `get_extraction_provider()` → `await provider.extract(bytes, "auto")`.
+4. `is_error` → `failed`. Else persist 7 CANONICAL_FIELDS Terms (`field_value` + `confidence` + `needs_review`); set `documents.doc_type = result.doc_type.value`, `status="extracted"`.
+5. **Idempotent:** re-run deletes existing Terms in same transaction before re-insert.
+
+**Trigger:** FastAPI `BackgroundTasks` scheduled in `POST /ingest/upload` + `/bulk` after 201 response.
+
+### 9.4 Promote path note
+
+Factory currently on `staging` (PR #58). PR #55 was reverted from `main` via #57 (wrong base — skipped `feature → staging → main` flow). Re-lands on `main` at next promote.
+
+---
+
+## 10. Audit Event types (NĐ 13/2023 compliance)
+
+Events in per-tenant `events` ledger. Append-only.
+
+| `event_type` | `entity_type` | Actor | Trigger | Payload |
+|---|---|---|---|---|
+| `consent_granted` | `tenant` / `firm_partner` | SME / admin | Consent grant flow | `{consent_kind, consent_reference}` |
+| `consent_revoked` | `tenant` / `firm_partner` | SME / admin | Consent revoke | `{consent_kind, consent_reference}` |
+| `extraction_performed` | `document` | `"system"` | Backend PR #60 worker post-extract | `{provider, model, cost_vnd, latency_ms, consent_reference}` — `consent_reference` provides O(1) back-link to the consent record per Compliance §A.2 |
+| `extraction_failed` | `document` | `"system"` | Worker hit `is_error` or `ExtractionUnavailable` | `{reason, provider}` |
+| `updated` | `term` | User | PATCH term (D-07) | `{old, new}` — **PII flag:** carries extracted contract values, intended NĐ 13 audit trail per PR #54 ack |
+
+**Compliance pipeline:** `consent_granted` (logged) → `extraction_performed` (with back-link via `consent_reference`) → `updated` (term edits with old/new PII). End-to-end traceability who-changed-what.
+
+---
+
 ## 8. Open items (Sprint 1+)
 
 | ID | Item | Owner |
@@ -262,4 +419,4 @@ THEN
 
 ---
 
-*Hết v0.1 — Sprint 0 baseline. Bước kế tiếp: Sprint 1 obligation engine + reminder scheduler spec.*
+*Hết v0.2 — cycle 3 fold: ingest/documents/relationships endpoints + CANONICAL_FIELDS + DocType enum + quota schema + extraction module API + Audit Events. Bước kế tiếp: Sprint 1 obligation engine + reminder scheduler spec (issue #26).*
