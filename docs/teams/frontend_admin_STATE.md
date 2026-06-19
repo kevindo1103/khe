@@ -77,6 +77,13 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - **Folded into #90** (one Admin staging-readiness PR: cookie-auth + base). Commented #86 with lockstep coordination: #70 deploy/vhost fix → #90 merge → Infra nginx `/admin`+`/` blocks → joint verify.
 - No PWA dep on FE side.
 
+### 2026-06-19 — PR #91 (cookie auth) reviewed → CHANGES REQUESTED
+- Frontend auth code correct (4 files: api credentials:'include', useAuth /auth/me model, types, App isLoading guard). CI green.
+- 🔴 BUT branch cut from #27/#68 backend chat branch → drags 2 backend commits (chat.py/schemas/services/tests + main.py wire) NOT in scope, not on staging. Would backdoor unreviewed backend into staging. Requested rebase onto clean origin/staging keeping only frontend commit 3d1652e.
+- 🟡 Missing `base:'/admin/'` (#86 dep) — requested to add in same PR.
+- NOT merged. Await rebased PR → re-review.
+- **Lesson:** Windsurf must branch from fresh origin/staging, not from another feature branch.
+
 ## Open dependencies
 
 | Dep | Status | Note |
