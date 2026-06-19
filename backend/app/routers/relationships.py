@@ -76,8 +76,9 @@ def patch_relationship(
 ):
     """SME confirms a relationship. Only confirmation acts on data (D-02)."""
     if not payload.confirmed_by_sme:
+        # Valid JSON, business-rule rejection → 400 (not 422 schema error).
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only confirmed_by_sme=true is supported.",
         )
 

@@ -101,7 +101,7 @@ class TestSuggestRelationships:
     def test_match_existing_document(self, tenant_db):
         parent = _seed_doc(tenant_db, "HD-001.pdf")
         child = _seed_doc(tenant_db, "HD-002.pdf")
-        _seed_term(tenant_db, child.id, "dieu_khoan_gia_han", "Theo HĐ số HD-001")
+        _seed_term(tenant_db, child.id, "dieu_khoan_gia_han", "Phụ lục HĐ số HD-001")
 
         rels = suggest_relationships(tenant_db, "rel-tenant", child.id)
         assert len(rels) >= 1
@@ -110,6 +110,18 @@ class TestSuggestRelationships:
         assert matched[0].relationship_type == "amends"
         assert matched[0].status == "pending"
         assert matched[0].confirmed_by_sme is False
+
+    def test_theo_reference_is_framework_not_amends(self, tenant_db):
+        """"theo/căn cứ HĐ" is a framework/basis reference, not an amendment —
+        so resolve_chain (amends-only) won't supersede its terms."""
+        framework = _seed_doc(tenant_db, "HD-FW1.pdf")
+        order = _seed_doc(tenant_db, "DH-100.pdf")
+        _seed_term(tenant_db, order.id, "ghi_chu", "Căn cứ HĐ số HD-FW1")
+
+        rels = suggest_relationships(tenant_db, "rel-tenant", order.id)
+        fw = [r for r in rels if r.to_doc_id == framework.id]
+        assert len(fw) == 1
+        assert fw[0].relationship_type == "references_framework"
 
     def test_orphan_when_no_match(self, tenant_db):
         doc = _seed_doc(tenant_db, "HD-003.pdf")
@@ -177,6 +189,63 @@ class TestResolveChain:
         assert old_term.is_superseded is True
         assert new_term.overrides_term_id == old_term.id
         assert new_term.inherited_from_doc_id == parent.id
+
+    def test_resolve_orders_by_amends_not_upload_time(self, tenant_db):
+        """DEC-021 orphan: amendment uploaded BEFORE its parent. The amendment must
+        still win, since order follows the amends edge, not created_at."""
+        # Child (the amendment) is seeded FIRST → lower id / earlier created_at.
+        child = _seed_doc(tenant_db, "AMD-100.pdf")
+        parent = _seed_doc(tenant_db, "ORIG-100.pdf")
+        parent_term = _seed_term(tenant_db, parent.id, "gia_tri_hd", "1000")
+        child_term = _seed_term(tenant_db, child.id, "gia_tri_hd", "2000")
+
+        rel = DocumentRelationship(
+            tenant_id="rel-tenant",
+            from_doc_id=child.id,         # child amends parent
+            to_doc_id=parent.id,
+            relationship_type="amends",
+            status="confirmed",
+            confirmed_by_sme=True,
+            confidence=0.9,
+        )
+        tenant_db.add(rel)
+        tenant_db.commit()
+
+        result = resolve_chain(tenant_db, "rel-tenant", child.id)
+        # Topology order = base (parent) first, even though parent was uploaded later.
+        assert result["doc_ids"] == [parent.id, child.id]
+
+        tenant_db.refresh(parent_term)
+        tenant_db.refresh(child_term)
+        # The amendment (child) wins regardless of upload order.
+        assert parent_term.is_superseded is True
+        assert child_term.is_superseded is False
+        assert child_term.overrides_term_id == parent_term.id
+
+    def test_resolve_multi_parent_keeps_all_branches(self, tenant_db):
+        """A document amending two parents (X→Y and X→Z) must keep both in the
+        chain — the edge map is one-to-many."""
+        y = _seed_doc(tenant_db, "MP-Y.pdf")
+        z = _seed_doc(tenant_db, "MP-Z.pdf")
+        x = _seed_doc(tenant_db, "MP-X.pdf")
+        for parent in (y, z):
+            tenant_db.add(
+                DocumentRelationship(
+                    tenant_id="rel-tenant",
+                    from_doc_id=x.id,
+                    to_doc_id=parent.id,
+                    relationship_type="amends",
+                    status="confirmed",
+                    confirmed_by_sme=True,
+                    confidence=0.9,
+                )
+            )
+        tenant_db.commit()
+
+        result = resolve_chain(tenant_db, "rel-tenant", x.id)
+        assert y.id in result["doc_ids"]
+        assert z.id in result["doc_ids"]
+        assert x.id in result["doc_ids"]
 
     def test_unconfirmed_edge_does_not_resolve(self, tenant_db):
         parent = _seed_doc(tenant_db, "HD-009.pdf")

@@ -6,6 +6,7 @@ the obligation engine (#26) will consume.
 """
 import json
 import re
+from collections import defaultdict
 from typing import Iterable
 
 from sqlalchemy import or_
@@ -16,35 +17,49 @@ from app.models.tenant import Document, DocumentRelationship, Obligation, Term
 # MVP relationship types; "supersedes" / "renews" / "related" are Sprint 2.
 VALID_RELATIONSHIP_TYPES = {"amends", "references_framework"}
 
-# Heuristic patterns to extract contract references from term values.
-# Captures a reference token like "123", "A-2024", "HD-001".
-_REFERENCE_PATTERNS = [
-    re.compile(
-        r"(?:HĐ|HD|hợp đồng|Hợp đồng)\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
-        re.IGNORECASE,
-    ),
-    re.compile(
+# Heuristic patterns → (regex, relationship_type). Order = specificity:
+#   "phụ lục …"      → amends                (an addendum supersedes terms)
+#   "theo/căn cứ …"  → references_framework  (a basis/framework ref — NOT an
+#                       amendment; resolve_chain is amends-only so it won't
+#                       supersede framework terms)
+#   generic "HĐ số …" → amends                (fallback)
+# More specific patterns are tried first so a token gets its strongest signal.
+_REFERENCE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(
         r"(?:phụ lục|Phụ lục|phu luc|Phu luc)\s*(?:HĐ|HD)?\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
         re.IGNORECASE,
-    ),
-    re.compile(
+    ), "amends"),
+    (re.compile(
         r"(?:theo|căn cứ|căn_cứ)\s+(?:HĐ|HD|hợp đồng|Hợp đồng)\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
         re.IGNORECASE,
-    ),
+    ), "references_framework"),
+    (re.compile(
+        r"(?:HĐ|HD|hợp đồng|Hợp đồng)\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
+        re.IGNORECASE,
+    ), "amends"),
 ]
 
+# Minimum reference-token length — 3 chars to avoid short false-positive tokens
+# (e.g. a bare "hd" substring-matching unrelated refs in late-linking).
+_MIN_TOKEN_LEN = 3
 
-def _extract_reference_hints(text: str | None) -> set[str]:
-    """Return a set of plausible contract reference tokens from free text."""
+
+def _extract_reference_hints(text: str | None) -> set[tuple[str, str]]:
+    """Return a set of `(token, relationship_type)` reference hints from free text.
+
+    A token is classified by the first (most specific) pattern that captures it,
+    so "theo HĐ số X" → references_framework even though the generic HĐ pattern
+    would also match it.
+    """
     if not text:
         return set()
-    hints: set[str] = set()
-    for pattern in _REFERENCE_PATTERNS:
+    classified: dict[str, str] = {}
+    for pattern, rel_type in _REFERENCE_PATTERNS:
         for match in pattern.finditer(text):
-            token = match.group(1).strip("-_.")
-            if token and len(token) >= 2:
-                hints.add(token.lower())
-    return hints
+            token = match.group(1).strip("-_.").lower()
+            if token and len(token) >= _MIN_TOKEN_LEN and token not in classified:
+                classified[token] = rel_type
+    return set(classified.items())
 
 
 def _find_matching_document(db: Session, tenant_id: str, hint: str) -> Document | None:
@@ -142,18 +157,16 @@ def suggest_relationships(
     db: Session,
     tenant_id: str,
     document_id: int,
-    rel_type: str = "amends",
 ) -> list[DocumentRelationship]:
     """Scan a document's terms and create relationship suggestions.
 
-    - If a referenced contract exists in the tenant, link it (`to_doc_id`).
-    - Otherwise, create an orphan amendment (`to_doc_id=None`, `unresolved_ref`).
+    - Each reference is classified (`amends` vs `references_framework`) by the
+      phrasing that produced it (see `_REFERENCE_PATTERNS`).
+    - If a referenced contract exists in the tenant, link it (`to_doc_id`);
+      otherwise create an orphan (`to_doc_id=None`, `unresolved_ref`).
     - All suggestions are `pending` and `confirmed_by_sme=False` (D-02 gate).
     - Returns only the relationships created (or already present) for this call.
     """
-    if rel_type not in VALID_RELATIONSHIP_TYPES:
-        raise ValueError(f"Invalid relationship_type: {rel_type}")
-
     doc = (
         db.query(Document)
         .filter(Document.id == document_id, Document.tenant_id == tenant_id)
@@ -168,7 +181,7 @@ def suggest_relationships(
         .all()
     )
 
-    hints: set[str] = set()
+    hints: set[tuple[str, str]] = set()
     for term in terms:
         if term.field_value:
             hints.update(_extract_reference_hints(term.field_value))
@@ -180,9 +193,8 @@ def suggest_relationships(
     hints.update(_extract_reference_hints(doc.file_name))
 
     created: list[DocumentRelationship] = []
-    for hint in hints:
-        confidence = 0.7  # heuristic baseline
-        rel = _build_relationship(db, tenant_id, document_id, hint, rel_type, confidence)
+    for token, rel_type in hints:
+        rel = _build_relationship(db, tenant_id, document_id, token, rel_type, 0.7)
         if rel:
             created.append(rel)
 
@@ -201,7 +213,7 @@ def late_link_orphans(
     Status remains `pending` until SME confirms (D-02).
     """
     file_name = (new_document.file_name or "").lower()
-    hints = _extract_reference_hints(new_document.file_name)
+    hint_tokens = {tok for tok, _ in _extract_reference_hints(new_document.file_name)}
 
     orphans = (
         db.query(DocumentRelationship)
@@ -218,12 +230,12 @@ def late_link_orphans(
         if not orphan.unresolved_ref:
             continue
         ref = orphan.unresolved_ref.lower()
-        # Match if the unresolved_ref is contained in the file_name, or an
-        # extracted hint from the file_name is contained in the unresolved_ref.
+        # Match if the orphan's unresolved_ref appears in the new file_name, or a
+        # reference token extracted from the new file_name appears in the ref.
+        # (Dropped the always-false `file_name in ref`; tokens are ≥3 chars.)
         matches = (
             ref in file_name
-            or file_name in ref
-            or any(h in ref for h in hints)
+            or any(h in ref for h in hint_tokens)
         )
         if matches:
             # Avoid self-reference.
@@ -256,43 +268,60 @@ def _build_connected_chain(
     start_doc_id: int,
     edges: list[DocumentRelationship],
 ) -> list[Document]:
-    """Build the connected component of confirmed amends edges containing start_doc_id.
+    """Connected component of confirmed `amends` edges containing `start_doc_id`,
+    ordered by **amends topology** — base (amended) docs first, amendments last.
 
-    Returns documents sorted oldest-first (by created_at, then id).
+    Ordering follows the edges, NOT `created_at`: an edge `from → to` means `from`
+    amends `to`, so `to` (the original) precedes `from` (the amendment). This is
+    correct even when the amendment was uploaded before its parent (DEC-021 orphan
+    / late-link), where upload order would give the wrong winner.
+
+    Supports a document amending multiple parents (one-to-many, e.g. HĐ khung →
+    nhiều đơn hàng) via list adjacency.
     """
-    edge_map: dict[int, int] = {}
+    amends: dict[int, list[int]] = defaultdict(list)   # from -> [to, ...] (from amends to)
+    reverse: dict[int, list[int]] = defaultdict(list)  # to -> [from, ...]
     for edge in edges:
-        edge_map[edge.from_doc_id] = edge.to_doc_id
+        if edge.to_doc_id is None:
+            continue
+        amends[edge.from_doc_id].append(edge.to_doc_id)
+        reverse[edge.to_doc_id].append(edge.from_doc_id)
 
-    # Collect all doc IDs in the connected chain.
+    # Connected component via undirected BFS over the amends graph.
     seen: set[int] = set()
     stack = [start_doc_id]
     while stack:
         current_id = stack.pop()
-        if current_id in seen or current_id is None:
+        if current_id is None or current_id in seen:
             continue
         seen.add(current_id)
-        # A -> B means A amends B.  So B is the parent.
-        if current_id in edge_map:
-            stack.append(edge_map[current_id])
-        # Find children (documents that amend current_id).
-        for child_id, parent_id in edge_map.items():
-            if parent_id == current_id:
-                stack.append(child_id)
+        stack.extend(amends.get(current_id, []))
+        stack.extend(reverse.get(current_id, []))
 
     if not seen:
         return []
 
-    docs = (
-        db.query(Document)
-        .filter(
-            Document.tenant_id == tenant_id,
-            Document.id.in_(list(seen)),
-        )
-        .order_by(Document.created_at.asc(), Document.id.asc())
+    # Topological depth: a base (amends nothing in the component) = 0; an amendment
+    # is 1 + max depth of what it amends. Cycle-guarded. Ascending → base first.
+    depth_cache: dict[int, int] = {}
+
+    def _depth(node: int, visiting: frozenset[int]) -> int:
+        if node in depth_cache:
+            return depth_cache[node]
+        targets = [t for t in amends.get(node, []) if t in seen and t not in visiting]
+        d = 0 if not targets else 1 + max(_depth(t, visiting | {node}) for t in targets)
+        depth_cache[node] = d
+        return d
+
+    ordered_ids = sorted(seen, key=lambda i: (_depth(i, frozenset()), i))
+
+    docs_by_id = {
+        d.id: d
+        for d in db.query(Document)
+        .filter(Document.tenant_id == tenant_id, Document.id.in_(list(seen)))
         .all()
-    )
-    return docs
+    }
+    return [docs_by_id[i] for i in ordered_ids if i in docs_by_id]
 
 
 def resolve_chain(
@@ -324,9 +353,9 @@ def resolve_chain(
     if len(chain_docs) < 2:
         return {"doc_ids": chain_ids, "terms_resolved": 0, "obligations_updated": 0}
 
-    # Collect the latest term per field_name for each document in the chain.
-    # Chain is oldest -> newest.  Resolve from oldest to newest: each newer term
-    # overrides the previous one for the same field_name.
+    # chain_docs is ordered base → amendment (amends topology, not upload time).
+    # Walk in that order: for each field_name, the later (amending) term overrides
+    # the earlier (amended) one.
     latest_by_field: dict[str, Term] = {}
     terms_resolved = 0
 
