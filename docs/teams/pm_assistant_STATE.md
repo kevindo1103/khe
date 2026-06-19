@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-19 | v1.3*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-19 | v1.4*
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
@@ -70,6 +70,8 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | DEC-021 | **Q-2 orphan amendment:** SME upload phụ lục/amendment khi chưa có HĐ gốc → KHÔNG block. Lưu với relationship pending, flag "chưa tìm thấy HĐ gốc", cho link sau (concierge/SME). Hợp DEC-012 (bỏ ma sát upload). | **Ratified** (Kevin 2026-06-18) | 2026-06-18 |
 | DEC-022 | **Q-3 conflict UI = timeline đầy đủ:** Hiển thị lịch sử thay đổi từng field (HĐ gốc → PL01 → PL02), KHÔNG chỉ final value + badge. Phục vụ audit + firm/luật sư. Tăng scope UI Sprint 2 (KHE_Designer #24 + Frontend_Admin #30). | **Ratified** (Kevin 2026-06-18) | 2026-06-18 |
 | DEC-023 | **Quota guard in MVP scope** (issue #63): Soft doc quota per tenant/month để prevent vision extraction cost runaway. `effective_quota = firm_tenant_access.custom_quota ?? tenants.doc_quota` (default 500). Calendar month reset (cron ngày 1). Hard 429 khi exceeded. Atomic UPDATE (no read-then-write TOCTOU). Bulk upload: per-file accept/reject, không fail cả batch. No quota refund on extraction failure (slot = upload accepted). D-11 mới: quota check bắt buộc trước ingest. | **Ratified** (Kevin 2026-06-19) | 2026-06-19 |
+| DEC-024 | **Firm portal descoped từ #63 → #65.** Quota guard (ingest side) = issue #63. Firm portal endpoint = issue #65 (dep #63). Sequencing: PR-A (#26 obligation derive) → PR-B (#62 audit trail) → #63 (quota guard) → #65 (firm portal). | **Ratified** (Kevin 2026-06-19) | 2026-06-19 |
+| DEC-025 | **Frontend = 2 standalone Vite apps.** `frontend/` = Admin SPA (base `/admin/`). `frontend/pwa/` = PWA Chat (base `/`). Nginx: `/` → PWA 5174, `/admin` → Admin 5173. Admin needs `base: '/admin/'` in `vite.config.ts` before nginx switch. Issue #86 tracks Infra nginx switch. | **Ratified** (Kevin 2026-06-19) | 2026-06-19 |
 | DEC-026 | **LLM function-calling cho chat query.** `chat_query.py` refactor: Gemini Flash nhận query → call 3 tools (`search_terms`, `search_obligations`, `search_clauses`) → format answer từ kết quả. D-08 là hard fallback bất biến khi tất cả tools empty (~5đ/query). Thêm `clauses` table per-tenant (doc_id, clause_num, title, content) — populated từ vision extraction cùng 1 call. 7 canonical fields giữ nguyên. Unicode regex fix cho `_extract_doc_hint`. | **Ratified** (Kevin 2026-06-19) | 2026-06-19 |
 
 **Giữ nguyên (user confirm 2026-06-10):** DEC-002 (VisionExtractionProvider Gemini+Claude), DEC-006 (Telegram), DEC-010 (NĐ 13 Phase 1).
@@ -221,7 +223,32 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 
 **Remaining #75 UAT (open):** §B bulk, §D term edit, §F chat, §G D-10 (needs `uat-demo-b`), §H consent gate (needs `uat-demo-noconsent`), §I reminders, §J audit trail.
 
-**PRs open:** #44 (PWA — rebase + fixes needed). **Bugs open:** none critical post-#78.
+**PRs open post-M0:** #102 (PWA clause_num chip — dep #99 extraction wiring). **Bugs open:** none critical post-#78 (#70 nginx trailing-slash fixed on both staging+prod).
+
+---
+
+## DEC-026 Implementation Status (2026-06-19)
+
+| Track | Issue | PR | Status | Notes |
+|---|---|---|---|---|
+| KHE_Backend (clauses + LLM chat) | #99 | #104 | `status:done-staging` (partial) | PR #104 merged `2cd5a3e`. **Carry-over:** `extraction_runner.py` clause insert wiring (open) |
+| KHE_AI (ClauseItem schema) | #101 | #103 | ✅ **Closed** (merged `ff4fb0b`) | `ClauseItem` importable from `backend.modules.extraction` |
+| KHE_Docs (BRD/SRS fold) | #100 | — | In progress | Gates full merge of #99 to main |
+| PWA Frontend (clause_num chip) | relay sent | #102 | Open — awaiting #99 wiring | Backward compat, merge after extraction_runner wiring |
+
+### Open carry-overs for #99
+
+1. **`extraction_runner.py` clause insert** — Backend (Windsurf) now unblocked (PR #103 merged). Attribute access: `c.num`, `c.title`, `c.content`. `page_num=None`.
+2. **`clause_count` on `GET /api/documents/` list endpoint** — PM APPROVED (2026-06-19). Use grouped aggregate query (not N+1). Add `clause_count: int = 0` to `DocumentListItem`.
+3. **5 stuck docs re-trigger** — after clause wiring lands on staging.
+4. **PR #102 merge** — after extraction_runner wiring PR merges to staging.
+5. **Issue #105** (Compliance — PII→Gemini purpose/consent logging) — BLOCKING for prod, not staging.
+6. **`provider` column on `Document`** — tracks Gemini vs Claude fallback (clause-gap handling). Pending Backend spec.
+
+### Architectural notes locked
+- Claude fallback always returns `clauses=[]` (grammar-compiler timeout on `list[ClauseItem]` — deterministic). `clauses=[]` is valid, not error.
+- `_select_tools()` + `_format_answer()` all exception paths → D-08, never 500. `_format_answer_deterministic()` fallback exists.
+- `temperature=0.0` on both Gemini LLM calls (extraction + chat formatting).
 
 ---
 
