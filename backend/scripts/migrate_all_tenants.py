@@ -58,7 +58,7 @@ def main() -> None:
 
         print(f"[migrate_all_tenants] Found {len(tenants)} tenant(s).")
         for tenant in tenants:
-            db_path = os.path.join(str(settings.BASE_DIR), tenant.db_path)
+            db_path = os.path.join(str(settings.DATA_DIR), tenant.db_path)
             _run_upgrade_for_tenant(tenant.id, db_path)
 
         print("[migrate_all_tenants] Done.")

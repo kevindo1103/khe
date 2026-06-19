@@ -121,6 +121,12 @@ async def lifespan(app: FastAPI):
     if settings.ENVIRONMENT == "production" and settings.JWT_SECRET == "change-me-in-production":
         raise RuntimeError("JWT_SECRET must be set in production")
 
+    # Ensure runtime data dirs exist (DATA_DIR may be a fresh /opt/khe/data-* path
+    # on first deploy after the #87 fix). database.py creates TENANTS_DIR on import.
+    settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    print(f"[Main] DATA_DIR={settings.DATA_DIR}")
     print("[Main] Initialising databases...")
     init_master_db()
     _seed_default_tenant()
