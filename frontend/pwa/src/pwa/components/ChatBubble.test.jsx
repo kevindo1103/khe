@@ -31,13 +31,18 @@ describe('ChatBubble — D-08 not-found', () => {
 })
 
 describe('ChatBubble — source chip', () => {
-  it('renders source chip with file_name when source is present', () => {
-    render(<ChatBubble message={{ role: 'bot', notFound: false, text: 'Trả lời.', source: 'HĐ thuê Q7' }} />)
-    expect(screen.getByText(/Nguồn: HĐ thuê Q7/)).toBeInTheDocument()
+  it('renders file_name only when clause_num absent', () => {
+    render(<ChatBubble message={{ role: 'bot', notFound: false, text: 'Trả lời.', source: { file_name: 'HĐ thuê MB', document_id: 1 } }} />)
+    expect(screen.getByText('📄 HĐ thuê MB')).toBeInTheDocument()
+  })
+
+  it('renders file_name · clause_num when clause_num present (#99)', () => {
+    render(<ChatBubble message={{ role: 'bot', notFound: false, text: 'Trả lời.', source: { file_name: 'HĐ AAD', document_id: 2, clause_num: 'Điều 8.2' } }} />)
+    expect(screen.getByText('📄 HĐ AAD · Điều 8.2')).toBeInTheDocument()
   })
 
   it('does not render source chip when source is null', () => {
     render(<ChatBubble message={{ role: 'bot', notFound: false, text: 'Trả lời.', source: null }} />)
-    expect(screen.queryByText(/Nguồn:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/📄/)).not.toBeInTheDocument()
   })
 })

@@ -108,7 +108,7 @@ export default function ChatBubble({ message }) {
             border: `1px solid #B4D5C9`,
           }}
         >
-          📄 Nguồn: {source}
+          📄 {source.file_name}{source.clause_num ? ` · ${source.clause_num}` : ''}
         </div>
       )}
     </div>

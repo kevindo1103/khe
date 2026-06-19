@@ -39,15 +39,16 @@ export default function Chat() {
 
     try {
       const data = await chatQuery({ question })
-      // Backend shape: {answer, found, sources[{file_name, document_id}]}
+      // Backend shape: {answer, found, sources[{file_name, document_id, clause_num?}]}
       // found:false = D-08 not-found path; sources[] may be empty
+      // clause_num added in #99 — optional, show "📄 file · Điều X" when present
       const isNotFound = !data.found
       setMessages((m) => [
         ...m,
         {
           role: 'bot',
           text: data.answer || null,
-          source: data.sources?.[0]?.file_name || null,
+          source: data.sources?.[0] || null,
           notFound: isNotFound,
         },
       ])
