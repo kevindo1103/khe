@@ -8,8 +8,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.2 |
-| Trạng thái | Fold DOCS_INBOX entries 13 + 14 (DEC-018 + PRODUCT_STRATEGY adoption) |
+| Phiên bản | v0.3 |
+| Trạng thái | Fold cycle 3 — Backend M0 vocab, relationships, extraction module, quota |
 | Owner | KHE_Docs |
 
 ---
@@ -20,6 +20,7 @@
 |---|---|---|---|
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Extract BRD §6 terms + fold Backend schema field map (entry 7/8), AI extraction concept (entry 9), Strategy v2 terms (entry 4), Telegram bot (entry 2). |
 | v0.2 | 2026-06-18 | KHE_Docs | Fold DOCS_INBOX 13/14: add §G Strategy framework terms — Persona, JTBD, Golden Circle (Why-How-What), Dunford Positioning Thesis, B2B2B channel motion vs PLG, Obligation OS, Vertical wedge (DEC-018), Plan B contingency. |
+| v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Add §H Backend M0 vocab — CANONICAL_FIELDS (7), DocType enum. Add §I Document relationships — amends vs references_framework, last_writer_wins, source_doc_chain. Update §C Extraction — `get_extraction_provider`, `ExtractionUnavailable`, `is_error` vs `needs_review`. Add §J Tenant quota — FR-TN-01..03, doc_quota nullable, calendar reset, hard block 429. |
 
 ---
 
@@ -86,6 +87,16 @@ Output schemas. `ExtractedField` carries `value` + `confidence` + `needs_review`
 
 ### Derived field
 Field tính ở tầng Obligation thay vì bóc trực tiếp từ Document — vd `ngay_het_han` derive từ `ngay_hieu_luc + thoi_han_hd`. Xem SRS §6.1.
+
+### `get_extraction_provider()` factory
+Public API entry point (Backend gọi) cho extraction module. Selection + key handling + DEC-002 fallback (Gemini → Haiku) gói trong factory. Backend stays policy-free. Backend KHÔNG construct provider trực tiếp. KHE_AI PR #55/#58.
+
+### `ExtractionUnavailable`
+Typed exception raised bởi factory khi không có API key / SDK missing. Backend map → **503** + `documents.status="failed"`. Khác per-field `needs_review`.
+
+### `is_error` vs `needs_review` (do NOT conflate)
+- `ExtractionResult.is_error` (property): extraction completed nhưng hit hard error. **Không có Term persist**. Map → `status="failed"`.
+- `terms[].needs_review` (per-field): extraction succeeded nhưng confidence thấp. Term persist + flag. Map → human-verify queue + `documents.needs_review=true`.
 
 ---
 
@@ -202,4 +213,74 @@ Self-serve PLG motion tham chiếu (~$30-100/mo SME-pays trực tiếp). Gắn D
 
 ---
 
-*Hết v0.2. Bước kế tiếp: thêm UI terms khi Frontend session spawn.*
+---
+
+## H. Backend M0 contract vocab
+
+### CANONICAL_FIELDS
+Tập 7 giá trị **field_name** cố định cho `terms.field_name` (EAV per-tenant). Source: `backend/modules/extraction/schemas.py`. Frontend display + Backend persist đều dùng vocab này:
+
+1. `doi_tac`
+2. `ngay_hieu_luc`
+3. `ngay_het_han` (nullable, derivable per FR-OB-01)
+4. `gia_tri_hd` *(renamed from `gia_tri` 2026-06-18 — Backend M0 correction)*
+5. `thoi_han_hd`
+6. `dieu_khoan_gia_han`
+7. `dieu_khoan_thanh_toan` *(new 2026-06-18 — Backend M0 correction)*
+
+### DocType (enum)
+`documents.doc_type` value (Backend M0 contract):
+- `hd_thue_mat_bang` — HĐ thuê mặt bằng (lease)
+- `hd_nha_cung_cap` — HĐ nhà cung cấp (supplier)
+- `hd_lao_dong` — HĐ lao động (labor)
+- `khac` — other
+
+KHÔNG dùng placeholder string như `"lease"` — must be enum value.
+
+---
+
+## I. Document relationships (Backend PR #59, DEC-019/020/021)
+
+### `document_relationships` (table)
+Per-tenant edges between Documents. AI suggests `pending`; SME confirms (D-02).
+
+### Relationship types
+- **`amends`** — phụ lục / addendum chỉnh sửa parent contract.
+- **`references_framework`** — HĐ con tham chiếu HĐ khung; không superseded.
+
+Classified by phrasing heuristic. Conservative — DEC-019 no legal judgment by AI.
+
+### Orphan amendment
+Edge có `to_doc_id=null` + `unresolved_ref` chứa filename/phrase. **Late-link** khi parent doc upload sau.
+
+### `last_writer_wins` chain resolution
+Khi SME confirm relationship → `resolve_chain` traverses **amends topology** (không theo upload time) → supersede overlapping Terms via `is_superseded` + `overrides_term_id` + `inherited_from_doc_id`. Existing Obligations annotated với `source_doc_chain` + `resolution_method="last_writer_wins"`.
+
+### `source_doc_chain`
+Array of doc_ids ghi nguồn của Obligation đi qua amends chain. Audit trail cho conflict resolution.
+
+---
+
+## J. Tenant quota & billing (FR-TN, D-11)
+
+### `doc_quota`
+Per-tenant quota docs/month. Column `master.db tenants.doc_quota`. **Nullable** = unlimited (admin tenants). Default firm-configurable per SME (KHÔNG hard-code global).
+
+### `docs_used_month` / `quota_reset_at`
+Counter + reset boundary. Increment on success `POST /ingest/*`. Reset mùng 1 mỗi tháng via APScheduler.
+
+### Calendar-month reset
+Khế chọn **calendar month** (mùng 1) thay vì rolling 30 days. Đơn giản, dễ explain cho firm. Kevin ratified cycle 3 (2026-06-19).
+
+### Hard block 429
+Vượt quota → **HTTP 429** ngay, không proceed extraction (cost runaway prevention). Soft warn rejected. Kevin ratified cycle 3.
+
+### D-11 (CLAUDE.md)
+Quota check PHẢI chạy trước mọi ingest endpoint. Vượt → 429, no LLM call. Pairs với FR-TN-01.
+
+### Phase 1 manual / Phase 2 automated billing
+Roadmap PRODUCT_STRATEGY §7.1. Phase 1 manual invoice (~50-100k/client/năm). Phase 2 automated (Stripe / VN gateway, per-client metering từ quota counter).
+
+---
+
+*Hết v0.3. Bước kế tiếp: thêm UI terms khi Frontend session spawn.*
