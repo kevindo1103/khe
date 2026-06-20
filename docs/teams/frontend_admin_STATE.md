@@ -127,6 +127,13 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Backend dep #96 (unmerged): VN-filename + cross-doc queries → `found:false`. Non-blocking (single-doc queries work).
 - Commented #129 ack. Await Windsurf PR → review.
 
+### 2026-06-20 — PR #133 (Admin chat) reviewed → CHANGES REQUESTED (1 AC gap)
+- Reviewed #133 (4 files FE-only, +250): NEW Chat.tsx + types/chat.ts, route + nav wire.
+- ✅ D-08 byte-exact (verified), apiFetch cookie auth (no Bearer), source chip w/ clause_num, error≠not-found, Tailwind idiom (no pwa import), custom classes resolve vs config, CI 3/3, base staging.
+- 🟡 **Missing AC:** #96 muted note ("tìm kiếm nâng cao đang được cải thiện") not rendered — matters during #96 gap (VN-filename query → misleading D-08). Requested one-liner + TODO-remove.
+- 🟢 Nit: `scrollbar-none` is a no-op (no tailwind-scrollbar plugin). Optional.
+- Posted as comment (self-approve blocked). NOT merged — await note fix → re-review + merge.
+
 ## Open dependencies
 
 | Dep | Status | Note |
