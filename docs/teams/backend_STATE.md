@@ -5,7 +5,7 @@
 > firm_portal, auth, audit), alembic, scheduler. Multi-tenant: `master.db` + per-tenant.
 > Lead branch: `claude/feat-backend-scaffold-nm2942`.
 
-_Last updated: 2026-06-20 (#164 PR #169 LGTM; tenant_007=chat-tokens, tenant_008=parties-doc-role for #155)_
+_Last updated: 2026-06-20 (#164 PR #169 merged → staging; DOCS_INBOX posted; tenant_007=chat-tokens ✅, tenant_008=parties-doc-role for #155)_
 
 ---
 
@@ -59,6 +59,7 @@ _Last updated: 2026-06-20 (#164 PR #169 LGTM; tenant_007=chat-tokens, tenant_008
 | PR #151 | #124 | DEC-029: doc_type_filter for all 3 chat tools |
 | PR #161 | #154 | KHE_AI: `payment_schedule[]` → `obligation_schedule[]` generalization (+ compat shim) |
 | PR #162 | #153 | DEC-030 Phase 2: 4-axis obligation model (series + event-chain + T2 expand + dedup + audit Event) |
+| PR #169 | #164 | DEC-028 Phase 2: chat tokenomics — token + cost tracking on ChatQueryLog + `GET /chat/stats` |
 
 **Status:** All 10 PRs on `staging`. Batch promote to `main` planned (gate: #163 nitpicks land first — optional).
 
