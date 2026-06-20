@@ -1,9 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, EmptyState } from '../../components';
 import { apiFetch } from '../../lib/api';
 import type { DocumentDetailOut, TermOut } from '../../types/documents';
+import type { ObligationOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
+import {
+  DOC_TYPE_GROUP_LABELS,
+  OBLIGATION_TYPE_LABELS,
+  DIRECTION_LABELS,
+  CANONICAL_FIELDS,
+  FIELD_LABELS,
+  labelFor,
+} from '../../lib/labels';
 
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
@@ -87,6 +96,78 @@ export default function DocumentDetail() {
     needs_review: 'needs_review',
   };
 
+  const { docTypeGroupTerm, canonicalTerms, typeSpecificTerms } = useMemo(() => {
+    if (!doc) return { docTypeGroupTerm: null, canonicalTerms: [], typeSpecificTerms: [] };
+    let dtgTerm: TermOut | null = null;
+    const canonical: TermOut[] = [];
+    const typeSpecific: TermOut[] = [];
+    for (const term of doc.terms) {
+      if (term.field_name === 'doc_type_group') {
+        dtgTerm = term;
+      } else if (CANONICAL_FIELDS.includes(term.field_name)) {
+        canonical.push(term);
+      } else {
+        typeSpecific.push(term);
+      }
+    }
+    return { docTypeGroupTerm: dtgTerm, canonicalTerms: canonical, typeSpecificTerms: typeSpecific };
+  }, [doc]);
+
+  const renderTerm = (term: TermOut) => (
+    <div
+      key={term.id}
+      className="flex items-start justify-between gap-3 py-2 border-b border-border last:border-0"
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-medium text-ink-muted uppercase">
+            {labelFor(FIELD_LABELS, term.field_name)}
+          </span>
+          {term.needs_review && (
+            <Badge kind="needs_review">Cần kiểm tra</Badge>
+          )}
+        </div>
+        {editingTermId === term.id ? (
+          <div className="flex gap-2 items-center">
+            <Input
+              value={editValue}
+              onChange={setEditValue}
+              className="flex-1"
+            />
+            <Button
+              size="sm"
+              onClick={() => saveEdit(term.id)}
+              loading={saving}
+            >
+              Lưu
+            </Button>
+            <Button size="sm" variant="ghost" onClick={cancelEdit}>
+              Hủy
+            </Button>
+          </div>
+        ) : (
+          <div className="text-sm text-ink">
+            {term.field_value || '—'}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {term.confidence !== null && (
+          <ConfidenceMeter value={term.confidence} />
+        )}
+        {editingTermId !== term.id && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => startEdit(term)}
+          >
+            Sửa
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   if (loading && !doc) {
     return <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>;
   }
@@ -120,6 +201,14 @@ export default function DocumentDetail() {
                   {STATUS_LABEL[doc.status] || doc.status}
                 </Badge>
                 {doc.doc_type && <span>· {doc.doc_type}</span>}
+                {docTypeGroupTerm?.field_value && (
+                  <span>
+                    ·{' '}
+                    <Badge kind="neutral" className="text-2xs">
+                      {labelFor(DOC_TYPE_GROUP_LABELS, docTypeGroupTerm.field_value)}
+                    </Badge>
+                  </span>
+                )}
                 {doc.created_at && (
                   <span>· {new Date(doc.created_at).toLocaleDateString('vi-VN')}</span>
                 )}
@@ -140,73 +229,87 @@ export default function DocumentDetail() {
             )}
           </div>
 
-          {/* Terms */}
-          <Card title="Thông tin trích xuất">
-            {doc.terms.length === 0 ? (
+          {/* Terms — grouped */}
+          {doc.terms.length === 0 ? (
+            <Card title="Thông tin trích xuất">
               <EmptyState
                 icon="📭"
                 title="Chưa có thông tin"
                 description="Tài liệu đang được xử lý. Quay lại sau vài phút."
               />
-            ) : (
+            </Card>
+          ) : (
+            <>
+              {/* Thông tin chung */}
+              {canonicalTerms.length > 0 && (
+                <Card title="Thông tin chung" className="mb-4">
+                  <div className="space-y-3">
+                    {canonicalTerms.map((term) => renderTerm(term))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Thông tin theo loại */}
+              {typeSpecificTerms.length > 0 && (
+                <Card title="Thông tin theo loại" className="mb-4">
+                  <div className="space-y-3">
+                    {typeSpecificTerms.map((term) => renderTerm(term))}
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+
+          {/* Obligations */}
+          {doc.obligations.length > 0 && (
+            <Card title="Nghĩa vụ & hạn" className="mb-4">
               <div className="space-y-3">
-                {doc.terms.map((term) => (
+                {doc.obligations.map((ob: ObligationOut) => (
                   <div
-                    key={term.id}
+                    key={ob.id}
                     className="flex items-start justify-between gap-3 py-2 border-b border-border last:border-0"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-ink-muted uppercase">
-                          {term.field_name}
-                        </span>
-                        {term.needs_review && (
-                          <Badge kind="needs_review">Cần kiểm tra</Badge>
+                      <div className="text-sm font-medium text-ink">
+                        {ob.description}
+                      </div>
+                      <div className="text-xs text-ink-muted mt-1 flex gap-2 flex-wrap items-center">
+                        <Badge kind="neutral" className="text-2xs">
+                          {labelFor(OBLIGATION_TYPE_LABELS, ob.obligation_type)}
+                        </Badge>
+                        {ob.milestone_total && ob.milestone_total > 1 && ob.milestone_index != null && (
+                          <span>· Đợt {ob.milestone_index}/{ob.milestone_total}</span>
+                        )}
+                        {ob.direction && (
+                          <span>· {labelFor(DIRECTION_LABELS, ob.direction)}</span>
+                        )}
+                        {ob.due_date && (
+                          <span>· hạn {new Date(ob.due_date).toLocaleDateString('vi-VN')}</span>
+                        )}
+                        {ob.status === 'waiting_trigger' && ob.trigger_condition && (
+                          <span>· ⏳ Chờ: {ob.trigger_condition}</span>
                         )}
                       </div>
-                      {editingTermId === term.id ? (
-                        <div className="flex gap-2 items-center">
-                          <Input
-                            value={editValue}
-                            onChange={setEditValue}
-                            className="flex-1"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => saveEdit(term.id)}
-                            loading={saving}
-                          >
-                            Lưu
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={cancelEdit}>
-                            Hủy
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-ink">
-                          {term.field_value || '—'}
-                        </div>
-                      )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {term.confidence !== null && (
-                        <ConfidenceMeter value={term.confidence} />
-                      )}
-                      {editingTermId !== term.id && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => startEdit(term)}
+                    <div className="flex-shrink-0">
+                      {ob.status === 'done' ? (
+                        <Badge kind="done">✓ hoàn thành</Badge>
+                      ) : ob.status === 'cancelled' ? (
+                        <Badge kind="neutral">đã hủy</Badge>
+                      ) : (
+                        <Link
+                          to="/admin/obligations"
+                          className="text-xs text-primary hover:underline"
                         >
-                          Sửa
-                        </Button>
+                          Quản lý →
+                        </Link>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-          </Card>
+            </Card>
+          )}
         </>
       )}
 
