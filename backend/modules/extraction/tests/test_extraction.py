@@ -461,6 +461,24 @@ def test_prompt_has_doctype_group_and_payment() -> None:
     assert "luong_co_ban" in instr                           # type-specific guidance present
 
 
+def test_doc_type_confidence_clamped_both_tiers() -> None:
+    # #139: LLM schema dropped ge/le on doc_type_confidence (Gemini grammar limit) →
+    # must clamp via validator so a >1.0 value doesn't trip ExtractionResult's ge/le.
+    base = ContractExtractionLLM(doc_type=DocType.OTHER, doc_type_confidence=1.5)
+    assert base.doc_type_confidence == 1.0
+    full = ContractExtractionLLMFull(doc_type=DocType.OTHER, doc_type_confidence=-0.2)
+    assert full.doc_type_confidence == 0.0  # validator inherited by Full
+    # round-trip through to_result must NOT raise (was a 500 in extraction_runner)
+    from ..providers.base import to_result
+
+    res = to_result(
+        ContractExtractionLLMFull(doc_type=DocType.LEASE, doc_type_confidence=2.0),
+        provider="gemini_flash", model="gemini-2.5-flash",
+        latency_ms=1.0, usage=TokenUsage(input_tokens=1, output_tokens=1), cost=1.0,
+    )
+    assert res.doc_type_confidence == 1.0
+
+
 def _run_all() -> None:
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

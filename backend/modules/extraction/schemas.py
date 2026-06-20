@@ -255,6 +255,8 @@ class ContractExtractionLLM(BaseModel):
         description="Loại tài liệu: hd_thue_mat_bang | hd_nha_cung_cap | hd_lao_dong | khac."
     )
     # No ge/le here — bounds become a Gemini grammar 'complex matcher' (state blow-up).
+    # Clamp in a validator instead (mirrors ExtractedField.confidence) so an LLM that
+    # returns >1.0 doesn't trip ExtractionResult's ge/le → ValidationError (#139).
     doc_type_confidence: float = Field(default=0.0)
 
     # original 7 (BASE_CANONICAL_FIELDS)
@@ -265,6 +267,11 @@ class ContractExtractionLLM(BaseModel):
     thoi_han_hd: ExtractedField = Field(default_factory=ExtractedField)
     dieu_khoan_gia_han: ExtractedField = Field(default_factory=ExtractedField)
     dieu_khoan_thanh_toan: ExtractedField = Field(default_factory=ExtractedField)
+
+    @field_validator("doc_type_confidence")
+    @classmethod
+    def _clamp_doc_type_conf(cls, v: float) -> float:
+        return _clamp_confidence(v)
 
     def as_field_map(self) -> dict[str, ExtractedField]:
         return {name: getattr(self, name) for name in BASE_CANONICAL_FIELDS}
