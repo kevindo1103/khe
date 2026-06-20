@@ -465,3 +465,60 @@ class TestPaymentScheduleObligations:
         obligations = data.get("obligations", [])
         # Only the expiry obligation from derive_obligations, no payment obligation
         assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
+
+    def test_payment_obligations_idempotent_on_re_extraction_skip_path(self, auth_client):
+        """Re-extraction on a doc where derive_obligations skips (no derivable expiry)
+        must not duplicate payment obligations — regression for #141 blocker 2."""
+        from modules.extraction import (
+            DocType, ExtractedField, ExtractionResult, PaymentScheduleItem, TokenUsage,
+        )
+
+        # No ngay_het_han, no ngay_hieu_luc + numeric thoi_han_hd → derive_obligations skips.
+        # Payment schedule has 2 items with due_date → 2 payment obligations expected.
+        result = ExtractionResult(
+            doc_type=DocType.OTHER,
+            doc_type_confidence=0.5,
+            fields={
+                "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+                "ngay_hieu_luc": ExtractedField(value=None, confidence=0.0, needs_review=True),
+                "ngay_het_han": ExtractedField(value=None, confidence=0.0, needs_review=True),
+                "gia_tri_hd": ExtractedField(value="50000000", confidence=0.8, needs_review=True),
+                "thoi_han_hd": ExtractedField(value="theo thông báo", confidence=0.5, needs_review=True),
+                "dieu_khoan_gia_han": ExtractedField(value=None, confidence=0.0, needs_review=True),
+                "dieu_khoan_thanh_toan": ExtractedField(value="Theo đợt", confidence=0.7, needs_review=True),
+            },
+            payment_schedule=[
+                PaymentScheduleItem(amount="25000000", due_date="2026-06-01", milestone="Đợt 1", recurrence=None),
+                PaymentScheduleItem(amount="25000000", due_date="2026-09-01", milestone="Đợt 2", recurrence=None),
+            ],
+            provider="fake_provider",
+            model="fake-model",
+            latency_ms=123.0,
+            usage=TokenUsage(input_tokens=1000, output_tokens=200),
+            cost_vnd=500.0,
+        )
+
+        fake = FakeProvider(result)
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("idem_payment_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        data = auth_client.get(f"/documents/{doc_id}").json()
+        payment_obs = [o for o in data.get("obligations", []) if "Đợt" in o.get("description", "")]
+        assert len(payment_obs) == 2, f"Expected 2 payment obligations after first extraction, got {len(payment_obs)}"
+
+        # Re-extract — must NOT duplicate payment obligations.
+        fake2 = FakeProvider(result)
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake2):
+            from app.services.extraction_runner import run_extraction
+            run_extraction(doc_id, "extract-tenant", None)
+
+        data2 = auth_client.get(f"/documents/{doc_id}").json()
+        payment_obs2 = [o for o in data2.get("obligations", []) if "Đợt" in o.get("description", "")]
+        assert len(payment_obs2) == 2, (
+            f"Expected 2 payment obligations after re-extraction (idempotent), got {len(payment_obs2)} — duplication bug"
+        )

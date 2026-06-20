@@ -108,8 +108,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         ).delete()
 
         # 8. Persist terms — all fields returned by the provider (universal + type-specific).
+        #     Keep NULL-value rows (field.value is None) — the admin review UI edits
+        #     existing terms only, so a missing universal field must still have a row
+        #     for the user to fill in (D-07 / FR-EX-05).
         for field_name, field in result.fields.items():
-            if field is None or field.value is None:
+            if field is None:
                 continue
             term = Term(
                 tenant_id=tenant_id,
@@ -167,8 +170,19 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         derive_obligations(db, tenant_id, doc_id)
 
         # 11. Persist payment obligations from payment_schedule (DEC-027 / #117).
-        #     Runs AFTER derive_obligations so the chain-aware pending-obligation
-        #     cleanup inside derive_obligations doesn't wipe these.
+        #     Runs AFTER derive_obligations so its chain-aware pending-obligation
+        #     cleanup doesn't wipe these. derive_obligations only clears pending
+        #     obligations in its happy path — on an early skip (no parseable due
+        #     date) it returns before deleting, so clear our own payment rows
+        #     explicitly to stay idempotent on re-extraction. Payment rows are
+        #     identifiable by a NULL source_doc_chain (derived obligations always
+        #     set it).
+        db.query(Obligation).filter(
+            Obligation.tenant_id == tenant_id,
+            Obligation.document_id == doc_id,
+            Obligation.status == "pending",
+            Obligation.source_doc_chain.is_(None),
+        ).delete(synchronize_session=False)
         for ps in result.payment_schedule:
             if not ps.due_date:
                 continue
