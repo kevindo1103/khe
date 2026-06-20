@@ -1000,6 +1000,62 @@ class TestPartyFilterRoutingAndLog:
         assert "Hán Thị Nga" not in log_line
 
 
+class TestSQLiteUnicodeLower:
+    """Verify party_filter ilike works with Vietnamese diacritics via custom lower() (issue #134)."""
+
+    def test_party_filter_uppercase_vietnamese_matches(self, db, monkeypatch):
+        """party_filter='Danh Việt' must match stored 'DANH VIỆT' — proves unicode lower is active."""
+        doc = Document(tenant_id="chat-tenant", file_name="viet_test.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="doi_tac", field_value="DANH VIỆT", confidence=0.9,
+        ))
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="ngay_hieu_luc", field_value="2026-03-01", confidence=0.9,
+        ))
+        db.commit()
+
+        from app.services.chat_query import _tool_search_terms
+        results = _tool_search_terms(db, "chat-tenant", "ngay_hieu_luc", None, party_filter="Danh Việt")
+        assert any(r["value"] == "2026-03-01" for r in results), (
+            "party_filter='Danh Việt' must match stored 'DANH VIỆT' — SQLite unicode lower override not active"
+        )
+
+    def test_party_filter_ascii_regression(self, db, monkeypatch):
+        """party_filter='alaska' still matches stored 'ALASKA' (regression guard)."""
+        doc = Document(tenant_id="chat-tenant", file_name="alaska_test.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="doi_tac", field_value="ALASKA", confidence=0.9,
+        ))
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="ngay_hieu_luc", field_value="2025-01-15", confidence=0.9,
+        ))
+        db.commit()
+
+        from app.services.chat_query import _tool_search_terms
+        results = _tool_search_terms(db, "chat-tenant", "ngay_hieu_luc", None, party_filter="alaska")
+        assert any(r["value"] == "2025-01-15" for r in results), "ASCII case-fold regression: 'alaska' must match 'ALASKA'"
+
+    def test_prompt_bat_buoc_precedes_calendar_rules(self):
+        """BẮT BUỘC party_filter section must appear before calendar rules in prompt (Option B)."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        bat_buoc_pos = prompt.find("BẮT BUỘC")
+        calendar_pos = prompt.find("tháng này")
+        assert bat_buoc_pos != -1, "BẮT BUỘC not found in prompt"
+        assert calendar_pos != -1, "'tháng này' not found in prompt"
+        assert bat_buoc_pos < calendar_pos, "BẮT BUỘC must precede calendar rules"
+
+
 class TestDocumentClauseCount:
     def test_clause_count_in_detail(self, auth_client, db):
         doc = _seed(db)
