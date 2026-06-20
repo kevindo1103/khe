@@ -226,6 +226,28 @@ class PaymentScheduleItem(BaseModel):
     recurrence: Optional[str] = Field(
         default=None, description='Chu kỳ lặp: "monthly" | "quarterly" | null (một lần). KHÔNG đoán nếu không nêu rõ.'
     )
+    payer: Optional[str] = Field(
+        default=None,
+        description='Bên PHẢI TRẢ kỳ này — tên hoặc vai trò đúng như trên tài liệu (vd "Owner", "Bên B"). '
+        "Để Backend phân biệt nghĩa vụ (mình trả) vs quyền lợi (đối tác trả cho mình). null nếu không rõ (DEC-030).",
+    )
+
+
+class PartyItem(BaseModel):
+    """A contracting party with its role label (DEC-030 draft).
+
+    READ-ONLY (D-06): `role_label` is the term used IN the document — "Owner",
+    "Operator", "Bên A", "Bên cho thuê", "NSDLĐ"… Which party is the SME ("self") is
+    NOT decided here — Backend matches the tenant's legal name + the user confirms
+    (D-02). Lets the obligation engine split nghĩa vụ (self) vs quyền lợi (đối tác)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str = Field(description="Tên bên ký kết, đúng như trên tài liệu.")
+    role_label: Optional[str] = Field(
+        default=None,
+        description='Vai trò trong HĐ, vd "Owner", "Operator", "Bên A", "Bên cho thuê", "NSDLĐ". null nếu không có.',
+    )
 
 
 # --- LLM-facing structured-output schemas ----------------------------------
@@ -306,6 +328,10 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
         default_factory=list,
         description="Các kỳ thanh toán có ngày đến hạn (DEC-027). Rỗng nếu thanh toán phi cấu trúc.",
     )
+    parties: list[PartyItem] = Field(
+        default_factory=list,
+        description="Các bên ký kết kèm vai trò (DEC-030) — để Backend xác định 'bên mình' và chia nghĩa vụ/quyền lợi.",
+    )
 
     def as_field_map(self) -> dict[str, ExtractedField]:
         fields = {name: getattr(self, name) for name in CANONICAL_FIELDS}
@@ -337,6 +363,10 @@ class ExtractionResult(BaseModel):
     # Structured payment installments (DEC-027 / #117) → Backend derives `payment`
     # Obligation rows. Default empty (Claude fallback + unstructured payment text).
     payment_schedule: list[PaymentScheduleItem] = Field(default_factory=list)
+    # Parties + role labels (DEC-030) → Backend matches tenant legal name to find
+    # 'self', then splits obligations into nghĩa vụ (self) vs quyền lợi (đối tác).
+    # Gemini-only; Claude fallback leaves [] (use flat `fields["doi_tac"]`).
+    parties: list[PartyItem] = Field(default_factory=list)
 
     provider: str = ""             # e.g. "gemini_flash"
     model: str = ""                # e.g. "gemini-2.5-flash"

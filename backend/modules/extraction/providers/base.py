@@ -56,6 +56,7 @@ def to_result(
         # getattr defaults to [] so both schema tiers produce a valid ExtractionResult.
         clauses=list(getattr(parsed, "clauses", [])),
         payment_schedule=list(getattr(parsed, "payment_schedule", [])),
+        parties=list(getattr(parsed, "parties", [])),  # DEC-030 (Gemini Full only)
         provider=provider,
         model=model,
         latency_ms=round(latency_ms, 2),
