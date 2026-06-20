@@ -8,8 +8,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.4 |
-| Trạng thái | Fold DEC-026 — Clause entity (gate Backend #99 per issue #100) |
+| Phiên bản | v0.5 |
+| Trạng thái | Fold cycle 4 — DEC-027/028/029/030 mega-batch |
 | Owner | KHE_Docs |
 
 ---
@@ -22,6 +22,7 @@
 | v0.2 | 2026-06-18 | KHE_Docs | Fold DOCS_INBOX 13/14: add §G Strategy framework terms — Persona, JTBD, Golden Circle (Why-How-What), Dunford Positioning Thesis, B2B2B channel motion vs PLG, Obligation OS, Vertical wedge (DEC-018), Plan B contingency. |
 | v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Add §H Backend M0 vocab — CANONICAL_FIELDS (7), DocType enum. Add §I Document relationships — amends vs references_framework, last_writer_wins, source_doc_chain. Update §C Extraction — `get_extraction_provider`, `ExtractionUnavailable`, `is_error` vs `needs_review`. Add §J Tenant quota — FR-TN-01..03, doc_quota nullable, calendar reset, hard block 429. |
 | v0.4 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §A `Clause` entity — text nguyên gốc từ Document, distinct from Term/Field (structured). Per-tenant `clauses` table (SRS §5.9). Powers `search_clauses` tool (BRD FR-CQ-02). Rename old `Template / Clause` row → `Template (GĐ2)` to avoid name collision. |
+| v0.5 | 2026-06-20 | KHE_Docs | **Cycle 4 fold.** §A: Obligation entity rewritten (8 categories + 5 cadences + direction + obligor + status enum correction). NEW Quyền lợi sub-concept. Party +role_label + self-party. §C augmented: 2-tier extraction schema (Claude lean / Gemini full), PaymentScheduleItem, PartyItem, NamedExtractedField, DOC_TYPE_GROUPS enum 11, BASE/V2_UNIVERSAL/TYPE_SPECIFIC field tiers. §K NEW Direction model (DEC-030) — direction, obligor, legal_name, tenant_profile, self-party match. §L NEW Chat tool surface evolved (value_contains, party_filter, doc_type_filter, due_from/to, truncation_hint, today's-date injection, _is_negative_answer, NĐ 13 compliance debt). §B Tenant +tenant_profile separate model row. |
 
 ---
 
@@ -37,12 +38,28 @@ Giá trị có cấu trúc bóc từ Document.
 - **Mutability:** mọi field cho người sửa; sửa → ghi `Event` (FR-EX-04).
 
 ### Obligation **(MVP heart)**
-Cam kết rời rạc, có ngày, có trạng thái, suy ra từ Document.
-- **Schema field map (Sprint 0):** `id`, `document_id`, `description`, `obligation_type` (`once` / `monthly` / `quarterly` / `yearly`), `due_date`, `status` (`pending` / `done` / `overdue` / `cancelled`), `remind_before_days`.
-- **Derived vs extracted:** `due_date` có thể derived ở Obligation tier (vd `ngay_het_han = ngay_hieu_luc + thoi_han_hd`) thay vì bóc trực tiếp từ Document. Term nullable hợp lệ; derivation chạy ở engine. Xem SRS §6.1 FR-OB-01.
+Cam kết rời rạc, có ngày, có trạng thái, suy ra từ Document. **Schema rewritten cycle 4 per #122 Option B + DEC-027/030:**
+- **`obligation_type`** = **category enum 8** (DEC-027): `payment` · `delivery` · `handover` · `expiration` · `renewal` · `review` · `warranty` · `other`. *Trước cycle 4 field này là cadence — đã renamed (xem `recurrence`).*
+- **`recurrence`** = cadence enum: `once` · `monthly` · `quarterly` · `yearly` · `open_ended_review`. `open_ended_review` = `thoi_han_hd` phi-số case (DEC-020), `due_date=NULL`.
+- **`status`** = `{pending, done, cancelled}` (FE PR #69 ratified). `overdue` = FE-derived urgency bucket NOT status.
+- **`direction`** (DEC-030): `nghĩa_vụ` / `quyền_lợi` / `null` per `obligor` match `legal_name`.
+- **`obligor`**: tên party chịu nghĩa vụ.
+- **`source_doc_chain`**, **`resolution_method`**: chain resolution (DEC-019..021). Derived obligations luôn set; payment-schedule obligations KHÔNG set (idempotency key).
+- **Derived vs extracted:** `due_date` có thể derived (vd `ngay_het_han = ngay_hieu_luc + thoi_han_hd`); payment_schedule items → `payment` Obligation rows. Xem SRS §6.1/6.3.
+
+### Quyền lợi (DEC-030)
+Sub-concept Obligation. Cam kết của **đối tác** hướng *về* SME (đối tác trả tiền cho SME, đối tác bảo hành, đối tác giao hàng). UI tab riêng (Nghĩa vụ / Quyền lợi). Reminder label khác: *"Đối tác [obligor] cần [action] cho bạn trước [date]."*
 
 ### Party
-Đối tác trong tài liệu, **chuẩn hóa** để query "mọi HĐ với bên ABC" chạy đúng. Per-tenant table `parties` (`name`, `tax_code`, `address`, contact info).
+Đối tác trong tài liệu, **chuẩn hóa** để query "mọi HĐ với bên ABC" chạy đúng. Per-tenant table `parties`:
+- `name`, `tax_code`, `address`, contact info.
+- **`role_label`** (DEC-030): vai trò trong HĐ (`"Owner"`, `"Bên A"`, `"NSDLĐ"`, `"Bên thuê"`, ...) — extracted verbatim, D-06 read-only. AI KHÔNG quyết bên nào là SME.
+
+### Self-party (DEC-030)
+SME entity = `tenant_profile.legal_name`. Auto-match `parties[].name` per Document để derive Obligation `direction`. Match fail → `direction=NULL` + `needs_review=true` (Kevin cycle 4 q3 ratify).
+
+### `tenant_profile` (DEC-030)
+Separate master.db model from `tenants` (Kevin cycle 4 q2 ratify — NOT PM-recommended column embed). 1:1 với `tenants`. Canonical store cho `legal_name` + `legal_name_aliases` + future SME profile fields (industry/size/address). Empty `legal_name` → all docs' obligations need user review. Detail SRS §4.5.
 
 ### Event (Ledger)
 Append-only bản ghi mọi thay đổi trạng thái (ingest, sửa term, hoàn thành nghĩa vụ, đã gửi nhắc…). Sửa = ghi event mới (reversal), **không edit-in-place**. Pattern tái dùng từ SpurX.
@@ -101,6 +118,36 @@ Typed exception raised bởi factory khi không có API key / SDK missing. Backe
 ### `is_error` vs `needs_review` (do NOT conflate)
 - `ExtractionResult.is_error` (property): extraction completed nhưng hit hard error. **Không có Term persist**. Map → `status="failed"`.
 - `terms[].needs_review` (per-field): extraction succeeded nhưng confidence thấp. Term persist + flag. Map → human-verify queue + `documents.needs_review=true`.
+
+### 2-tier schema (DEC-026 addendum + DEC-029)
+Provider grammar limits → tách 2 schemas:
+- **`ContractExtractionLLM`** — 7 BASE_CANONICAL_FIELDS lean. Used by Claude (fallback). Schema rộng → "Schema is too complex" 400 deterministic.
+- **`ContractExtractionLLMFull`** — 12 universal + `clauses[]` + `parties[]` + `payment_schedule[]` + `NamedExtractedField` keyed list (type-specific). Used by Gemini Flash (primary).
+
+**Consequence:** doc qua Claude fallback có `clauses=[]` / `parties=[]` / `payment_schedule=[]` / `doc_type_group=NULL`. Gemini path = full. Re-extract-prefer-Gemini policy chờ `Document.provider` column ratify.
+
+### `DOC_TYPE_GROUPS` (DEC-029)
+Enum 11 (10 contract groups + `other`): `dan_su` · `thuong_mai` · `lao_dong` · `bat_dong_san` · `van_tai_logistics` · `xay_dung` · `cong_nghe_ip` · `tai_chinh` · `bao_dam` · `hanh_chinh` · `other`. Collapse từ 126 loại HĐ (nguồn: lawyer Danh mục HĐ). Phân loại đầu tiên trong extraction → drive type-specific field set.
+
+Old `DocType` enum (4 values: `hd_thue_mat_bang` / `hd_nha_cung_cap` / `hd_lao_dong` / `khac`) deprecated nhưng retained on Document for M0 legacy docs.
+
+### `BASE_CANONICAL_FIELDS` / `V2_UNIVERSAL_FIELDS` / `TYPE_SPECIFIC_FIELDS`
+3 tiers extraction fields per DEC-029:
+- **BASE 7:** `doi_tac`, `ngay_hieu_luc`, `ngay_het_han`, `gia_tri_hd`, `thoi_han_hd`, `dieu_khoan_gia_han`, `dieu_khoan_thanh_toan`. Claude fallback floor.
+- **V2_UNIVERSAL 5:** `doc_type_group`, `ngay_ky`, `tien_dat_coc`, `thoi_han_bao_hanh`, `thoi_han_thong_bao`. Gemini-only.
+- **TYPE_SPECIFIC ~30:** 9 groups (lao_dong, bat_dong_san, xay_dung, bao_dam, cong_nghe_ip, thuong_mai, van_tai_logistics, tai_chinh, hanh_chinh) — bóc khi nhóm khớp. Emit qua `NamedExtractedField` keyed list.
+
+### `NamedExtractedField`
+Pydantic model `{name: str, value: ExtractedField}` — list of these in Gemini schema để workaround "too many states" error trên flat dict-of-fields. Backend PR #141 dynamic iteration `result.fields.items()` persist từng item thành Term row.
+
+### `PaymentScheduleItem` (DEC-027 + DEC-030)
+`{amount: str, due_date: date | None, milestone: str | None, recurrence: str | None, payer: str | None}`. Cùng vision call, không tốn cost. Backend derive thành `payment` Obligation per item có `due_date` (PR #141). `payer` (DEC-030) drives Obligation `obligor` + `direction`.
+
+### `PartyItem` (DEC-030)
+`{name: str, role_label: str}` — vai trò các bên trong HĐ extracted verbatim. Gemini-only.
+
+### `pydantic-settings env_file` vs `os.environ` (Backend PR #80)
+**Bug pattern:** `pydantic-settings` `env_file` populates `Settings` class only, **KHÔNG** `os.environ`. Providers reading `os.environ.get()` (vd `modules/extraction/providers/*`) miss vars → `ExtractionUnavailable`. Fix: systemd `EnvironmentFile=` directive on `.service` unit. `/health/extraction` diagnostic surface (non-prod) detects this.
 
 ---
 
@@ -287,4 +334,54 @@ Roadmap PRODUCT_STRATEGY §7.1. Phase 1 manual invoice (~50-100k/client/năm). P
 
 ---
 
-*Hết v0.4 — DEC-026 Clause entity. Bước kế tiếp: thêm UI terms khi Frontend session spawn.*
+---
+
+## K. Direction model (DEC-030)
+
+### `direction`
+Obligation field. Values: `nghĩa_vụ` (SME phải làm) · `quyền_lợi` (đối tác phải làm cho SME) · `null` (chưa xác định). Driven by `obligor` ↔ `legal_name` match. Xem SRS §6.4.
+
+### `obligor`
+Obligation field — party name chịu nghĩa vụ. Lấy từ `payment_schedule[].payer` hoặc derive từ `parties[]` + clause analysis. NULL hợp lệ khi AI không xác định (D-08).
+
+### `recurrence`
+Obligation cadence enum (renamed from old `obligation_type`): `once`/`monthly`/`quarterly`/`yearly`/`open_ended_review`. Migration `tenant_005`.
+
+### `role_label`
+Party field — vai trò trong HĐ extracted verbatim ("Owner", "Bên A", "NSDLĐ", "Bên thuê", ...). D-06: AI bóc text, KHÔNG quyết SME là bên nào.
+
+### `legal_name`
+`tenant_profile.legal_name`. SME entity full legal name. Auto-match `parties[].name` per Document để derive `direction`.
+
+### Self-party
+SME = `legal_name` match. Đối lập "external party" (đối tác). User confirm qua UI extraction review screen (D-02) khi auto-match fail.
+
+---
+
+## L. Chat tool surface (post DEC-026 + DEC-029 + Backend PR #115/#125/#132)
+
+### Tool params evolved
+- **`search_terms`**: `field_name`, `doc_hint`, `value_contains`, `party_filter`, `doc_type_filter`. AND-compose. Max 10 rows + `truncation_hint` sentinel.
+- **`search_obligations`**: `due_within_days` (forward-only window `>= today`), `status`, `doc_hint`, `due_from`/`due_to` (ISO inclusive both), `doc_type_filter`, `direction`.
+- **`search_clauses`**: `query`, `doc_hint`. Gemini-extracted docs only (xem 2-tier schema).
+
+### `PARTY_FIELDS`
+Constant tuple `("doi_tac",)` — single party field in CANONICAL_FIELDS. Drives `party_filter` cross-field join trong `search_terms`. Future: add aliases (`ben_b`, `khach_hang`, ...) khi schema mở rộng — out of scope MVP.
+
+### `truncation_hint`
+Sentinel value Backend trả khi result count > 10. LLM `_format_answer` system prompt → "có N kết quả, hiển thị 10 mới nhất, mời thu hẹp." User-facing transparency.
+
+### Today's-date injection
+Backend `_build_router_system_prompt(today)` inject `date.today()` ISO into LLM system prompt + rule chuyển VN calendar phrases ("tháng này"/"tháng sau"/"quý này"/"quý sau"/"tuần này"/"X ngày tới") → `due_from`/`due_to`. LLM KHÔNG tự đoán ngày.
+
+**Timezone caveat:** `date.today()` server-local. Edge case nếu VPS không phải `Asia/Ho_Chi_Minh`. Fast-follow: `ZoneInfo("Asia/Ho_Chi_Minh")`.
+
+### `_is_negative_answer` (Backend PR #132 D-08 strict)
+Narrow regex `không tìm thấy|không có thông tin|chưa có dữ liệu` — caller enforce exact `{answer: <D-08 string>, sources: [], found: False}` triple khi (a) LLM paraphrase HOẶC (b) all tools empty. Regex cố tình narrow để KHÔNG suppress valid content như `thoi_han_hd="không xác định thời hạn"`.
+
+### Chat learning loop (DEC-028)
+Log `{question, tool_calls, found}` mỗi query → PM/QC weekly review → fold misroute vào catalog (issue #118) → update few-shot. **🔴 COMPLIANCE DEBT (NĐ 13/2023):** assume-consent bypass cho staging/pilot-dev; phải đóng pre-prod (KHE_Compliance #119). Routing log shape PII-safe (tool name + canonical field_name + arg keys present only). Cross-tenant few-shot phải synthetic/scrubbed.
+
+---
+
+*Hết v0.5 — cycle 4 fold. Bước kế tiếp: thêm UI terms khi Frontend session spawn, CONTRACT_LOGIC_Khe.md role conventions khi lawyer partner kickoff.*
