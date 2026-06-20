@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.tenant import Clause, Document, Obligation, Term
+from app.models.tenant import ChatQueryLog, Clause, Document, Obligation, Term
 
 
 logger = logging.getLogger(__name__)
@@ -640,12 +640,46 @@ async def _format_answer(question: str, tool_results: list[dict]) -> str:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _log_chat_query(
+    db: Session,
+    tenant_id: str,
+    question: str,
+    tool_calls: list[dict],
+    found: bool,
+    result_count: int,
+) -> None:
+    """Write one chat_query_log row (DEC-028). Isolated in try/except —
+    a logging failure must never break the chat response."""
+    try:
+        log = ChatQueryLog(
+            tenant_id=tenant_id,
+            question=question,
+            tool_calls=json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
+            found=found,
+            result_count=result_count,
+        )
+        db.add(log)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning("chat_query_log write failed for tenant=%s", tenant_id, exc_info=True)
+
+
+def _safe_log_chat_query(db, tenant_id, question, tool_calls, found, result_count):
+    """Wrapper that never raises — defense in depth for answer_question call sites."""
+    try:
+        _log_chat_query(db, tenant_id, question, tool_calls, found, result_count)
+    except Exception:
+        logger.warning("chat_query_log failed for tenant=%s", tenant_id, exc_info=True)
+
+
 async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
     """Answer a chat query within a tenant scope.
 
     Returns {"answer": str, "sources": list[dict], "found": bool}.
     """
     if not question or not question.strip():
+        _safe_log_chat_query(db, tenant_id, question, [], False, 0)
         return {"answer": _NOT_FOUND, "sources": [], "found": False}
 
     # Step 1: let the LLM decide which tools to call.
@@ -708,6 +742,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
 
     # D-08 hard rule: if no tool returned data, return the exact not-found string.
     if not all_results:
+        _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0)
         return {"answer": _NOT_FOUND, "sources": [], "found": False}
 
     # Step 3: format answer from results (D-06: only use provided data).
@@ -716,6 +751,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
     # D-08: detect LLM paraphrases of "not found" and force the exact string.
     # KHÔNG re-introduce paraphrase path (D-08) — any negative phrasing → exact triple.
     if _is_negative_answer(answer):
+        _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0)
         return {"answer": _NOT_FOUND, "sources": [], "found": False}
 
     # Step 4: build provenance sources (exclude internal truncation hints from the response).
@@ -734,4 +770,5 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
         if r["type"] != "truncation_hint"
     ]
 
+    _safe_log_chat_query(db, tenant_id, question, tool_calls, True, len(sources))
     return {"answer": answer, "sources": sources, "found": True}
