@@ -3,6 +3,8 @@
  * Mirrored from backend schemas exactly to prevent drift.
  */
 
+import type { ObligationOut } from './obligations';
+
 export interface TermOut {
   id: number;
   field_name: string;
@@ -41,9 +43,10 @@ export interface DocumentDetailOut {
   created_at: string | null;
   file_url: string | null;
   terms: TermOut[];
-  obligations: unknown[];
+  obligations: ObligationOut[];
   clause_count: number;
   failure_reason: string | null;
+  parties?: { name: string; role_label: string | null }[];
 }
 
 export interface UploadOut {
