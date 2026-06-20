@@ -43,8 +43,9 @@
 ## ROLE-LOCK (lead — KHÔNG tự dev)
 
 1. **Plan task** → assign Windsurf_QC qua issue `from:qc` + `for:qc` + `task-assignment`. Body **PHẢI có `## Plan` (1-5 dòng)**.
-2. **Review Windsurf QC PR** trước merge — không tự merge.
-3. **KHÔNG sửa application code.** Exception: fixture/mock data only (không phải app logic).
+2. **Spawn Windsurf_QC:** paste `docs/spawn/SPAWN_WINDSURF_QC.md` vào Windsurf session — đây là Windsurf dev template, bao gồm task queue cụ thể (TASK A→F).
+3. **Review Windsurf QC PR** trước merge — không tự merge.
+4. **KHÔNG sửa application code.** Exception: fixture/mock data only (không phải app logic).
 
 ---
 
