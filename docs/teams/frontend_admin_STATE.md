@@ -155,6 +155,14 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
   3. **Designer mockup backfill for Admin chat:** not needed — defer to v2.
 - Carry-over still open: list-column `clause_count` (needs backend list-endpoint field, or defer Phase 2).
 
+### 2026-06-20 — Issue reconciliation (stale PM breakdown of "7 open")
+- PM breakdown listed 7 open `for:frontend`; 5 were already shipped this session but stayed open (PRs merge to `staging` ≠ default branch → "Closes #X" never auto-fired).
+- **Closed as done:** #89 + #90 (cookie auth, PR #91 `14ce575`), #67 (M0 screens, PR #69 `66ffca9`), #129 (admin chat relay, PR #133 `dc9465c` / task #131), #92 (vite artifacts, PR #95 `0df247b`).
+- **#106** retitled + relabeled `blocker:waiting-dependency`: detail-header half SHIPPED (#107), only list-column remains (backend list-endpoint `clause_count` pending #99 decision).
+- **#146** (DEC-030 nghĩa vụ/quyền lợi tabs) relabeled `blocker:waiting-dependency` — blocked on backend #145 (direction column).
+- **Net true state: 0 actionable-now frontend tasks.** Only #106 (list-column) + #146 open, both backend-blocked.
+- **Process note:** PRs merge to `staging`, so MUST manually close issues post-merge — keyword auto-close only fires on default branch.
+
 ## Open dependencies
 
 | Dep | Status | Note |
