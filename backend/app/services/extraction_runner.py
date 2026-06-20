@@ -22,6 +22,9 @@ from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
 
+_VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "other"}
+_VALID_TRIGGERS = {"date", "event"}
+
 
 def _get_tenant_legal_name(tenant_id: str) -> str | None:
     """Read tenant's legal_name from tenant_profiles (master.db)."""
@@ -221,7 +224,12 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         ).delete(synchronize_session=False)
         created_items = []
         for item in result.obligation_schedule:
-            if item.trigger == "date" and not item.due_date:
+            # Coerce unknown LLM enum values to safe defaults (#163, D-08 spirit).
+            obl_type = item.obligation_type if item.obligation_type in _VALID_OBLIGATION_TYPES else "other"
+            trigger = item.trigger if item.trigger in _VALID_TRIGGERS else "date"
+            # trigger=event rows have no fixed date until the event fires (D-08).
+            due_date = None if trigger == "event" else item.due_date
+            if trigger == "date" and not due_date:
                 continue  # D-08: no fabricated date
             # Dedup guard: skip if a done/cancelled row with same identity tuple
             # already exists (re-extraction after user marked obligation done).
@@ -229,34 +237,34 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 Obligation.tenant_id == tenant_id,
                 Obligation.document_id == doc_id,
                 Obligation.description == item.description,
-                Obligation.obligation_type == item.obligation_type,
-                Obligation.due_date == item.due_date,
+                Obligation.obligation_type == obl_type,
+                Obligation.due_date == due_date,
                 Obligation.status.in_(["done", "cancelled"]),
                 Obligation.source_doc_chain.is_(None),
             ).first()
             if existing:
                 continue
-            status = "waiting_trigger" if item.trigger == "event" else "pending"
+            status = "waiting_trigger" if trigger == "event" else "pending"
             direction = _derive_direction(tenant_id, item.obligor, result) if item.obligor else None
             db.add(Obligation(
                 tenant_id=tenant_id,
                 document_id=doc_id,
                 description=item.description,
-                obligation_type=item.obligation_type,
+                obligation_type=obl_type,
                 recurrence=item.recurrence or "once",
                 obligor=item.obligor,
                 direction=direction,
-                due_date=item.due_date,
+                due_date=due_date,
                 status=status,
                 milestone_series_id=item.series_id,
                 milestone_index=item.milestone_index,
                 milestone_total=item.milestone_total,
-                milestone_trigger=item.trigger,
+                milestone_trigger=trigger,
                 trigger_condition=item.trigger_condition,
                 trigger_delay_days=item.trigger_delay_days,
                 amount_raw=item.amount_raw,
             ))
-            created_items.append(item)
+            created_items.append({"description": item.description, "obligation_type": obl_type, "due_date": due_date, "trigger": trigger})
         if created_items:
             event = Event(
                 tenant_id=tenant_id,
@@ -266,15 +274,7 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 actor="system",
                 payload=json.dumps({
                     "count": len(created_items),
-                    "items": [
-                        {
-                            "description": i.description,
-                            "obligation_type": i.obligation_type,
-                            "due_date": i.due_date,
-                            "trigger": i.trigger,
-                        }
-                        for i in created_items
-                    ],
+                    "items": created_items,
                 }),
             )
             db.add(event)
