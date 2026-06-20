@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_tenant_session
-from app.models.tenant import Clause, Document, Event, Term
+from app.models.tenant import Clause, Document, Event, Obligation, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations
-from modules.extraction import CANONICAL_FIELDS, ExtractionUnavailable, get_extraction_provider
+from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
 
@@ -107,9 +107,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             Clause.tenant_id == tenant_id,
         ).delete()
 
-        # 8. Persist terms.
-        for field_name in CANONICAL_FIELDS:
-            field = result.fields.get(field_name)
+        # 8. Persist terms — all fields returned by the provider (universal + type-specific).
+        #     Keep NULL-value rows (field.value is None) — the admin review UI edits
+        #     existing terms only, so a missing universal field must still have a row
+        #     for the user to fill in (D-07 / FR-EX-05).
+        for field_name, field in result.fields.items():
             if field is None:
                 continue
             term = Term(
@@ -166,6 +168,33 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # Derive obligations from the freshly extracted terms (chain-aware).
         derive_obligations(db, tenant_id, doc_id)
+
+        # 11. Persist payment obligations from payment_schedule (DEC-027 / #117).
+        #     Runs AFTER derive_obligations so its chain-aware pending-obligation
+        #     cleanup doesn't wipe these. derive_obligations only clears pending
+        #     obligations in its happy path — on an early skip (no parseable due
+        #     date) it returns before deleting, so clear our own payment rows
+        #     explicitly to stay idempotent on re-extraction. Payment rows are
+        #     identifiable by a NULL source_doc_chain (derived obligations always
+        #     set it).
+        db.query(Obligation).filter(
+            Obligation.tenant_id == tenant_id,
+            Obligation.document_id == doc_id,
+            Obligation.status == "pending",
+            Obligation.source_doc_chain.is_(None),
+        ).delete(synchronize_session=False)
+        for ps in result.payment_schedule:
+            if not ps.due_date:
+                continue
+            db.add(Obligation(
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                description=ps.milestone or f"Thanh toán {ps.amount or ''}".strip(),
+                obligation_type="once",
+                due_date=ps.due_date,
+                status="pending",
+            ))
+        db.commit()
     finally:
         db.close()
 
