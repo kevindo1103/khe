@@ -80,3 +80,14 @@ class FirmTenantAccess(MasterBase):
     tenant = relationship("Tenant", back_populates="firm_access")
 
     __table_args__ = (UniqueConstraint("firm_id", "tenant_id", name="uq_firm_tenant"),)
+
+
+class TenantProfile(MasterBase):
+    """Operational profile for a tenant — legal name for auto-match (DEC-030)."""
+    __tablename__ = "tenant_profiles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), unique=True, nullable=False)
+    legal_name = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

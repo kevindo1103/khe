@@ -121,8 +121,16 @@ _TOOLS = [
                         "type": ["string", "null"],
                         "description": "Ngày kết thúc khoảng tìm kiếm (ISO YYYY-MM-DD), inclusive.",
                     },
+                    "obligation_type": {
+                        "type": ["string", "null"],
+                        "description": "Loại nghĩa vụ: payment, delivery, handover, expiration, renewal, review, warranty, other. Null = tất cả.",
+                    },
+                    "direction": {
+                        "type": ["string", "null"],
+                        "description": "Hướng nghĩa vụ: nghĩa_vụ (bạn phải làm) hoặc quyền_lợi (đối tác phải làm cho bạn). Null = cả hai.",
+                    },
                 },
-                "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to"],
+                "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to", "obligation_type", "direction"],
             },
         },
     },
@@ -341,6 +349,8 @@ def _tool_search_obligations(
     doc_hint: str | None,
     due_from: str | None = None,
     due_to: str | None = None,
+    obligation_type: str | None = None,
+    direction: str | None = None,
 ) -> list[dict]:
     """Return obligation rows, optionally filtered by due window, status, doc hint, or date range."""
     query = db.query(Obligation, Document).join(
@@ -361,6 +371,11 @@ def _tool_search_obligations(
         query = query.filter(Obligation.due_date >= due_from)
     if due_to:
         query = query.filter(Obligation.due_date <= due_to)
+
+    if obligation_type:
+        query = query.filter(Obligation.obligation_type == obligation_type)
+    if direction:
+        query = query.filter(Obligation.direction == direction)
 
     if due_within_days is not None:
         try:
@@ -484,6 +499,9 @@ def _build_router_system_prompt(today: date) -> str:
         "- 'đã quá hạn' / 'quá hạn' / 'trễ hạn' → search_obligations(status='overdue')\n"
         "  (KHÔNG dùng due_within_days)\n"
         "- 'lịch sử nghĩa vụ' / 'tất cả nghĩa vụ' → search_obligations(status=null)\n"
+        "- 'nghĩa vụ phải trả' / 'tôi cần làm gì' → search_obligations(direction='nghĩa_vụ')\n"
+        "- 'quyền lợi' / 'đối tác phải làm gì cho tôi' → search_obligations(direction='quyền_lợi')\n"
+        "- 'thanh toán sắp tới' → search_obligations(obligation_type='payment', due_within_days=30)\n"
     )
 
 
@@ -674,6 +692,8 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                     args.get("doc_hint"),
                     args.get("due_from"),
                     args.get("due_to"),
+                    args.get("obligation_type"),
+                    args.get("direction"),
                 )
             )
         elif name == "search_clauses":

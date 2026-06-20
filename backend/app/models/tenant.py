@@ -56,7 +56,10 @@ class Obligation(TenantBase):
     tenant_id = Column(String, nullable=False, index=True)
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     description = Column(Text, nullable=False)
-    obligation_type = Column(String, default="once")  # "once" | "monthly" | "quarterly" | "yearly" | "open_ended_review"
+    recurrence = Column(String, default="once")          # cadence: "once" | "open_ended_review"
+    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "other"
+    direction = Column(String, nullable=True)            # DEC-030: "nghĩa_vụ" | "quyền_lợi" | NULL (needs_review)
+    obligor = Column(String, nullable=True)              # DEC-030: role_label from parties[]
     due_date = Column(String, nullable=True)
     status = Column(String, default="pending")          # "pending" | "done" | "overdue" | "cancelled"
     remind_before_days = Column(Integer, default=30)

@@ -23,6 +23,41 @@ from modules.extraction import ExtractionUnavailable, get_extraction_provider
 logger = logging.getLogger(__name__)
 
 
+def _get_tenant_legal_name(tenant_id: str) -> str | None:
+    """Read tenant's legal_name from tenant_profiles (master.db)."""
+    from app.db.database import MasterSessionLocal
+    from app.models.master import TenantProfile
+    db = MasterSessionLocal()
+    try:
+        profile = db.query(TenantProfile).filter(TenantProfile.tenant_id == tenant_id).first()
+        return profile.legal_name if profile else None
+    finally:
+        db.close()
+
+
+def _derive_direction(tenant_id: str, obligor: str | None, result) -> str | None:
+    """Derive obligation direction from SME's perspective (DEC-030).
+
+    Returns 'nghĩa_vụ' if obligor matches tenant's self-party,
+    'quyền_lợi' if obligor is the counterparty, None if can't determine.
+    """
+    if not obligor:
+        return None
+    legal_name = _get_tenant_legal_name(tenant_id)
+    if not legal_name:
+        return None
+    parties = getattr(result, "parties", [])
+    # Find self-party: fuzzy match legal_name against parties[].name
+    self_roles = set()
+    for p in parties:
+        p_name = getattr(p, "name", "") or ""
+        if legal_name.lower() in p_name.lower() or p_name.lower() in legal_name.lower():
+            self_roles.add(getattr(p, "role_label", None))
+    if not self_roles:
+        return None
+    return "nghĩa_vụ" if obligor in self_roles else "quyền_lợi"
+
+
 def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> None:
     """Run extraction for a persisted Document.
 
@@ -186,13 +221,18 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         for ps in result.payment_schedule:
             if not ps.due_date:
                 continue
+            payer = getattr(ps, "payer", None)
+            direction = _derive_direction(tenant_id, payer, result) if payer else None
             db.add(Obligation(
                 tenant_id=tenant_id,
                 document_id=doc_id,
                 description=ps.milestone or f"Thanh toán {ps.amount or ''}".strip(),
-                obligation_type="once",
+                recurrence="once",
+                obligation_type="payment",
                 due_date=ps.due_date,
                 status="pending",
+                obligor=payer,
+                direction=direction,
             ))
         db.commit()
     finally:

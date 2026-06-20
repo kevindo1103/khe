@@ -294,7 +294,7 @@ class TestResolveChain:
             tenant_id="rel-tenant",
             document_id=child.id,
             description="Pay rent",
-            obligation_type="monthly",
+            recurrence="monthly",
             due_date="2026-07-01",
         )
         tenant_db.add(ob)

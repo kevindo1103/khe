@@ -421,6 +421,10 @@ class TestPaymentScheduleObligations:
         due_dates = {o["due_date"] for o in payment_obs}
         assert "2026-02-01" in due_dates
         assert "2026-03-01" in due_dates
+        # Payment obligations must have obligation_type="payment" + recurrence="once"
+        for po in payment_obs:
+            assert po["obligation_type"] == "payment"
+            assert po["recurrence"] == "once"
         # The item without due_date should NOT create an obligation
         assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
 

@@ -87,7 +87,7 @@ def setup_two_tenants():
         s.add(Term(tenant_id=tid, document_id=did, field_name="ngay_het_han", field_value=cfg["due"], confidence=0.9))
         s.add(Obligation(
             tenant_id=tid, document_id=did, description=f"Hết hạn {cfg['file']}",
-            obligation_type="once", due_date=cfg["due"], status="pending",
+            recurrence="once", due_date=cfg["due"], status="pending",
         ))
         s.commit()
         ids[tid] = did
