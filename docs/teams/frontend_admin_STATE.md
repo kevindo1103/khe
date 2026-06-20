@@ -163,6 +163,14 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - **Net true state: 0 actionable-now frontend tasks.** Only #106 (list-column) + #146 open, both backend-blocked.
 - **Process note:** PRs merge to `staging`, so MUST manually close issues post-merge — keyword auto-close only fires on default branch.
 
+### 2026-06-20 — DEC-030 #146 split checked; #156 Phase-1 green-lit
+- PM_Assistant split #146 → #155 (backend relay) + #156/#157/#158/#159 + #146 (chat). Checked all + verified backend contract on staging.
+- **Backend reality:** #148 ✅ merged (`direction`/`obligor`/`recurrence`/`obligation_type`=category live in `ObligationOut`). #153 (series/milestone/trigger Phase 2) OPEN, blocked on KHE_AI #144. #155 (self-party endpoints) just relayed, not shipped. No `/parties`, no `legal_name` PATCH, no `confirm_self_party` on staging.
+- **Confirmed drift:** FE `ObligationOut` missing recurrence/direction/obligor; `obligation_type` meaning changed (cadence→category) but `Obligations.tsx:137` still renders it; `DocumentDetailOut.obligations` = `unknown[]`.
+- **Action:** #156 split into Phase 1 (ship #148 fields NOW — types only) + Phase 2 (milestone/trigger HOLD for #153). Posted lead-verified exact diff on #156 → ready to assign Windsurf (`windsurf/feat-frontend-type-sync-dec030`).
+- **Chain:** #157 (oblig rewrite) dep #156; full series/tab UI needs #153. #158 (self-party) blocked #155. #159 (doc_type_group) dep #156. #146 (chat labels) dep backend chat shape.
+- **Only actionable-now FE task: #156 Phase 1.** Rest chained/backend-blocked.
+
 ## Open dependencies
 
 | Dep | Status | Note |
