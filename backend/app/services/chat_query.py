@@ -30,6 +30,20 @@ PARTY_FIELDS: tuple[str, ...] = ("doi_tac",)
 # Max rows returned by search_terms before truncation.
 _MAX_TERM_ROWS = 10
 
+# D-08: detect LLM paraphrases of "not found" so we can force the exact string.
+# Narrowed to avoid colliding with valid contract content (e.g. thoi_han_hd="không xác định thời hạn").
+_NOT_FOUND_PATTERNS = re.compile(
+    r"(không\s*tìm\s*thấy|không\s*có\s*thông\s*tin|chưa\s*có\s*dữ\s*liệu)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _is_negative_answer(answer: str) -> bool:
+    """Return True if the LLM answer is a D-08 paraphrase (or empty)."""
+    if not answer or not answer.strip():
+        return True
+    return bool(_NOT_FOUND_PATTERNS.search(answer))
+
 # ---------------------------------------------------------------------------
 # LIKE wildcard escaping
 # ---------------------------------------------------------------------------
@@ -350,11 +364,15 @@ def _tool_search_obligations(
 
     if due_within_days is not None:
         try:
-            cutoff = date.today() + timedelta(days=int(due_within_days))
+            today_str = date.today().isoformat()
+            cutoff = (date.today() + timedelta(days=int(due_within_days))).isoformat()
         except (ValueError, TypeError):
             cutoff = None
         if cutoff:
-            query = query.filter(Obligation.due_date <= cutoff.isoformat())
+            query = query.filter(
+                Obligation.due_date >= today_str,
+                Obligation.due_date <= cutoff,
+            )
 
     rows = query.order_by(Obligation.due_date.asc()).all()
     results = []
@@ -451,12 +469,23 @@ def _build_router_system_prompt(today: date) -> str:
         "- 'quý này' / 'quý sau' → ngày đầu và cuối của quý tương ứng\n"
         "- 'tuần này' / 'tuần tới' → từ thứ 2 đến chủ nhật của tuần (ISO week, Thứ 2 là đầu tuần)\n"
         "- 'X ngày tới' / 'sắp tới' → dùng due_within_days=X, KHÔNG dùng due_from/due_to\n"
+        "- 'sắp hết hạn' / 'sắp đến hạn' / 'sắp đáo hạn' → search_obligations(due_within_days=30)\n"
+        "  (chỉ trả từ hôm nay đến N ngày tới, KHÔNG bao gồm đã quá hạn)\n"
+        "- 'đã quá hạn' / 'quá hạn' / 'trễ hạn' → search_obligations(status='overdue')\n"
+        "  (KHÔNG dùng due_within_days)\n"
+        "- 'lịch sử nghĩa vụ' / 'tất cả nghĩa vụ' → search_obligations(status=null)\n"
         "Quy tắc quan trọng: doc_hint PHẢI là tên/gợi ý filename của hợp đồng (ví dụ: 'Mau HDV FLC'), "
         "KHÔNG được là tên công ty, đối tác, hay từ khóa trong câu hỏi. "
         "Khi người dùng tìm theo tên công ty/đối tác, dùng value_contains trong search_terms, KHÔNG đưa tên công ty vào doc_hint. "
         "Khi user hỏi 'field X của hợp đồng với công ty Y', dùng party_filter=Y để lọc docs có đối tác Y, "
-        "sau đó trả field X của những docs đó. "
-        "Ví dụ: 'ngày hiệu lực HĐ với ALASKA' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA'). "
+        "sau đó trả field X của những docs đó.\n"
+        "Ví dụ mapping user phrase → tool call:\n"
+        "- 'ngày hiệu lực HĐ với ALASKA' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA')\n"
+        "- 'ngày hiệu lực HĐ với Danh Việt' → search_terms(field_name='ngay_hieu_luc', party_filter='Danh Việt')\n"
+        "- 'giá trị HĐ với công ty Hán Thị Nga' → search_terms(field_name='gia_tri_hd', party_filter='Hán Thị Nga')\n"
+        "- 'HĐ với ALASKA năm 2021' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA', value_contains='2021')\n"
+        "Quy tắc: bất kỳ tên công ty/đối tác/cá nhân nào (kể cả tiếng Việt có dấu) "
+        "phải đi vào party_filter, KHÔNG ĐƯỢC đi vào doc_hint. "
         "Không tự bịa dữ liệu."
     )
 
@@ -607,6 +636,21 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
     # Step 1: let the LLM decide which tools to call.
     tool_calls = await _select_tools(db, tenant_id, question)
 
+    # PII-safe routing log (NĐ 13/2023): log tool name + field_name + arg keys present,
+    # NOT raw arg values (party_filter/value_contains may contain personal names).
+    logger.info(
+        "chat_query routed: tenant=%s tools=%s",
+        tenant_id,
+        [
+            {
+                "name": c["name"],
+                "field_name": c["args"].get("field_name"),
+                "args_present": sorted(k for k, v in c["args"].items() if v is not None),
+            }
+            for c in tool_calls
+        ],
+    )
+
     # Step 2: execute tools.
     all_results: list[dict] = []
     for call in tool_calls:
@@ -651,8 +695,11 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
 
     # Step 3: format answer from results (D-06: only use provided data).
     answer = await _format_answer(question, all_results)
-    if not answer:
-        answer = _NOT_FOUND
+
+    # D-08: detect LLM paraphrases of "not found" and force the exact string.
+    # KHÔNG re-introduce paraphrase path (D-08) — any negative phrasing → exact triple.
+    if _is_negative_answer(answer):
+        return {"answer": _NOT_FOUND, "sources": [], "found": False}
 
     # Step 4: build provenance sources (exclude internal truncation hints from the response).
     sources = [

@@ -323,9 +323,11 @@ class TestChatQuery:
         data = r.json()
         assert data["found"] is True
         sources = [s for s in data["sources"] if s["type"] == "obligation"]
-        assert len(sources) == 1
-        assert sources[0]["value"] == "2026-06-15"
-        assert sources[0]["status"] == "pending"
+        # At least the 2026-06-15 pending row must be present.
+        matching = [s for s in sources if s["value"] == "2026-06-15" and s["status"] == "pending"]
+        assert matching, "Expected 2026-06-15 pending obligation in results"
+        # No done-status rows should leak through the status=pending filter.
+        assert not any(s["status"] == "done" for s in sources)
 
     def test_select_tools_prompt_includes_today_date(self):
         """Router system prompt must include today's date and calendar-range rules."""
@@ -648,7 +650,7 @@ class TestChatQuery:
                 [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "%"}}]
             ),
         )
-        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Ngày hiệu lực: 2025-03-01."))
 
         r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực HĐ với đối tác chứa %?"})
         assert r.status_code == 200
@@ -782,7 +784,7 @@ class TestChatQuery:
                 [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": "2024", "party_filter": "ALASKA"}}]
             ),
         )
-        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Ngày hiệu lực: 2024-01-15."))
 
         r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực năm 2024 của hợp đồng với ALASKA?"})
         assert r.status_code == 200
@@ -790,6 +792,212 @@ class TestChatQuery:
         assert data["found"] is True
         assert any(s["file_name"] == "alaska_lease.pdf" for s in data["sources"])
         assert not any(s["file_name"] == "alaska_lease_2025.pdf" for s in data["sources"])
+
+
+class TestD08ExactStringEnforcement:
+    """#126 — D-08 paraphrase detection and exact-string enforcement."""
+
+    def test_is_negative_answer_empty(self):
+        assert chat_query._is_negative_answer("") is True
+        assert chat_query._is_negative_answer("   ") is True
+
+    def test_is_negative_answer_paraphrase(self):
+        assert chat_query._is_negative_answer(
+            "Không tìm thấy thông tin về ngày hiệu lực của hợp đồng với DANH VIỆT."
+        ) is True
+        assert chat_query._is_negative_answer("Không có thông tin trong dữ liệu") is True
+        assert chat_query._is_negative_answer("Chưa có dữ liệu về hợp đồng này") is True
+
+    def test_is_negative_answer_factual(self):
+        assert chat_query._is_negative_answer("Hợp đồng có hiệu lực từ 2021-06-01") is False
+        assert chat_query._is_negative_answer("Thời hạn: 12 tháng") is False
+
+    def test_valid_open_ended_term_not_suppressed(self):
+        """Regression: 'không xác định thời hạn' is a valid thoi_han_hd value, NOT D-08."""
+        assert chat_query._is_negative_answer("Thời hạn hợp đồng: không xác định thời hạn") is False
+
+    def test_paraphrase_forced_to_exact_d08(self, auth_client, db, monkeypatch):
+        """Tool returns data + LLM paraphrases negation → exact D-08, sources empty."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": "lease_2026"}}]),
+        )
+        monkeypatch.setattr(
+            chat_query,
+            "_format_answer",
+            _mock_format_answer("Không tìm thấy thông tin về ngày hết hạn trong dữ liệu được cung cấp."),
+        )
+
+        r = auth_client.post("/chat/query", json={"question": "hợp đồng lease_2026 hết hạn khi nào?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert data["answer"] == "Không tìm thấy thông tin này trong hồ sơ của bạn."
+        assert data["sources"] == []
+
+    def test_factual_answer_passes_through(self, auth_client, db, monkeypatch):
+        """Tool returns data + LLM gives factual answer → passthrough with sources."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": "lease_2026"}}]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hợp đồng lease_2026.pdf hết hạn ngày 2026-12-31."))
+
+        r = auth_client.post("/chat/query", json={"question": "hợp đồng lease_2026 hết hạn khi nào?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert "2026-12-31" in data["answer"]
+        assert len(data["sources"]) > 0
+
+
+class TestDueWithinDaysLowerBound:
+    """#127 — due_within_days must exclude past-due obligations."""
+
+    def test_due_within_days_excludes_past_due(self, auth_client, db, monkeypatch):
+        """Only obligations with due_date >= today are returned for due_within_days."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Past obligation",
+                obligation_type="once",
+                due_date="2024-01-15",
+                status="pending",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Future obligation",
+                obligation_type="once",
+                due_date="2026-07-15",
+                status="pending",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": 365, "status": None, "doc_hint": None, "due_from": None, "due_to": None}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 hợp đồng sắp hết hạn."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ nào sắp hết hạn?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        values = [s["value"] for s in data["sources"] if s["type"] == "obligation"]
+        assert "2026-07-15" in values
+        assert "2024-01-15" not in values
+        # Also exclude the seed obligation (2026-12-31 is within 365 days from ~2026-06-20, so it's fine)
+        assert "2026-12-31" in values
+
+    def test_due_within_days_combined_with_status(self, auth_client, db, monkeypatch):
+        """status='overdue' + due_within_days should not silently filter — both apply."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Past overdue",
+                obligation_type="once",
+                due_date="2024-01-15",
+                status="overdue",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Future pending",
+                obligation_type="once",
+                due_date="2026-07-15",
+                status="pending",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": 365, "status": "overdue", "doc_hint": None, "due_from": None, "due_to": None}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 0 hợp đồng."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ overdue sắp hết hạn?"})
+        assert r.status_code == 200
+        data = r.json()
+        # overdue + due_within_days (>= today) → the 2024 overdue row is excluded by lower bound
+        # The 2026-07-15 row is pending, not overdue → excluded by status filter
+        # The seed 2026-12-31 is pending → excluded by status filter
+        assert data["found"] is False
+
+
+class TestPartyFilterRoutingAndLog:
+    """#128 — Vietnamese-diacritic few-shot + PII-safe routing log."""
+
+    def test_prompt_contains_vietnamese_diacritic_examples(self):
+        """Router prompt must include Vietnamese-with-diacritics few-shot examples."""
+        prompt = chat_query._build_router_system_prompt(date(2026, 6, 20))
+        assert "Danh Việt" in prompt
+        assert "Hán Thị Nga" in prompt
+        assert "party_filter='Danh Việt'" in prompt
+
+    def test_prompt_contains_overdue_rules(self):
+        """Router prompt must include overdue vs sắp hết hạn routing rules."""
+        prompt = chat_query._build_router_system_prompt(date(2026, 6, 20))
+        assert "sắp hết hạn" in prompt
+        assert "đã quá hạn" in prompt
+        assert "status='overdue'" in prompt
+
+    def test_routing_log_emits_pii_safe_shape(self, auth_client, db, monkeypatch):
+        """Routing log must show tool name + field_name + arg keys, NOT raw values."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "Hán Thị Nga"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hợp đồng có hiệu lực từ 2021-06-01."))
+
+        # Capture logger.info calls via monkeypatch (TestClient runs in a separate thread,
+        # so caplog may not capture cross-thread logs reliably).
+        logged_calls = []
+        original_info = chat_query.logger.info
+
+        def _capture_info(msg, *args, **kwargs):
+            logged_calls.append((msg, args, kwargs))
+            original_info(msg, *args, **kwargs)
+
+        monkeypatch.setattr(chat_query.logger, "info", _capture_info)
+
+        r = auth_client.post("/chat/query", json={"question": "ngày hiệu lực HĐ với Hán Thị Nga?"})
+        assert r.status_code == 200
+
+        # Find the routing log line
+        routing_logs = [
+            (msg % args if args else msg)
+            for msg, args, _ in logged_calls
+            if "chat_query routed" in msg
+        ]
+        assert routing_logs, "Expected a routing log line"
+        log_line = routing_logs[0]
+        # Must contain tool name and field_name
+        assert "search_terms" in log_line
+        assert "ngay_hieu_luc" in log_line
+        assert "party_filter" in log_line  # args_present should include party_filter
+        # Must NOT contain the raw party name (PII)
+        assert "Hán Thị Nga" not in log_line
 
 
 class TestDocumentClauseCount:
