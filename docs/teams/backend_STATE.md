@@ -73,7 +73,7 @@ _Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
 - **Part 4** — `app/services/obligation_expander.py` new: `expand_recurring_obligations()`. Weekly APScheduler job Mon 02:00 (`run_expand_all_tenants`). Add `python-dateutil` to `requirements.txt`.
 - **Part 5** — `chat_query.py` additions: `series_id` + `waiting_trigger` params to `search_obligations`, updated prompt rules.
 
-**Part 2 — BLOCKED on #154 (KHE_AI):** `extraction_runner.py` mapping of `obligation_schedule[]`. Cannot proceed until KHE_AI ships `obligation_schedule[]` (replaces `payment_schedule[]`). Breaking rename — both must land same staging window.
+**Part 2 — UNBLOCKED (PR #161 merged 2026-06-20):** `extraction_runner.py` mapping of `obligation_schedule[]`. Compat shim on `result.payment_schedule` keeps existing code working; Windsurf cuts over to `result.obligation_schedule` in this PR. Delete shim after confirmed green.
 
 **Critical notes for Windsurf:**
 - Migration must be `tenant_006` (tenant_005 is taken by PR #149)
@@ -85,12 +85,7 @@ _Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
 
 ## Blocked
 
-### #154 — KHE_AI: generalize `payment_schedule[]` → `obligation_schedule[]`
-**Labels:** `from:backend` `for:ai` `relay` `status:planned`
-**Filed:** 2026-06-20 by KHE_Backend lead
-**Blocks:** #153 Part 2 (`extraction_runner.py` DEC-030 Phase 2 mapping)
-**Also closes:** #117 (recurrence passthrough absorbed into Part 2)
-**Action needed:** PM to slot priority for KHE_AI session. Breaking rename — coordinate staging window.
+*(none — #154 merged PR #161 → staging 2026-06-20)*
 
 ---
 
