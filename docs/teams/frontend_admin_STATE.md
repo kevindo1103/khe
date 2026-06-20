@@ -134,6 +134,12 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - 🟢 Nit: `scrollbar-none` is a no-op (no tailwind-scrollbar plugin). Optional.
 - Posted as comment (self-approve blocked). NOT merged — await note fix → re-review + merge.
 
+### 2026-06-20 — PR #133 (Admin chat) re-reviewed → MERGED, #131 closed
+- Windsurf force-pushed `56041c2`: added #96 muted note (TODO-tagged) + replaced `scrollbar-none` with inline `scrollbarWidth:'none'`. Both review items resolved.
+- Re-verified: D-08 byte-exact intact, contract unchanged, CI 3/3. Approved (comment) → **squash-merged `dc9465c`**. #131 closed, #129 acked.
+- Admin chat live on staging: `/admin/chat`, "Hỏi-đáp" nav. DOCS_INBOX #1 posted (flagged: no mockup, temp #96 note, no consent gating — PM to confirm).
+- **Follow-ups:** remove #96 note when backend #96 merges; confirm consent-gating intent; backfill Designer mockup if PM wants.
+
 ## Open dependencies
 
 | Dep | Status | Note |
