@@ -113,15 +113,24 @@ Ngoài ra, liệt kê các bên ký kết thành danh sách "parties":
 - Giữ nguyên tên + vai trò như văn bản, KHÔNG dịch/diễn giải (D-06).
 """
 
-# Payment schedule spec (DEC-027 / #117): structured installments in the SAME call.
-_PAYMENT_SCHEDULE_SPEC = """\
-Ngoài ra, bóc các kỳ thanh toán có ngày đến hạn thành danh sách "payment_schedule":
-- Mỗi phần tử: amount (số tiền, VND), due_date (ngày đến hạn yyyy-mm-dd nếu rõ),
-  milestone (mốc/diễn giải, vd "Tạm ứng 30%"), recurrence ("monthly"/"quarterly"/null),
-  payer (BÊN PHẢI TRẢ kỳ này — tên hoặc vai trò như văn bản, vd "Owner", "Bên B"; null nếu không rõ).
-- Chỉ thêm phần tử khi có kỳ thanh toán RÕ RÀNG (có số tiền và/hoặc ngày/mốc).
-- Nếu thanh toán phi cấu trúc ("theo từng đợt theo thông báo") → payment_schedule = []
-  (vẫn giữ dieu_khoan_thanh_toan ở dạng văn bản). KHÔNG bịa lịch (D-06).
+# Obligation schedule spec (DEC-030 Phase 2 / #154): generalized from payments to
+# EVERY scheduled obligation, with series + event-trigger support, in the SAME call.
+_OBLIGATION_SCHEDULE_SPEC = """\
+Ngoài ra, bóc MỌI nghĩa vụ có lịch/đợt thành danh sách "obligation_schedule"
+(KHÔNG chỉ thanh toán — gồm cả giao hàng, bàn giao, nghiệm thu, gia hạn, bảo hành...):
+- Mỗi phần tử: obligation_type (payment|delivery|handover|expiration|renewal|review|warranty|other),
+  description (diễn giải đợt, nguyên văn, vd "Đợt 2 — giao 40% hàng"),
+  amount_raw (số tiền/giá trị NGUYÊN VĂN "40%" / "150.000.000 VND" — KHÔNG parse),
+  due_date (yyyy-mm-dd nếu có ngày rõ), recurrence ("monthly"/"quarterly"/"yearly"/null),
+  obligor (BÊN THỰC HIỆN đợt này — tên hoặc vai trò như văn bản, vd "Owner", "Bên B"; null nếu không rõ).
+- CHUỖI NHIỀU ĐỢT (thanh toán/giao hàng theo đợt): gán CÙNG series_id cho mọi đợt cùng chuỗi,
+  đặt milestone_index (1, 2, 3...) và milestone_total (tổng số đợt).
+- NEO THEO SỰ KIỆN: nếu đợt đến hạn theo sự kiện ("khi giao hàng", "sau nghiệm thu") thay vì ngày:
+  đặt trigger = "event", due_date = null, trigger_condition = NGUYÊN VĂN điều kiện,
+  trigger_delay_days = số ngày nếu nêu rõ ("30 ngày sau nghiệm thu" → 30). TUYỆT ĐỐI không bịa ngày (D-08).
+- Đến hạn theo ngày cụ thể: trigger = "date".
+- Chỉ thêm phần tử khi nghĩa vụ RÕ RÀNG. Phi cấu trúc ("theo từng đợt theo thông báo") → bỏ qua,
+  giữ dieu_khoan_thanh_toan ở dạng văn bản. KHÔNG bịa lịch (D-06).
 """
 
 # Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
@@ -150,6 +159,6 @@ def build_instruction(doc_type: str = "auto") -> str:
         "Đọc ảnh tài liệu hợp đồng bên dưới và bóc tách thông tin theo schema JSON yêu cầu.\n"
         f"{hint}\n"
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
-        f"{_PARTIES_SPEC}\n{_PAYMENT_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )

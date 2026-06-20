@@ -51,11 +51,11 @@ def to_result(
         doc_type=parsed.doc_type,
         doc_type_confidence=parsed.doc_type_confidence,
         fields=parsed.as_field_map(),
-        # DEC-026/027: Gemini uses ContractExtractionLLMFull (clauses + payment_schedule);
-        # Claude uses the flat base (neither — grammar compiler timeout on nested lists).
-        # getattr defaults to [] so both schema tiers produce a valid ExtractionResult.
+        # DEC-026/030: Gemini uses ContractExtractionLLMFull (clauses + obligation_schedule
+        # + parties); Claude uses the flat base (none — grammar compiler timeout on nested
+        # lists). getattr defaults to [] so both schema tiers produce a valid result.
         clauses=list(getattr(parsed, "clauses", [])),
-        payment_schedule=list(getattr(parsed, "payment_schedule", [])),
+        obligation_schedule=list(getattr(parsed, "obligation_schedule", [])),  # DEC-030 Phase 2 (#154)
         parties=list(getattr(parsed, "parties", [])),  # DEC-030 (Gemini Full only)
         provider=provider,
         model=model,

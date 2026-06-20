@@ -24,6 +24,7 @@ from ..schemas import (
     ExtractedField,
     ExtractionResult,
     NamedExtractedField,
+    ObligationScheduleItem,
     PartyItem,
     PaymentScheduleItem,
     TokenUsage,
@@ -382,15 +383,17 @@ def test_extraction_result_payment_schedule_default_empty() -> None:
 
 def test_full_schema_has_typespecific_payment_clauses() -> None:
     llm = ContractExtractionLLMFull(doc_type=DocType.LABOR)
-    # All three extras default empty (DEC-026/027/029).
-    assert llm.payment_schedule == [] and llm.clauses == [] and llm.type_specific == []
+    # All extras default empty (DEC-026/029/030 Phase 2). payment_schedule is now a
+    # generalized obligation_schedule (#154); the flat schema carries neither.
+    assert llm.obligation_schedule == [] and llm.clauses == [] and llm.type_specific == []
+    assert not hasattr(llm, "payment_schedule")  # LLM schema renamed → obligation_schedule
 
 
 def test_base_schema_lean_for_claude() -> None:
     # Claude flat schema must stay lean (it rejects wide schemas) — only the 7
     # BASE_CANONICAL_FIELDS, no nested lists, no v2 universal fields.
     llm = ContractExtractionLLM(doc_type=DocType.OTHER)
-    assert not hasattr(llm, "payment_schedule")
+    assert not hasattr(llm, "obligation_schedule")
     assert not hasattr(llm, "type_specific")
     assert not hasattr(llm, "clauses")
     assert not hasattr(llm, "doc_type_group")   # v2 → Full only
@@ -431,25 +434,30 @@ def test_full_as_field_map_folds_type_specific_by_key() -> None:
     assert set(ContractExtractionLLM(doc_type=DocType.LABOR).as_field_map()) == set(BASE_CANONICAL_FIELDS)
 
 
-def test_to_result_maps_payment_schedule() -> None:
+def test_to_result_maps_obligation_schedule() -> None:
     from ..providers.base import to_result
 
     llm = ContractExtractionLLMFull(
         doc_type=DocType.SUPPLIER,
-        payment_schedule=[PaymentScheduleItem(amount="5000000", due_date="2026-08-01", milestone="Đợt 1")],
+        obligation_schedule=[
+            ObligationScheduleItem(
+                obligation_type="payment", description="Đợt 1",
+                amount_raw="5000000", due_date="2026-08-01",
+            )
+        ],
     )
     res = to_result(
         llm, provider="gemini_flash", model="gemini-2.5-flash",
         latency_ms=10.0, usage=TokenUsage(input_tokens=5, output_tokens=2), cost=1.0,
     )
-    assert len(res.payment_schedule) == 1 and res.payment_schedule[0].due_date == "2026-08-01"
-    # Claude flat schema → empty payment_schedule (backward compat)
+    assert len(res.obligation_schedule) == 1 and res.obligation_schedule[0].due_date == "2026-08-01"
+    # Claude flat schema → empty obligation_schedule (backward compat)
     flat = ContractExtractionLLM(doc_type=DocType.SUPPLIER)
     res2 = to_result(
         flat, provider="claude_haiku", model="claude-haiku-4-5",
         latency_ms=5.0, usage=TokenUsage(input_tokens=3, output_tokens=1), cost=0.5,
     )
-    assert res2.payment_schedule == []
+    assert res2.obligation_schedule == []
 
 
 def test_prompt_has_doctype_group_and_payment() -> None:
@@ -458,7 +466,7 @@ def test_prompt_has_doctype_group_and_payment() -> None:
     instr = build_instruction("hd_lao_dong")
     assert "doc_type_group" in instr
     assert "lao_dong" in instr and "xay_dung" in instr      # group enum listed
-    assert "payment_schedule" in instr                       # payment section present
+    assert "obligation_schedule" in instr                    # schedule section present (#154)
     assert "luong_co_ban" in instr                           # type-specific guidance present
 
 
@@ -518,14 +526,19 @@ def test_extraction_result_parties_default_and_mapped() -> None:
             PartyItem(name="Cty A", role_label="Owner"),
             PartyItem(name="Cty B", role_label="Operator"),
         ],
-        payment_schedule=[PaymentScheduleItem(amount="5", due_date="2026-07-01", payer="Owner")],
+        obligation_schedule=[
+            ObligationScheduleItem(
+                obligation_type="payment", description="Đợt 1",
+                amount_raw="5", due_date="2026-07-01", obligor="Owner",
+            )
+        ],
     )
     res = to_result(
         full, provider="gemini_flash", model="gemini-2.5-flash",
         latency_ms=1.0, usage=TokenUsage(input_tokens=1, output_tokens=1), cost=1.0,
     )
     assert [p.role_label for p in res.parties] == ["Owner", "Operator"]
-    assert res.payment_schedule[0].payer == "Owner"
+    assert res.obligation_schedule[0].obligor == "Owner"
     # Claude flat schema → parties stays [] (backward compat)
     flat = ContractExtractionLLM(doc_type=DocType.OTHER)
     res2 = to_result(
@@ -540,7 +553,76 @@ def test_prompt_has_parties_and_payer() -> None:
 
     instr = build_instruction("auto")
     assert "parties" in instr and "role_label" in instr
-    assert "payer" in instr  # who must pay each installment
+    assert "obligor" in instr  # who performs each scheduled obligation (#154, renamed from payer)
+
+
+# --- obligation_schedule generalization (DEC-030 Phase 2, #154) -------------
+
+
+def test_obligation_schedule_item_required_and_defaults() -> None:
+    # obligation_type + description required; trigger defaults to "date".
+    o = ObligationScheduleItem(obligation_type="delivery", description="Giao 40% hàng")
+    assert o.trigger == "date" and o.due_date is None and o.amount_raw is None
+    assert o.series_id is None and o.milestone_index is None and o.trigger_delay_days is None
+    for kwargs in ({"obligation_type": "payment"}, {"description": "x"}):
+        try:
+            ObligationScheduleItem(**kwargs)  # type: ignore[arg-type]
+        except Exception:  # pydantic ValidationError — both fields required
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("obligation_type + description must be required")
+
+
+def test_obligation_schedule_series_and_event_trigger() -> None:
+    # T3 series: same series_id across installments with index/total.
+    s = ObligationScheduleItem(
+        obligation_type="payment", description="Đợt 2/3", amount_raw="40%",
+        series_id="pay-1", milestone_index=2, milestone_total=3, obligor="Bên B",
+    )
+    assert s.milestone_index == 2 and s.milestone_total == 3 and s.series_id == "pay-1"
+    # Event-anchored milestone: no fabricated date (D-08).
+    e = ObligationScheduleItem(
+        obligation_type="handover", description="Bàn giao sau nghiệm thu",
+        trigger="event", trigger_condition="sau khi nghiệm thu", trigger_delay_days=30,
+    )
+    assert e.trigger == "event" and e.due_date is None
+    assert e.trigger_condition == "sau khi nghiệm thu" and e.trigger_delay_days == 30
+
+
+def test_extraction_result_obligation_schedule_default_empty() -> None:
+    r = ExtractionResult(fields={}, doc_type="khac")
+    assert r.obligation_schedule == []
+
+
+def test_payment_schedule_compat_property_projects_payments_only() -> None:
+    # DEPRECATED shim (#154): only payment-type items surface, mapped to old shape.
+    r = ExtractionResult(
+        fields={}, doc_type=DocType.SUPPLIER,
+        obligation_schedule=[
+            ObligationScheduleItem(
+                obligation_type="payment", description="Tạm ứng 30%",
+                amount_raw="30%", due_date="2026-07-05", recurrence="monthly", obligor="Bên B",
+            ),
+            ObligationScheduleItem(obligation_type="delivery", description="Giao hàng đợt 1"),
+        ],
+    )
+    compat = r.payment_schedule
+    assert len(compat) == 1  # delivery item filtered out
+    assert isinstance(compat[0], PaymentScheduleItem)
+    # field remap: amount_raw→amount, description→milestone, obligor→payer
+    assert compat[0].amount == "30%" and compat[0].milestone == "Tạm ứng 30%"
+    assert compat[0].payer == "Bên B" and compat[0].due_date == "2026-07-05"
+    assert compat[0].recurrence == "monthly"
+
+
+def test_prompt_has_obligation_schedule_series_and_event() -> None:
+    from ..prompts import build_instruction
+
+    instr = build_instruction("auto")
+    assert "obligation_schedule" in instr and "obligation_type" in instr
+    assert "series_id" in instr and "milestone_index" in instr     # series guidance
+    assert "trigger" in instr and "trigger_condition" in instr      # event-anchor guidance
+    assert "amount_raw" in instr
 
 
 def _run_all() -> None:

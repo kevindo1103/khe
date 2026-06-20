@@ -233,6 +233,70 @@ class PaymentScheduleItem(BaseModel):
     )
 
 
+class ObligationScheduleItem(BaseModel):
+    """One scheduled obligation lifted from the contract (DEC-030 Phase 2, #154).
+
+    Generalizes the earlier `PaymentScheduleItem` to EVERY obligation category
+    (payment · delivery · handover · expiration · renewal · review · warranty · other),
+    plus event-triggered milestones and multi-installment series. Backend #153 Part 2
+    maps each entry → an Obligation DB row.
+
+    READ-ONLY (D-06): every value is verbatim. When a milestone anchors to an event
+    rather than a fixed date ("sau nghiệm thu", "khi giao hàng"), `trigger="event"` and
+    `due_date=None` — never fabricate a date (D-08). `amount_raw` is the raw string
+    ("40%", "150.000.000 VND"), NOT parsed — Backend normalizes downstream."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    obligation_type: str = Field(
+        description="Loại nghĩa vụ: payment | delivery | handover | expiration | renewal | "
+        "review | warranty | other. Dùng 'other' nếu không khớp loại nào (KHÔNG ép loại, D-08)."
+    )
+    description: str = Field(
+        description='Diễn giải đợt/nghĩa vụ, nguyên văn — vd "Đợt 2 — giao 40% hàng".'
+    )
+    amount_raw: Optional[str] = Field(
+        default=None,
+        description='Số tiền/giá trị NGUYÊN VĂN, KHÔNG parse — vd "40%", "150.000.000 VND". null nếu không có.',
+    )
+    due_date: Optional[str] = Field(
+        default=None,
+        description="Ngày đến hạn — ISO yyyy-mm-dd nếu rõ. null nếu trigger=event (D-08: không bịa ngày).",
+    )
+    recurrence: Optional[str] = Field(
+        default=None,
+        description='Chu kỳ lặp: "monthly" | "quarterly" | "yearly" | null (một lần). KHÔNG đoán nếu không nêu.',
+    )
+    obligor: Optional[str] = Field(
+        default=None,
+        description='Bên THỰC HIỆN nghĩa vụ này — tên hoặc vai trò đúng như trên tài liệu (vd "Owner", "Bên B"). '
+        "Để Backend chia nghĩa vụ (mình làm) vs quyền lợi (đối tác làm cho mình). null nếu không rõ.",
+    )
+    # Series — set together when ONE obligation is split into multiple đợt (T3).
+    series_id: Optional[str] = Field(
+        default=None,
+        description="Cùng một chuỗi đợt → cùng series_id (nhãn/uuid LLM tự sinh). null nếu nghĩa vụ đơn lẻ.",
+    )
+    milestone_index: Optional[int] = Field(
+        default=None, description="Số thứ tự đợt trong chuỗi (bắt đầu từ 1). null nếu không phải chuỗi."
+    )
+    milestone_total: Optional[int] = Field(
+        default=None, description="Tổng số đợt trong chuỗi. null nếu không phải chuỗi."
+    )
+    trigger: str = Field(
+        default="date",
+        description='"date" nếu đến hạn theo NGÀY; "event" nếu neo vào SỰ KIỆN (giao hàng, nghiệm thu...).',
+    )
+    trigger_condition: Optional[str] = Field(
+        default=None,
+        description='Điều kiện kích hoạt, NGUYÊN VĂN từ HĐ nếu trigger=event (vd "sau khi nghiệm thu"). null nếu trigger=date.',
+    )
+    trigger_delay_days: Optional[int] = Field(
+        default=None,
+        description='Số ngày trễ sau sự kiện nếu nêu rõ (vd 30 cho "30 ngày sau nghiệm thu"). null nếu không có.',
+    )
+
+
 class PartyItem(BaseModel):
     """A contracting party with its role label (DEC-030 draft).
 
@@ -302,7 +366,7 @@ class ContractExtractionLLM(BaseModel):
 class ContractExtractionLLMFull(ContractExtractionLLM):
     """Extended schema for Gemini (response_schema=). Adds the v2 universal fields
     (DEC-029), the type-specific fields as ONE keyed list, the clause list (DEC-026),
-    and the payment schedule (DEC-027 / #117).
+    the scheduled-obligation list (DEC-030 Phase 2 / #154), and parties (DEC-030).
 
     Gemini handles nested arrays + a wider field set; Claude rejects them, so Claude
     stays on the lean base. Type-specific fields use a single `type_specific` array
@@ -324,9 +388,10 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
         default_factory=list,
         description="Danh sách MỌI điều/khoản/mục trong tài liệu, nguyên văn (DEC-026).",
     )
-    payment_schedule: list[PaymentScheduleItem] = Field(
+    obligation_schedule: list[ObligationScheduleItem] = Field(
         default_factory=list,
-        description="Các kỳ thanh toán có ngày đến hạn (DEC-027). Rỗng nếu thanh toán phi cấu trúc.",
+        description="MỌI nghĩa vụ có lịch/đợt (DEC-030 Phase 2 — payment/delivery/handover/...). "
+        "Rỗng nếu không có nghĩa vụ cấu trúc được.",
     )
     parties: list[PartyItem] = Field(
         default_factory=list,
@@ -360,9 +425,10 @@ class ExtractionResult(BaseModel):
     # Full clause list from the same vision call (DEC-026). Default empty →
     # backward-compatible: existing callers that ignore `clauses` keep working.
     clauses: list[ClauseItem] = Field(default_factory=list)
-    # Structured payment installments (DEC-027 / #117) → Backend derives `payment`
-    # Obligation rows. Default empty (Claude fallback + unstructured payment text).
-    payment_schedule: list[PaymentScheduleItem] = Field(default_factory=list)
+    # Structured scheduled obligations (DEC-030 Phase 2 / #154) → Backend #153 Part 2
+    # derives one Obligation row per entry (any category, not just payment). Default
+    # empty (Claude fallback + unstructured contracts).
+    obligation_schedule: list[ObligationScheduleItem] = Field(default_factory=list)
     # Parties + role labels (DEC-030) → Backend matches tenant legal name to find
     # 'self', then splits obligations into nghĩa vụ (self) vs quyền lợi (đối tác).
     # Gemini-only; Claude fallback leaves [] (use flat `fields["doi_tac"]`).
@@ -374,6 +440,24 @@ class ExtractionResult(BaseModel):
     usage: TokenUsage = Field(default_factory=TokenUsage)
     cost_vnd: float = 0.0
     warnings: list[str] = Field(default_factory=list)
+
+    @property
+    def payment_schedule(self) -> list[PaymentScheduleItem]:
+        """DEPRECATED compat shim (#154) — REMOVE after Backend #153 Part 2 cuts over
+        to `obligation_schedule`. Projects payment-type scheduled obligations back onto
+        the old `PaymentScheduleItem` shape so Backend's PR-#141 consumer keeps working
+        during the rename window (no AttributeError before the cutover lands)."""
+        return [
+            PaymentScheduleItem(
+                amount=i.amount_raw,
+                due_date=i.due_date,
+                milestone=i.description,
+                recurrence=i.recurrence,
+                payer=i.obligor,
+            )
+            for i in self.obligation_schedule
+            if i.obligation_type == "payment"
+        ]
 
     @property
     def any_low_confidence(self) -> bool:
