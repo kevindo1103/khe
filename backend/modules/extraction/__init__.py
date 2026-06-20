@@ -33,6 +33,7 @@ from .schemas import (
     PaymentScheduleItem,
     TokenUsage,
 )
+from .providers.base import USD_TO_VND, cost_vnd
 from .provider import VisionExtractionProvider
 from .factory import ExtractionUnavailable, get_extraction_provider
 
@@ -58,4 +59,6 @@ __all__ = [
     "DOC_TYPE_GROUPS",
     "TYPE_SPECIFIC_FIELDS",
     "ALL_TYPE_SPECIFIC_FIELDS",
+    "cost_vnd",
+    "USD_TO_VND",
 ]
