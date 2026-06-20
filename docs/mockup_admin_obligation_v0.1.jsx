@@ -1,4 +1,7 @@
 /**
+ * ⚠️ SUPERSEDED by mockup_admin_obligation_v0.2.jsx (DEC-030 revamp — direction
+ *    tabs + series groups + waiting_trigger/open-ended buckets). Kept for history.
+ *
  * Khế — Admin · Obligations  (mockup_admin_obligation_v0.1.jsx)
  * KHE_Designer · Phase 2 · issue #24
  * STATIC PROTOTYPE — scope docs/mockup_*.jsx. Imports Design System v0.1.

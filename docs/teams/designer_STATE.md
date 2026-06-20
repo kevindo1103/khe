@@ -62,8 +62,17 @@ Built in `mockup_design_system_v0.1.jsx`:
   - `mockup_pwa_consent_v0.1.jsx` — NĐ 13/2023 first-login dialog per `nd13-v1` spec (#32 comment): buttons "Đồng ý…"/"Để sau", purpose=vision_extraction, names US recipients Google/Anthropic + revocation. ⚠ DRAFT copy, counsel sign-off pending (DEC-010)
   - `mockup_pwa_notification_v0.1.jsx` — Telegram opt-in deep-link `t.me/?start=` (DEC-006), 30+7 day reminders, email fallback
 
-## Status: ALL Phase 1–3 mockups delivered. Awaiting Kevin Phase-3 approval to close #24 → unblock Frontend #30 + PWA #32.
-- Each phase: commit → push → present to Kevin → await approve → next phase.
+## Status: #24 DONE — merged via PR #36, closed. Frontend #30 + PWA #32 unblocked.
+
+## DEC-030 obligation revamp (PM flag 2026-06-20 via backend relay) — branch `claude/design-obligation-direction-series`
+Driven by BA contract logic (DEC-019..022) + DEC-030 self-party direction. Design references for FE #157 (#146b) + #158 (#146c):
+- [x] `mockup_admin_obligation_v0.2.jsx` — **supersedes v0.1**. AXIS-1 direction tabs (Nghĩa vụ / Quyền lợi / Cần xác nhận=null, D-02); AXIS-2 buckets with #157 fix (waiting_trigger → 'waiting'; null due_date → 'open_ended'/"vô thời hạn" DEC-020; else date); milestone **series groups** collapsible w/ progress + chips (DEC-021); category/series/obligor/amount/trigger chips; expanded status actions (done/in_progress/cancel/waiting→trigger) → Event (FR-OB-04); chain-trigger toast.
+- [x] `mockup_admin_self_party_confirm_v0.1.jsx` — "bên nào là bạn?" modal (#158): parties[] dropdown → confirm_self_party; Settings legal_name field; D-02 user-confirm framing.
+- [x] v0.1 obligation marked SUPERSEDED.
+
+### Coordination flags for the revamp
+- "Cần xác nhận" tab + self-party modal depend on backend **#155** (parties[] persist + confirm_self_party) and **#156** type sync (ObligationOut +9 fields). Mockups assume the #157/#155 field shape (direction, obligation_type, milestone_series_id, milestone_index/total, obligor, trigger_condition, amount_raw, status incl. waiting_trigger).
+- 2 PM/Backend ambiguities (per DOCS_INBOX): chat returns direction+series in sources? · parties persist = table vs JSON. Mockups don't depend on the resolution.
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
