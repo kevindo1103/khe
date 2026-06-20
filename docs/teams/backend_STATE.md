@@ -5,7 +5,7 @@
 > firm_portal, auth, audit), alembic, scheduler. Multi-tenant: `master.db` + per-tenant.
 > Lead branch: `claude/feat-backend-scaffold-nm2942`.
 
-_Last updated: 2026-06-20 (#164 PR #169 merged → staging; DOCS_INBOX posted; tenant_007=chat-tokens ✅, tenant_008=parties-doc-role for #155)_
+_Last updated: 2026-06-20 (#163 PR #173 merged+closed; #164 PR #169 merged; optional gate cleared — 12 PRs ready for staging→main)_
 
 ---
 
@@ -60,8 +60,9 @@ _Last updated: 2026-06-20 (#164 PR #169 merged → staging; DOCS_INBOX posted; t
 | PR #161 | #154 | KHE_AI: `payment_schedule[]` → `obligation_schedule[]` generalization (+ compat shim) |
 | PR #162 | #153 | DEC-030 Phase 2: 4-axis obligation model (series + event-chain + T2 expand + dedup + audit Event) |
 | PR #169 | #164 | DEC-028 Phase 2: chat tokenomics — token + cost tracking on ChatQueryLog + `GET /chat/stats` |
+| PR #173 | #163 | DEC-030 tail: obligation_type/trigger enum coercion + trigger=event nulls due_date |
 
-**Status:** All 10 PRs on `staging`. Batch promote to `main` planned (gate: #163 nitpicks land first — optional).
+**Status:** 12 PRs on `staging`. Batch promote to `main` ready — optional gate (#163) cleared.
 
 ---
 
@@ -101,7 +102,7 @@ _Last updated: 2026-06-20 (#164 PR #169 merged → staging; DOCS_INBOX posted; t
 
 | # | Title | Status | Notes |
 |---|-------|--------|-------|
-| #163 | Obligation enum coercion + trigger/date consistency (nitpicks 3+4) | `status:planned` | Low priority. Coerce unknown `obligation_type`→`other`, `trigger`→`date`; null `due_date` when `trigger=event`. Optional gate before staging→main. |
+| #163 | Obligation enum coercion + trigger/date consistency (nitpicks 3+4) | `status:done-staging` ✅ | Merged PR #173. Optional gate for staging→main **cleared**. |
 | #164 | Chat tokenomics: token + cost tracking on ChatQueryLog | `status:done-staging` (PR #169 LGTM, merge pending) | Migration `tenant_007`. 225 tests pass. DOCS_INBOX needed post-merge. |
 
 ### Low priority / relay
@@ -122,8 +123,8 @@ _Last updated: 2026-06-20 (#164 PR #169 merged → staging; DOCS_INBOX posted; t
 
 ## Staging → main promotion plan
 
-**Batch ready (10 PRs):** PR #135, #138, #140, #141, #142, #148, #149, #151, #161, #162.
-**Gate:** Optional — let #163 (nitpicks) land first so the obligation tail is clean. Not a hard blocker.
+**Batch ready (12 PRs):** PR #135, #138, #140, #141, #142, #148, #149, #151, #161, #162, #169, #173.
+**Gate:** ✅ Cleared — #163 merged (PR #173). Ready to promote.
 **Pre-promote forward-merge:** ensure `pr-quality-gate.yml` fix is on all long-lived branches (`main → staging`) before opening the promote PR (CLAUDE.md bug pattern: `pull_request` workflow reads HEAD branch YAML).
 **Re-extraction needed:** #162 shipped — re-run extraction on existing docs (esp. the 5 stuck in #97) to populate `obligation_schedule` data (series, event-chain, amount_raw, correct recurrence).
 **Post-promotion:** DOCS_INBOX already covers PRs #148/#149/#151/#161/#162; confirm KHE_Docs folded before promote.
