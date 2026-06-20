@@ -368,11 +368,27 @@ export default function Obligations() {
         </Card>
       </div>
 
-      {/* Cần xác nhận note */}
-      {activeTab === null && (
-        <div className="mb-4 p-3 bg-info-soft border border-info/20 rounded-md text-sm text-info">
-          Các nghĩa vụ này chưa xác định vai trò. Tính năng xác nhận vai trò đang phát triển.
-        </div>
+      {/* Cần xác nhận — CTA to document detail */}
+      {activeTab === null && filteredItems.length > 0 && (
+        <Card className="mb-4 border-warning/30 bg-warning-soft">
+          <div className="text-sm font-medium text-ink mb-2">
+            Các nghĩa vụ này chưa xác định vai trò
+          </div>
+          <p className="text-xs text-ink-muted mb-3">
+            Mở tài liệu gốc để xác nhận bên bạn đại diện → Khế sẽ tự phân loại nghĩa_vụ / quyền_lợi.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {Array.from(new Set(filteredItems.map((ob) => ob.document_id))).map((docId) => (
+              <Link
+                key={docId}
+                to={`/admin/documents/${docId}`}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-surface border border-border rounded-md text-xs font-medium text-primary hover:bg-primary-soft transition-colors"
+              >
+                📄 Tài liệu #{docId} →
+              </Link>
+            ))}
+          </div>
+        </Card>
       )}
 
       {/* Series groups */}

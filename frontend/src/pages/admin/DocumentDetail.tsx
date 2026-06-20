@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, EmptyState } from '../../components';
 import { apiFetch } from '../../lib/api';
-import type { DocumentDetailOut, TermOut } from '../../types/documents';
+import type { DocumentDetailOut, TermOut, SelfPartyConfirmOut } from '../../types/documents';
 import type { ObligationOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import {
@@ -25,6 +25,8 @@ export default function DocumentDetail() {
   const [editingTermId, setEditingTermId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<string>('');
+  const [confirming, setConfirming] = useState(false);
 
   const load = useCallback(async () => {
     if (!docId) return;
@@ -168,6 +170,40 @@ export default function DocumentDetail() {
     </div>
   );
 
+  const hasNullDirection = useMemo(() => {
+    if (!doc) return false;
+    return doc.obligations.some((ob) => ob.direction === null);
+  }, [doc]);
+
+  const showSelfPartyConfirm = useMemo(() => {
+    if (!doc) return false;
+    return (doc.parties?.length ?? 0) > 0 && hasNullDirection;
+  }, [doc, hasNullDirection]);
+
+  const confirmSelfParty = async () => {
+    if (!docId || !selectedRole) return;
+    setConfirming(true);
+    setError('');
+    try {
+      const res = await apiFetch<SelfPartyConfirmOut>(
+        `/documents/${docId}/confirm_self_party`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ role_label: selectedRole }),
+        }
+      );
+      setToastMsg(
+        `Đã xác nhận — ${res.updated} nghĩa vụ đã cập nhật hướng.`
+      );
+      setSelectedRole('');
+      await load();
+    } catch (err) {
+      setError((err as ApiError).message || 'Xác nhận thất bại');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
   if (loading && !doc) {
     return <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>;
   }
@@ -258,6 +294,42 @@ export default function DocumentDetail() {
                 </Card>
               )}
             </>
+          )}
+
+          {/* Self-party confirm */}
+          {showSelfPartyConfirm && doc.parties && (
+            <Card className="mb-4 border-warning/30 bg-warning-soft">
+              <div className="text-sm font-medium text-ink mb-2">
+                Bên nào trong hợp đồng này là bạn?
+              </div>
+              <p className="text-xs text-ink-muted mb-3">
+                Chọn bên bạn đại diện để Khế phân loại nghĩa vụ (nghĩa_vụ / quyền_lợi).
+                Chưa chọn → nghĩa vụ vẫn ở tab "Cần xác nhận".
+              </p>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">▼ Chọn bên...</option>
+                    {doc.parties.map((p, i) => (
+                      <option key={i} value={p.role_label || p.name}>
+                        {p.name}{p.role_label ? ` (${p.role_label})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  onClick={confirmSelfParty}
+                  loading={confirming}
+                  disabled={!selectedRole}
+                >
+                  Xác nhận
+                </Button>
+              </div>
+            </Card>
           )}
 
           {/* Obligations */}
