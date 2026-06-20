@@ -103,11 +103,22 @@ _TYPE_SPECIFIC_SPEC = (
     + "\n"
 )
 
+# Parties + roles spec (DEC-030): captures role↔name so the obligation engine can
+# split nghĩa vụ (self) vs quyền lợi (đối tác). Does NOT decide who is the SME.
+_PARTIES_SPEC = """\
+Ngoài ra, liệt kê các bên ký kết thành danh sách "parties":
+- Mỗi phần tử: name (tên bên, đúng như trên tài liệu), role_label (vai trò dùng TRONG
+  hợp đồng, vd "Owner", "Operator", "Bên A", "Bên cho thuê", "NSDLĐ"; null nếu không có).
+- Bao gồm MỌI bên ký kết. KHÔNG suy đoán bên nào là người dùng (hệ thống tự xác định sau).
+- Giữ nguyên tên + vai trò như văn bản, KHÔNG dịch/diễn giải (D-06).
+"""
+
 # Payment schedule spec (DEC-027 / #117): structured installments in the SAME call.
 _PAYMENT_SCHEDULE_SPEC = """\
 Ngoài ra, bóc các kỳ thanh toán có ngày đến hạn thành danh sách "payment_schedule":
 - Mỗi phần tử: amount (số tiền, VND), due_date (ngày đến hạn yyyy-mm-dd nếu rõ),
-  milestone (mốc/diễn giải, vd "Tạm ứng 30%"), recurrence ("monthly"/"quarterly"/null).
+  milestone (mốc/diễn giải, vd "Tạm ứng 30%"), recurrence ("monthly"/"quarterly"/null),
+  payer (BÊN PHẢI TRẢ kỳ này — tên hoặc vai trò như văn bản, vd "Owner", "Bên B"; null nếu không rõ).
 - Chỉ thêm phần tử khi có kỳ thanh toán RÕ RÀNG (có số tiền và/hoặc ngày/mốc).
 - Nếu thanh toán phi cấu trúc ("theo từng đợt theo thông báo") → payment_schedule = []
   (vẫn giữ dieu_khoan_thanh_toan ở dạng văn bản). KHÔNG bịa lịch (D-06).
@@ -139,6 +150,6 @@ def build_instruction(doc_type: str = "auto") -> str:
         "Đọc ảnh tài liệu hợp đồng bên dưới và bóc tách thông tin theo schema JSON yêu cầu.\n"
         f"{hint}\n"
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
-        f"{_PAYMENT_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_PARTIES_SPEC}\n{_PAYMENT_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )

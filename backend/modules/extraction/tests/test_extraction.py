@@ -24,6 +24,7 @@ from ..schemas import (
     ExtractedField,
     ExtractionResult,
     NamedExtractedField,
+    PartyItem,
     PaymentScheduleItem,
     TokenUsage,
 )
@@ -477,6 +478,69 @@ def test_doc_type_confidence_clamped_both_tiers() -> None:
         latency_ms=1.0, usage=TokenUsage(input_tokens=1, output_tokens=1), cost=1.0,
     )
     assert res.doc_type_confidence == 1.0
+
+
+# --- parties + role labels (DEC-030, #143) ----------------------------------
+
+
+def test_party_item_schema() -> None:
+    p = PartyItem(name="Công ty TNHH ABC", role_label="Operator")
+    assert p.name == "Công ty TNHH ABC" and p.role_label == "Operator"
+    assert PartyItem(name="Ông X").role_label is None  # role optional
+    try:
+        PartyItem()  # type: ignore[call-arg] — name required
+    except Exception:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("PartyItem.name must be required")
+
+
+def test_payment_item_has_payer() -> None:
+    p = PaymentScheduleItem(amount="1000", due_date="2026-07-01", payer="Owner")
+    assert p.payer == "Owner"
+    assert PaymentScheduleItem().payer is None  # optional, default None
+
+
+def test_full_schema_has_parties_default_empty() -> None:
+    full = ContractExtractionLLMFull(doc_type=DocType.OTHER)
+    assert full.parties == []
+    # base (Claude) schema does NOT carry parties (nested list → Gemini only)
+    assert not hasattr(ContractExtractionLLM(doc_type=DocType.OTHER), "parties")
+
+
+def test_extraction_result_parties_default_and_mapped() -> None:
+    assert ExtractionResult(fields={}, doc_type="khac").parties == []
+    from ..providers.base import to_result
+
+    full = ContractExtractionLLMFull(
+        doc_type=DocType.OTHER,
+        parties=[
+            PartyItem(name="Cty A", role_label="Owner"),
+            PartyItem(name="Cty B", role_label="Operator"),
+        ],
+        payment_schedule=[PaymentScheduleItem(amount="5", due_date="2026-07-01", payer="Owner")],
+    )
+    res = to_result(
+        full, provider="gemini_flash", model="gemini-2.5-flash",
+        latency_ms=1.0, usage=TokenUsage(input_tokens=1, output_tokens=1), cost=1.0,
+    )
+    assert [p.role_label for p in res.parties] == ["Owner", "Operator"]
+    assert res.payment_schedule[0].payer == "Owner"
+    # Claude flat schema → parties stays [] (backward compat)
+    flat = ContractExtractionLLM(doc_type=DocType.OTHER)
+    res2 = to_result(
+        flat, provider="claude_haiku", model="claude-haiku-4-5",
+        latency_ms=1.0, usage=TokenUsage(input_tokens=1, output_tokens=1), cost=1.0,
+    )
+    assert res2.parties == []
+
+
+def test_prompt_has_parties_and_payer() -> None:
+    from ..prompts import build_instruction
+
+    instr = build_instruction("auto")
+    assert "parties" in instr and "role_label" in instr
+    assert "payer" in instr  # who must pay each installment
 
 
 def _run_all() -> None:

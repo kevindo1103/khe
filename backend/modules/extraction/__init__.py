@@ -28,6 +28,7 @@ from .schemas import (
     ExtractedField,
     ExtractionResult,
     NamedExtractedField,
+    PartyItem,
     PaymentScheduleItem,
     TokenUsage,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "ExtractedField",
     "NamedExtractedField",
     "ClauseItem",
+    "PartyItem",
     "PaymentScheduleItem",
     "ContractExtractionLLM",
     "ContractExtractionLLMFull",
