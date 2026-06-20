@@ -147,6 +147,14 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Relayed **#136** (`from:frontend`+`for:infra`+`relay`+`blocker:human-needed`): nginx `/api/`→`:8001/` with cookie pass-through + SPA try_files + `/pwa/` block; Backend confirm `/api` namespace contract. Couldn't curl-probe (egress 403 in this env).
 - **Blocked on Infra** for all Admin staging e2e verify.
 
+### 2026-06-20 — Admin login fixed (Infra #136) → CLOSED; follow-ups triaged
+- Infra fixed nginx `/api/`→`:8001/` with Cookie/Set-Cookie pass-through. Admin login works on staging; Hỏi-đáp feature confirmed visible by user. **#136 closed.**
+- PM triage of follow-ups:
+  1. **#96 note:** KEEP until backend #96 merges (still open). Already `TODO(#96)`-tagged for removal.
+  2. **Consent gating on Admin chat:** not needed now — revisit when promoting to `main`.
+  3. **Designer mockup backfill for Admin chat:** not needed — defer to v2.
+- Carry-over still open: list-column `clause_count` (needs backend list-endpoint field, or defer Phase 2).
+
 ## Open dependencies
 
 | Dep | Status | Note |
