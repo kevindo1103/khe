@@ -139,11 +139,11 @@ def _mock_select_tools(question: str, tenant_id: str, db):
 
 
 async def _select_tools_mock(db, tenant_id, question):
-    return _mock_select_tools(question, tenant_id, db)
+    return _mock_select_tools(question, tenant_id, db), {"in": 100, "out": 20}
 
 
 async def _format_answer_mock(question, results):
-    return results[0]["value"] if results else ""
+    return results[0]["value"] if results else "", {"in": 200, "out": 50}
 
 
 def test_chat_does_not_cross_tenant(setup_two_tenants, monkeypatch):
