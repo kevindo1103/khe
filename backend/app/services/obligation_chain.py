@@ -41,7 +41,6 @@ def propagate_obligation_done(obligation_id: int, tenant_db: Session) -> int:
         dep.status = "pending"
         dep.milestone_trigger = "date"
 
-    tenant_db.commit()
     count = len(dependents)
     if count:
         logger.info(

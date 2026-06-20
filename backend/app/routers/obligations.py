@@ -44,7 +44,6 @@ def _log_event(
         payload=json.dumps(payload) if payload else None,
     )
     db.add(event)
-    db.commit()
 
 
 @router.get("/", response_model=ObligationListOut)
@@ -116,13 +115,10 @@ def patch_obligation(
 
     old_status = ob.status
     ob.status = payload.status
-    db.commit()
-    db.refresh(ob)
 
     activated_count = 0
     if payload.status == "done":
         activated_count = propagate_obligation_done(ob.id, db)
-        db.refresh(ob)
 
     _log_event(
         db,
@@ -133,5 +129,8 @@ def patch_obligation(
         actor=user.username,
         payload={"old_status": old_status, "new_status": payload.status},
     )
+
+    db.commit()
+    db.refresh(ob)
 
     return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob), activated_count=activated_count)

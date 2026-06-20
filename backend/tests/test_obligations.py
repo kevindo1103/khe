@@ -459,6 +459,7 @@ class TestEventChain:
         count = propagate_obligation_done(parent.id, db)
         assert count == 1
 
+        db.commit()
         db.refresh(child)
         assert child.status == "pending"
         assert child.milestone_trigger == "date"
@@ -487,6 +488,7 @@ class TestEventChain:
         db.commit()
 
         propagate_obligation_done(parent.id, db)
+        db.commit()
         db.refresh(child)
 
         expected = (date.today() + timedelta(days=30)).isoformat()
@@ -515,6 +517,7 @@ class TestEventChain:
         db.commit()
 
         propagate_obligation_done(parent.id, db)
+        db.commit()
         db.refresh(child)
 
         assert child.due_date == date.today().isoformat()
@@ -545,6 +548,7 @@ class TestEventChain:
         # The guard is in the PATCH endpoint: only calls propagate when payload.status == "done".
         # Here we verify that calling it on a non-done parent still works (it's the caller's responsibility).
         count = propagate_obligation_done(parent.id, db)
+        db.commit()
         assert count == 1  # dependents exist, they get activated
 
 

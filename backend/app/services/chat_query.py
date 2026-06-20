@@ -157,7 +157,7 @@ _TOOLS = [
                         "description": "True = chỉ lấy obligations đang chờ sự kiện (status=waiting_trigger). False/null = tất cả.",
                     },
                 },
-                "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to", "obligation_type", "direction", "doc_type_filter", "series_id", "waiting_trigger"],
+                "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to", "obligation_type", "direction", "doc_type_filter"],
             },
         },
     },
