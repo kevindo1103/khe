@@ -14,14 +14,21 @@ CI `python -c "import ..."` and the benchmark scaffold work without keys install
 """
 
 from .schemas import (
+    ALL_TYPE_SPECIFIC_FIELDS,
+    BASE_CANONICAL_FIELDS,
     CANONICAL_FIELDS,
     BENCHMARK_TARGET_FIELDS,
+    DOC_TYPE_GROUPS,
+    TYPE_SPECIFIC_FIELDS,
+    V2_UNIVERSAL_FIELDS,
     ClauseItem,
     ContractExtractionLLM,
     ContractExtractionLLMFull,
     DocType,
     ExtractedField,
     ExtractionResult,
+    NamedExtractedField,
+    PaymentScheduleItem,
     TokenUsage,
 )
 from .provider import VisionExtractionProvider
@@ -33,11 +40,18 @@ __all__ = [
     "ExtractionUnavailable",
     "ExtractionResult",
     "ExtractedField",
+    "NamedExtractedField",
     "ClauseItem",
+    "PaymentScheduleItem",
     "ContractExtractionLLM",
     "ContractExtractionLLMFull",
     "TokenUsage",
     "DocType",
     "CANONICAL_FIELDS",
+    "BASE_CANONICAL_FIELDS",
+    "V2_UNIVERSAL_FIELDS",
     "BENCHMARK_TARGET_FIELDS",
+    "DOC_TYPE_GROUPS",
+    "TYPE_SPECIFIC_FIELDS",
+    "ALL_TYPE_SPECIFIC_FIELDS",
 ]

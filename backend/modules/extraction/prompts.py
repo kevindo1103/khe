@@ -7,6 +7,8 @@ don't guess). Field definitions are tuned to the F&B/bán lẻ seed verticals
 
 from __future__ import annotations
 
+from .schemas import DOC_TYPE_GROUPS
+
 # Hard guardrail prepended to every extraction request.
 SYSTEM_GUARDRAIL = (
     "Bạn là công cụ BÓC TÁCH THÔNG TIN chỉ-đọc cho hợp đồng tiếng Việt. "
@@ -18,9 +20,20 @@ SYSTEM_GUARDRAIL = (
     "hoặc khi ảnh mờ/chữ viết tay/không chắc chắn."
 )
 
-# Field-by-field extraction spec (Vietnamese), referenced in the main instruction.
+# Step 1 (DEC-029) — classify doc_type_group BEFORE field extraction. Drives which
+# type-specific fields to look for. List built from the enum so prompt ↔ schema stay
+# in sync.
+_DOC_TYPE_GROUP_SPEC = (
+    "BƯỚC 1 — PHÂN LOẠI: Xác định doc_type_group của văn bản. Chọn ĐÚNG 1 trong:\n  "
+    + " | ".join(DOC_TYPE_GROUPS)
+    + "\nNếu không đủ dấu hiệu để chắc chắn → \"other\". KHÔNG đoán mò (D-08).\n"
+    "Ghi giá trị vào trường doc_type_group (value = đúng một mã ở trên).\n"
+)
+
+# Universal fields — always extracted (12 canonical). doc_type giữ enum cũ (4 loại)
+# cho tương thích ngược; doc_type_group là phân nhóm rộng mới (DEC-029).
 _FIELD_SPEC = """\
-Các trường cần bóc (canonical key → mô tả):
+BƯỚC 2 — TRÍCH XUẤT. Luôn bóc các trường phổ quát (canonical key → mô tả):
 - doi_tac: TÊN các bên ký kết (bên A / bên B, bên cho thuê / bên thuê, NSDLĐ / NLĐ,
   nhà cung cấp / khách hàng). Nếu nhiều bên, nối bằng dấu ";".
 - ngay_hieu_luc: ngày hợp đồng có hiệu lực. Định dạng yyyy-mm-dd nếu đọc được rõ.
@@ -29,12 +42,75 @@ Các trường cần bóc (canonical key → mô tả):
 - thoi_han_hd: thời hạn hợp đồng (vd "12 tháng", "2 năm", "không xác định thời hạn").
 - dieu_khoan_gia_han: điều khoản gia hạn / tái ký / thông báo trước khi hết hạn.
 - dieu_khoan_thanh_toan: điều khoản/lịch thanh toán (vd "trả ngày 5 hàng tháng").
+- ngay_ky: ngày ký kết (có thể KHÁC ngày hiệu lực). yyyy-mm-dd nếu rõ.
+- tien_dat_coc: tiền đặt cọc / ký quỹ / bảo đảm (kèm đơn vị tiền).
+- thoi_han_bao_hanh: thời hạn bảo hành (vd "12 tháng kể từ bàn giao").
+- thoi_han_thong_bao: thời hạn báo trước khi chấm dứt (vd "30 ngày").
 
-Phân loại doc_type:
+Phân loại doc_type (enum cũ, song song với doc_type_group):
 - hd_thue_mat_bang: hợp đồng thuê mặt bằng/nhà/kho.
 - hd_nha_cung_cap: hợp đồng mua bán / cung cấp hàng hóa, dịch vụ.
 - hd_lao_dong: hợp đồng lao động.
 - khac: không thuộc 3 loại trên (đặt needs_review cao).
+"""
+
+# Type-specific field descriptions (DEC-029). Only the set whose group matches
+# doc_type_group needs filling; the rest stay null. Generated → schema-synced.
+_TYPE_SPECIFIC_DESC: dict[str, str] = {
+    "lao_dong": (
+        "luong_co_ban (lương cơ bản/tháng), thoi_gian_thu_viec (thời gian thử việc), "
+        "chu_ky_dong_bao_hiem (chu kỳ đóng BHXH)"
+    ),
+    "bat_dong_san": (
+        "dia_chi_tai_san (địa chỉ tài sản), dien_tich (diện tích m²), "
+        "lich_nop_tien_theo_tien_do (lịch nộp tiền theo tiến độ)"
+    ),
+    "xay_dung": (
+        "tien_bao_lanh_thuc_hien (bảo lãnh thực hiện), tien_giu_lai_bao_hanh (tiền giữ lại bảo hành), "
+        "lich_tien_do_thi_cong (lịch tiến độ thi công)"
+    ),
+    "bao_dam": (
+        "tai_san_the_chap (tài sản thế chấp), gia_tri_bao_dam (giá trị bảo đảm), "
+        "thoi_han_dang_ky_bien_phap (hạn đăng ký biện pháp bảo đảm)"
+    ),
+    "cong_nghe_ip": (
+        "so_luong_nguoi_dung (số người dùng/license), uptime_cam_ket (SLA uptime %), "
+        "chu_ky_gia_han_ban_quyen (chu kỳ gia hạn bản quyền)"
+    ),
+    "thuong_mai": (
+        "pham_vi_dia_ly (phạm vi địa lý đại lý/nhượng quyền), chi_tieu_doanh_so (chỉ tiêu doanh số), "
+        "thoi_han_doc_quyen (thời hạn độc quyền), thoi_han_bao_mat (thời hạn bảo mật NDA)"
+    ),
+    "van_tai_logistics": (
+        "tuyen_duong (tuyến đường), trong_tai_hang_hoa (trọng tải/khối lượng hàng), "
+        "phuong_thuc_van_chuyen (đường bộ/biển/hàng không)"
+    ),
+    "tai_chinh": (
+        "lai_suat (lãi suất, trần 20%/năm theo BLDS), lich_tra_goc_lai (lịch trả gốc+lãi), "
+        "tai_san_dam_bao (tài sản đảm bảo khoản vay)"
+    ),
+    "hanh_chinh": (
+        "pham_vi_uy_quyen (phạm vi ủy quyền), thoi_han_uy_quyen (thời hạn ủy quyền)"
+    ),
+}
+
+_TYPE_SPECIFIC_SPEC = (
+    "BƯỚC 3 — TRƯỜNG THEO NHÓM. Chỉ với nhóm KHỚP doc_type_group ở Bước 1, thêm các\n"
+    "trường tương ứng vào danh sách \"type_specific\" (mỗi phần tử: key, value, confidence,\n"
+    "needs_review). KEY phải đúng tên dưới đây. Trường không thấy trong tài liệu → bỏ qua\n"
+    "(KHÔNG thêm vào list, KHÔNG bịa). Nhóm khác doc_type_group thì KHÔNG thêm:\n"
+    + "\n".join(f"- nếu doc_type_group == \"{g}\": {desc}" for g, desc in _TYPE_SPECIFIC_DESC.items())
+    + "\n"
+)
+
+# Payment schedule spec (DEC-027 / #117): structured installments in the SAME call.
+_PAYMENT_SCHEDULE_SPEC = """\
+Ngoài ra, bóc các kỳ thanh toán có ngày đến hạn thành danh sách "payment_schedule":
+- Mỗi phần tử: amount (số tiền, VND), due_date (ngày đến hạn yyyy-mm-dd nếu rõ),
+  milestone (mốc/diễn giải, vd "Tạm ứng 30%"), recurrence ("monthly"/"quarterly"/null).
+- Chỉ thêm phần tử khi có kỳ thanh toán RÕ RÀNG (có số tiền và/hoặc ngày/mốc).
+- Nếu thanh toán phi cấu trúc ("theo từng đợt theo thông báo") → payment_schedule = []
+  (vẫn giữ dieu_khoan_thanh_toan ở dạng văn bản). KHÔNG bịa lịch (D-06).
 """
 
 # Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
@@ -61,6 +137,8 @@ def build_instruction(doc_type: str = "auto") -> str:
         )
     return (
         "Đọc ảnh tài liệu hợp đồng bên dưới và bóc tách thông tin theo schema JSON yêu cầu.\n"
-        f"{hint}\n{_FIELD_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{hint}\n"
+        f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
+        f"{_PAYMENT_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )
