@@ -88,8 +88,18 @@ _TOOLS = [
                             "Null nếu không lọc theo đối tác."
                         ),
                     },
+                    "doc_type_filter": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Lọc theo nhóm loại hợp đồng. "
+                            "Giá trị: dan_su | thuong_mai | lao_dong | bat_dong_san | "
+                            "van_tai_logistics | xay_dung | cong_nghe_ip | tai_chinh | bao_dam | hanh_chinh. "
+                            "Dùng khi user hỏi về 'hợp đồng lao động', 'HĐ xây dựng', v.v. "
+                            "Null nếu không lọc theo loại."
+                        ),
+                    },
                 },
-                "required": ["field_name", "doc_hint", "value_contains", "party_filter"],
+                "required": ["field_name", "doc_hint", "value_contains", "party_filter", "doc_type_filter"],
             },
         },
     },
@@ -129,8 +139,17 @@ _TOOLS = [
                         "type": ["string", "null"],
                         "description": "Hướng nghĩa vụ: nghĩa_vụ (bạn phải làm) hoặc quyền_lợi (đối tác phải làm cho bạn). Null = cả hai.",
                     },
+                    "doc_type_filter": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Lọc obligations theo nhóm loại HĐ. "
+                            "Cùng giá trị với search_terms: dan_su | thuong_mai | lao_dong | bat_dong_san | "
+                            "van_tai_logistics | xay_dung | cong_nghe_ip | tai_chinh | bao_dam | hanh_chinh. "
+                            "Null nếu không lọc theo loại."
+                        ),
+                    },
                 },
-                "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to", "obligation_type", "direction"],
+                "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to", "obligation_type", "direction", "doc_type_filter"],
             },
         },
     },
@@ -262,6 +281,7 @@ def _tool_search_terms(
     doc_hint: str | None,
     value_contains: str | None = None,
     party_filter: str | None = None,
+    doc_type_filter: str | None = None,
 ) -> list[dict]:
     """Return term rows for a canonical field, optionally scoped to a document hint, value substring, or party filter.
 
@@ -278,6 +298,22 @@ def _tool_search_terms(
         Term.field_value.isnot(None),
         Term.field_value != "",
     )
+
+    if doc_type_filter:
+        type_doc_ids = [
+            row.document_id
+            for row in db.query(Term.document_id)
+            .filter(
+                Term.tenant_id == tenant_id,
+                Term.field_name == "doc_type_group",
+                Term.field_value == doc_type_filter,
+            )
+            .distinct()
+            .all()
+        ]
+        if not type_doc_ids:
+            return []
+        query = query.filter(Term.document_id.in_(type_doc_ids))
 
     if doc_hint:
         doc = _find_document_by_hint(db, tenant_id, doc_hint)
@@ -351,6 +387,7 @@ def _tool_search_obligations(
     due_to: str | None = None,
     obligation_type: str | None = None,
     direction: str | None = None,
+    doc_type_filter: str | None = None,
 ) -> list[dict]:
     """Return obligation rows, optionally filtered by due window, status, doc hint, or date range."""
     query = db.query(Obligation, Document).join(
@@ -376,6 +413,22 @@ def _tool_search_obligations(
         query = query.filter(Obligation.obligation_type == obligation_type)
     if direction:
         query = query.filter(Obligation.direction == direction)
+
+    if doc_type_filter:
+        type_doc_ids = [
+            row.document_id
+            for row in db.query(Term.document_id)
+            .filter(
+                Term.tenant_id == tenant_id,
+                Term.field_name == "doc_type_group",
+                Term.field_value == doc_type_filter,
+            )
+            .distinct()
+            .all()
+        ]
+        if not type_doc_ids:
+            return []
+        query = query.filter(Obligation.document_id.in_(type_doc_ids))
 
     if due_within_days is not None:
         try:
@@ -502,6 +555,9 @@ def _build_router_system_prompt(today: date) -> str:
         "- 'nghĩa vụ phải trả' / 'tôi cần làm gì' → search_obligations(direction='nghĩa_vụ')\n"
         "- 'quyền lợi' / 'đối tác phải làm gì cho tôi' → search_obligations(direction='quyền_lợi')\n"
         "- 'thanh toán sắp tới' → search_obligations(obligation_type='payment', due_within_days=30)\n"
+        "- 'HĐ lao động có bảo hiểm không?' → search_terms(field_name='chu_ky_dong_bao_hiem', doc_type_filter='lao_dong', doc_hint=null)\n"
+        "- 'Obligations xây dựng tháng tới?' → search_obligations(due_within_days=30, doc_type_filter='xay_dung', obligation_type=null)\n"
+        "- 'Tất cả HĐ thuê nhà?' → search_terms(field_name='ngay_het_han', doc_type_filter='bat_dong_san', doc_hint=null)\n"
     )
 
 
@@ -714,6 +770,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                     args.get("doc_hint"),
                     args.get("value_contains"),
                     args.get("party_filter"),
+                    args.get("doc_type_filter"),
                 )
             )
         elif name == "search_obligations":
@@ -728,6 +785,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                     args.get("due_to"),
                     args.get("obligation_type"),
                     args.get("direction"),
+                    args.get("doc_type_filter"),
                 )
             )
         elif name == "search_clauses":

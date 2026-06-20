@@ -1298,3 +1298,118 @@ class TestChatQueryLog:
         assert "doi_tac" in log_text
         assert "party_filter" in log_text  # key name is fine
         assert pii_value not in log_text  # raw value must NOT appear
+
+
+class TestDocTypeFilter:
+    """#124 — doc_type_filter for search_terms + search_obligations (DEC-029)."""
+
+    def test_search_terms_doc_type_filter(self, auth_client, db, monkeypatch):
+        """search_terms(doc_type_filter='lao_dong') returns only docs with doc_type_group=lao_dong."""
+        doc1 = _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="labor.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+
+        db.add(Term(tenant_id="chat-tenant", document_id=doc1.id, field_name="doc_type_group", field_value="thuong_mai", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc2.id, field_name="doc_type_group", field_value="lao_dong", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc1.id, field_name="ngay_het_han", field_value="2026-12-31", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc2.id, field_name="ngay_het_han", field_value="2026-11-30", confidence=0.9))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {
+                    "field_name": "ngay_het_han", "doc_hint": None,
+                    "value_contains": None, "party_filter": None,
+                    "doc_type_filter": "lao_dong",
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-11-30."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ lao động hết hạn khi nào"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "term"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-11-30"
+        assert sources[0]["file_name"] == "labor.pdf"
+
+    def test_search_obligations_doc_type_filter(self, auth_client, db, monkeypatch):
+        """search_obligations(doc_type_filter='thuong_mai') returns only obligations on thuong_mai docs."""
+        # Clean up any obligations from prior tests to avoid isolation issues
+        db.query(Obligation).filter(Obligation.tenant_id == "chat-tenant").delete()
+        db.query(Term).filter(Term.tenant_id == "chat-tenant", Term.field_name == "doc_type_group").delete()
+        db.commit()
+
+        doc1 = _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="commerce.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+
+        db.add(Term(tenant_id="chat-tenant", document_id=doc1.id, field_name="doc_type_group", field_value="bat_dong_san", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc2.id, field_name="doc_type_group", field_value="thuong_mai", confidence=0.9))
+        db.add_all([
+            Obligation(tenant_id="chat-tenant", document_id=doc1.id, description="BDS expiry",
+                       recurrence="once", obligation_type="expiration", due_date="2026-09-01", status="pending"),
+            Obligation(tenant_id="chat-tenant", document_id=doc2.id, description="TM expiry",
+                       recurrence="once", obligation_type="expiration", due_date="2026-10-01", status="pending"),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": "pending", "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": None,
+                    "doc_type_filter": "thuong_mai",
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("TM expiry 2026-10-01."))
+
+        r = auth_client.post("/chat/query", json={"question": "obligations thương mại"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-10-01"
+
+    def test_doc_type_filter_no_match_d08(self, auth_client, db, monkeypatch):
+        """doc_type_filter with no matching docs → D-08 not-found, no crash."""
+        doc = _seed(db)
+        db.add(Term(tenant_id="chat-tenant", document_id=doc.id, field_name="doc_type_group", field_value="lao_dong", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc.id, field_name="ngay_het_han", field_value="2026-12-31", confidence=0.9))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {
+                    "field_name": "ngay_het_han", "doc_hint": None,
+                    "value_contains": None, "party_filter": None,
+                    "doc_type_filter": "xay_dung",
+                },
+            }]),
+        )
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ xây dựng hết hạn"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+        assert r.json()["sources"] == []
+
+    def test_prompt_includes_doc_type_examples(self):
+        """Router prompt must include doc_type_filter examples."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        assert "doc_type_filter" in prompt
+        assert "lao_dong" in prompt
