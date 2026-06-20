@@ -46,6 +46,16 @@ def test_package_imports_without_sdks() -> None:
     assert set(BENCHMARK_TARGET_FIELDS).issubset(set(CANONICAL_FIELDS))
 
 
+def test_cost_vnd_exported_and_correct() -> None:
+    from .. import USD_TO_VND, cost_vnd
+
+    assert USD_TO_VND == 25_400.0
+    usage = TokenUsage(input_tokens=1_000_000, output_tokens=1_000_000)
+    # Gemini 2.5 Flash: $0.30 in + $2.50 out = $2.80 → 2.80 × 25,400 = 71,120đ
+    result = cost_vnd(usage, 0.30, 2.50)
+    assert result == 71_120.0
+
+
 def test_extracted_field_defaults_safe() -> None:
     f = ExtractedField()
     assert f.value is None and f.needs_review is True and f.confidence == 0.0
