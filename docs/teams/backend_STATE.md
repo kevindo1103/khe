@@ -5,7 +5,7 @@
 > firm_portal, auth, audit), alembic, scheduler. Multi-tenant: `master.db` + per-tenant.
 > Lead branch: `claude/feat-backend-scaffold-nm2942`.
 
-_Last updated: 2026-06-20 (#162 DEC-030 Phase 2 merged → staging; #153 closed; #163/#164 queued)_
+_Last updated: 2026-06-20 (#155 self-party assigned → Windsurf, contract frozen for FE #158; #164 migration bumped 007→008)_
 
 ---
 
@@ -36,7 +36,8 @@ _Last updated: 2026-06-20 (#162 DEC-030 Phase 2 merged → staging; #153 closed;
 | `tenant_004_obligation_direction` | direction, obligor, obligation_type, recurrence, source_doc_chain, resolution_method | PR #148 |
 | `tenant_005_chat_query_log` | `chat_query_log` table (DEC-028) | PR #149 |
 | `tenant_006_obligation_series_chain` | +8 cols for DEC-030 Phase 2 (series + event-chain + amount_raw) | PR #162 |
-| **`tenant_007_*` (NEXT)** | chat token tracking — see #164 | #164 queued |
+| **`tenant_007_parties_doc_role` (NEXT)** | `parties.document_id` + `role_label` for self-party (#155, gates FE #158) | #155 assigned |
+| `tenant_008_*` | chat token tracking — see #164 (bumped from 007 to avoid collision) | #164 queued |
 
 **Master.db migrations:**
 - `master_001_*` — tenants, tenant_users, firm_partners, firm_tenant_access
@@ -65,7 +66,9 @@ _Last updated: 2026-06-20 (#162 DEC-030 Phase 2 merged → staging; #153 closed;
 
 ## In-flight
 
-*(none — #162 merged to staging 2026-06-20; #153 closed)*
+| # | Title | Status | Notes |
+|---|-------|--------|-------|
+| #155 | DEC-030 self-party endpoints — legal_name + confirm_self_party + parties[] persist | assigned → Windsurf_Backend | Gates FE #158 (HIGH). Plan posted [#155 comment](https://github.com/kevindo1103/khe/issues/155). Migration `tenant_007` (extend existing `parties` table — +`document_id`/`role_label`). Contract frozen + relayed to #158 (FE soft-unblocked, building vs mocks). Branch `windsurf/feat-backend-self-party-endpoints` off staging. |
 
 ---
 
@@ -98,7 +101,7 @@ _Last updated: 2026-06-20 (#162 DEC-030 Phase 2 merged → staging; #153 closed;
 | # | Title | Status | Notes |
 |---|-------|--------|-------|
 | #163 | Obligation enum coercion + trigger/date consistency (nitpicks 3+4) | `status:planned` | Low priority. Coerce unknown `obligation_type`→`other`, `trigger`→`date`; null `due_date` when `trigger=event`. Optional gate before staging→main. |
-| #164 | Chat tokenomics: token + cost tracking on ChatQueryLog | `status:planned` (was `blocker:waiting-dependency` #162 — **now unblocked**) | Migration `tenant_007`. Fix spec issues first (JWT-scope stats endpoint, export `cost_vnd` from KHE_AI, plumbing). Branch off staging post-#162. |
+| #164 | Chat tokenomics: token + cost tracking on ChatQueryLog | `status:planned` (was `blocker:waiting-dependency` #162 — **now unblocked**) | Migration **`tenant_008`** (bumped from 007 — #155 claimed 007). Fix spec issues first (JWT-scope stats endpoint, `cost_vnd` already exported via PR #165, plumbing). Branch off staging. |
 
 ### Low priority / relay
 
