@@ -5,7 +5,7 @@
 > firm_portal, auth, audit), alembic, scheduler. Multi-tenant: `master.db` + per-tenant.
 > Lead branch: `claude/feat-backend-scaffold-nm2942`.
 
-_Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
+_Last updated: 2026-06-20 (#162 DEC-030 Phase 2 merged → staging; #153 closed; #163/#164 queued)_
 
 ---
 
@@ -35,7 +35,8 @@ _Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
 | `tenant_003_clauses` | `clauses` table (DEC-026) | #140 |
 | `tenant_004_obligation_direction` | direction, obligor, obligation_type, recurrence, source_doc_chain, resolution_method | PR #148 |
 | `tenant_005_chat_query_log` | `chat_query_log` table (DEC-028) | PR #149 |
-| **`tenant_006_*` (NEXT)** | +8 cols for DEC-030 Phase 2 (see #153 Part 1) | #153 pending |
+| `tenant_006_obligation_series_chain` | +8 cols for DEC-030 Phase 2 (series + event-chain + amount_raw) | PR #162 |
+| **`tenant_007_*` (NEXT)** | chat token tracking — see #164 | #164 queued |
 
 **Master.db migrations:**
 - `master_001_*` — tenants, tenant_users, firm_partners, firm_tenant_access
@@ -55,37 +56,22 @@ _Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
 | PR #148 | #145 | DEC-030 Phase 1: direction/obligor/recurrence/TenantProfile |
 | PR #149 | #119 | DEC-028: chat_query_log learning loop |
 | PR #151 | #124 | DEC-029: doc_type_filter for all 3 chat tools |
+| PR #161 | #154 | KHE_AI: `payment_schedule[]` → `obligation_schedule[]` generalization (+ compat shim) |
+| PR #162 | #153 | DEC-030 Phase 2: 4-axis obligation model (series + event-chain + T2 expand + dedup + audit Event) |
 
-**Status:** All 8 PRs on `staging`. Batch promote to `main` planned after #153 merges.
+**Status:** All 10 PRs on `staging`. Batch promote to `main` planned (gate: #163 nitpicks land first — optional).
 
 ---
 
 ## In-flight
 
-### #153 — DEC-030 Phase 2: 4-axis obligation model
-**Branch:** `windsurf/feat-backend-obligation-phase2`
-**Assigned to:** Windsurf_Backend
-**Status:** `status:planned` — Windsurf coding
-
-**Parts in-flight (1/3/4/5 parallel):**
-- **Part 1** — Alembic migration `tenant_006_obligation_phase2`: +8 cols on obligations (milestone_series_id, milestone_index, milestone_total, milestone_trigger, trigger_condition, trigger_delay_days, trigger_obligation_id, amount_raw). Add `OBLIGATION_STATUSES` constant.
-- **Part 3** — `app/services/obligation_chain.py` new: `propagate_obligation_done()`. Wire into `PATCH /obligations/{id}` (expand allowed statuses to OBLIGATION_STATUSES, add `activated_count: int = 0` to `ObligationPatchOut`).
-- **Part 4** — `app/services/obligation_expander.py` new: `expand_recurring_obligations()`. Weekly APScheduler job Mon 02:00 (`run_expand_all_tenants`). Add `python-dateutil` to `requirements.txt`.
-- **Part 5** — `chat_query.py` additions: `series_id` + `waiting_trigger` params to `search_obligations`, updated prompt rules.
-
-**Part 2 — UNBLOCKED (PR #161 merged 2026-06-20):** `extraction_runner.py` mapping of `obligation_schedule[]`. Compat shim on `result.payment_schedule` keeps existing code working; Windsurf cuts over to `result.obligation_schedule` in this PR. Delete shim after confirmed green.
-
-**Critical notes for Windsurf:**
-- Migration must be `tenant_006` (tenant_005 is taken by PR #149)
-- Scheduler follows `run_daily_reminder_job` tenant-loop pattern (`MasterSessionLocal → loop active tenants → get_tenant_session`)
-- `python-dateutil` MUST be declared directly in `requirements.txt` (CLAUDE.md bug pattern)
-- `OBLIGATION_STATUSES = ["pending", "in_progress", "partial", "done", "cancelled", "waiting_trigger"]`
+*(none — #162 merged to staging 2026-06-20; #153 closed)*
 
 ---
 
 ## Blocked
 
-*(none — #154 merged PR #161 → staging 2026-06-20)*
+*(none)*
 
 ---
 
@@ -95,7 +81,7 @@ _Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
 
 | # | Title | Status | Notes |
 |---|-------|--------|-------|
-| #97 | 5 docs stuck "Đang xử lý" on staging | `status:planned` | Verify `GET /api/health/extraction` → `any_provider_configured: true`. Re-trigger extraction after #153 ships. |
+| #97 | 5 docs stuck "Đang xử lý" on staging | `status:planned` | Verify `GET /api/health/extraction` → `any_provider_configured: true`. Re-trigger extraction now #162 shipped (populates `obligation_schedule` data). |
 | #77 | Set `ENVIRONMENT=staging/production` in deploy `.env` + `get_db` isolation hardening | `status:planned` | Originally critical multi-tenant isolation bug — partially addressed; hardening still needed. |
 
 ### Medium priority
@@ -106,6 +92,13 @@ _Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
 | #63 | Quota guard: `doc_quota` per tenant + ingest middleware + monthly reset | `status:planned` `blocker:waiting-dependency` | Required before firm portal (#65). |
 | #65 | Firm portal scaffold: firm auth + quota view/set + D-10 consent gate | `status:planned` `blocker:waiting-dependency` | Depends on #63. |
 | #56 | Ingest hardening: upload size limit (413) + atomic event logging | `status:planned` | Non-blocking quality; defer past #153. |
+
+### Fast-follow (DEC-030 Phase 2 tail)
+
+| # | Title | Status | Notes |
+|---|-------|--------|-------|
+| #163 | Obligation enum coercion + trigger/date consistency (nitpicks 3+4) | `status:planned` | Low priority. Coerce unknown `obligation_type`→`other`, `trigger`→`date`; null `due_date` when `trigger=event`. Optional gate before staging→main. |
+| #164 | Chat tokenomics: token + cost tracking on ChatQueryLog | `status:planned` (was `blocker:waiting-dependency` #162 — **now unblocked**) | Migration `tenant_007`. Fix spec issues first (JWT-scope stats endpoint, export `cost_vnd` from KHE_AI, plumbing). Branch off staging post-#162. |
 
 ### Low priority / relay
 
@@ -119,37 +112,22 @@ _Last updated: 2026-06-20 (post-DEC-030 Phase 2 triage + #153 assignment)_
 | # | Title | Status | Action |
 |---|-------|--------|--------|
 | #99 | LLM chat query + clauses table (DEC-026) | `status:done-staging` | Close after staging → main promotes. |
-| #117 | Payment-schedule obligation derivation | `status:planned` | Close after #153 Part 2 ships (absorbed). |
-| #27 | Chat query MVP (Sprint 1) | `status:planned` | Superseded by #99 DEC-026. Close. |
-| #26 | Obligation engine + reminder service | `status:planned` | Core shipped (PR #141, PR #148). Close; #62 tracks remaining reminder service. |
 
 ---
 
 ## Staging → main promotion plan
 
-**Batch ready (8 PRs):** PR #135, #138, #140, #141, #142, #148, #149, #151.
-**Gate:** Wait for #153 to merge to staging first (migration head alignment).
-**Post-promotion:** DOCS_INBOX comment required (schema changes in PRs #148/#149/#151/#153).
-**Re-extraction needed:** After #153 Part 2 ships, re-run extraction on all existing docs to populate correct `recurrence` + `obligation_schedule` data.
+**Batch ready (10 PRs):** PR #135, #138, #140, #141, #142, #148, #149, #151, #161, #162.
+**Gate:** Optional — let #163 (nitpicks) land first so the obligation tail is clean. Not a hard blocker.
+**Pre-promote forward-merge:** ensure `pr-quality-gate.yml` fix is on all long-lived branches (`main → staging`) before opening the promote PR (CLAUDE.md bug pattern: `pull_request` workflow reads HEAD branch YAML).
+**Re-extraction needed:** #162 shipped — re-run extraction on existing docs (esp. the 5 stuck in #97) to populate `obligation_schedule` data (series, event-chain, amount_raw, correct recurrence).
+**Post-promotion:** DOCS_INBOX already covers PRs #148/#149/#151/#161/#162; confirm KHE_Docs folded before promote.
 
 ---
 
-## DOCS_INBOX pending (post-merge duty)
+## DOCS_INBOX status
 
-After #153 merges:
-```
-### 2026-06-20 — KHE_Backend / claude/feat-backend-scaffold-nm2942
-- **PR / trigger:** #153 → staging
-- **Đã đụng:** backend/app/models/tenant.py, backend/app/services/obligation_chain.py,
-  backend/app/services/obligation_expander.py, backend/app/services/chat_query.py,
-  backend/alembic_tenant/versions/tenant_006_*
-- **Thay đổi:** DEC-030 Phase 2 — 4-axis obligation model: +8 cols (series, event-chain,
-  amount_raw), new OBLIGATION_STATUSES enum, obligation_chain propagation service,
-  T2 weekly auto-expand scheduler, search_obligations series_id/waiting_trigger params.
-- **Docs cần cập nhật:** BRD §6 (Obligation lifecycle), SRS FR-OB-*, Glossary
-  (new status values + series/trigger terms), CLAUDE.md (D-rules expand for D-02 chain)
-- **Ambiguity / cần PM xác nhận:** none — DEC-030 Ph2 ratified 2026-06-20
-```
+✅ **Posted 2026-06-20** for #162 (DEC-030 Phase 2) — [issue #1 comment](https://github.com/kevindo1103/khe/issues/1). Covers +8 obligation cols, OBLIGATION_STATUSES, obligation_chain/obligation_expander services, `obligation_schedule[]` cutover, dedup limitation. Awaiting KHE_Docs fold into BRD §6 (Obligation lifecycle), SRS FR-OB-*, Glossary (status values + series/trigger terms), CLAUDE.md (D-02 chain). PM ratified DEC-030 Ph2 2026-06-20 — no open ambiguity.
 
 ---
 
@@ -160,7 +138,7 @@ After #153 merges:
 - No raw SQL with f-string (ORM only)
 - No PII in logs (party names, question text from chat_query_log)
 - `python-dateutil` (and any new dep) declared directly in `requirements.txt`
-- Migration number must be next in sequence (currently `tenant_006` is next)
+- Migration number must be next in sequence (currently `tenant_007` is next — 006 shipped via #162)
 - Alembic single-head enforced by `pr-quality-gate.yml`
 - D-08: chat returns "không tìm thấy" — never fabricates
 - D-06: extraction reads only — never generates legal content
