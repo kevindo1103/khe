@@ -9,8 +9,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.5 |
-| Trạng thái | Ratified — fold DEC-026 (LLM function-calling chat + clauses) per issue #100 |
+| Phiên bản | v0.6 |
+| Trạng thái | Ratified — fold cycle 4 (DEC-027/028/029/030 + Sprint 1 staging-complete + status enum + reminder service + chat tool iteration) |
 | Phạm vi | **Chỉ MVP** (tầng ingest + retrieve + deadline). Không phải full vision. |
 | Owner | Kevin (PM) |
 | Liên quan | Tái dùng hạ tầng SpurX (ledger, multi-tenant, infra v3) |
@@ -27,6 +27,7 @@
 | v0.3 | 2026-06-18 | KHE_Docs | Fold DEC-018 (Vertical = OPEN — không khóa F&B/bán lẻ; wedge chọn theo tín hiệu pilot). Revise §11 A-5 (vertical seed → wedge OPEN). Update §1 Executive summary + §10 R-1 wording. Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` (Personas, JTBD, Golden Circle, Dunford positioning). |
 | v0.4 | 2026-06-19 | KHE_Docs | Cycle 3 fold (8 DOCS_INBOX comments). Add **§7.11 FR-TN Tenant quota + billing** (FR-TN-01..03). Update §10 Tích hợp domain `khe.iceflow.cloud` (Infra PR #48). §7.2 FR-EX add CANONICAL_FIELDS 7 vocab (Backend M0 contract). §7.3 FR-DR add document_relationships (Backend PR #59 + DEC-019/020/021). §7.1 FR-IN reference ingest endpoints live (PR #54). |
 | v0.5 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** §7.6 FR-CQ-01..03 rewrite from regex/SQL pattern → LLM function-calling (Gemini Flash) với 3 tools (`search_terms`, `search_obligations`, `search_clauses`). D-08 hard fallback exact string. **FR-CQ-04 NEW:** doc_hint + multi-doc search routing. Cross-ref SRS §5.9 clauses table. |
+| v0.6 | 2026-06-20 | KHE_Docs | **Cycle 4 fold (16 DOCS_INBOX entries).** Mega-decisions DEC-027 (8 obligation_type categories), DEC-028 (chat learning + compliance debt), DEC-029 (doc_type_group 11 + 12 canonical + 9 type-specific + payment_schedule), DEC-030 (direction/obligor/Quyền lợi/self-party/legal_name). §6 Obligation/Party schema update + Quyền lợi concept. §7.2 FR-EX-01/02 rewrite (taxonomy v2 + 2-tier schema), +FR-EX-06/07/08 (parties/payer/clauses). §7.4 FR-OB-04 status enum corrected ({pending,done,cancelled}; overdue=urgency), +FR-OB-05..08 (chain attach + payment derive + direction). §7.5 +FR-RM-05/06 (DEC-025 per-tenant routing + direction labels). §7.6 +FR-CQ-05/06 (chat learning + D-08 strict). Tool params evolved (party_filter, value_contains, due_from/to, doc_type_filter, direction, truncation). |
 
 ---
 
@@ -157,8 +158,9 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 |---|---|
 | **Document** | Một văn bản: file gốc (bất biến) + phân loại + các Term + liên kết. Không phải chỉ là file — là một object có cấu trúc. |
 | **Term / Field** | Giá trị có cấu trúc bóc từ Document: loại, đối tác (Party), ngày hiệu lực, **ngày hết hạn**, thời hạn, giá trị, điều khoản thanh toán. **Lưu ý (KHE_AI 2026-06-11):** HĐ Việt Nam thường ghi `ngày_hiệu_lực + thời_hạn`, KHÔNG ghi thẳng `ngày_hết_hạn`. `ngày_hết_hạn` có thể **derived** (xem Obligation engine) — nullable hợp lệ ở tầng Term. |
-| **Obligation** | **Object trung tâm của MVP.** Một cam kết rời rạc, *có ngày*, *có trạng thái*, suy ra từ Document. VD: "trả 50tr ngày 5 hàng tháng", "gia hạn/chấm dứt trước 60 ngày khi hết hạn". Trường: `id`, `document_id`, `loại` (một lần / lặp), `ngày_đáo_hạn` / lịch lặp, `mô_tả`, `trạng_thái` (chờ / hoàn thành / quá hạn / hủy), `nhắc_trước_X_ngày`. **Derived fields:** một số `ngày_đáo_hạn` được compute ở tầng Obligation từ Term (vd `ngày_hết_hạn = ngày_hiệu_lực + thời_hạn`) chứ không bóc trực tiếp từ Document. |
-| **Party** | Đối tác trong tài liệu, được chuẩn hóa (để "tìm mọi HĐ với bên ABC" chạy đúng). |
+| **Obligation** | **Object trung tâm của MVP.** Một cam kết rời rạc, *có ngày*, *có trạng thái*, suy ra từ Document. Trường (mới hậu DEC-027/030): `id`, `document_id`, `description`, **`obligation_type`** (category enum 8: `payment` · `delivery` · `handover` · `expiration` · `renewal` · `review` · `warranty` · `other`), **`recurrence`** (cadence: `once` · `monthly` · `quarterly` · `yearly` · `open_ended_review`) — *renamed từ `obligation_type` cũ per DEC-030/Option B*, `due_date`, `status` (`pending` · `done` · `cancelled`; `overdue` = derived urgency, **không phải status**), `remind_before_days`, **`direction`** (`nghĩa_vụ` / `quyền_lợi` / `null` per DEC-030), **`obligor`** (bên chịu nghĩa vụ — tên party). **Derived fields:** một số `due_date` được compute từ Term (FR-OB-01); `payment_schedule[]` → Obligation `payment` per item (DEC-027). |
+| **Quyền lợi** (DEC-030) | Sub-concept Obligation. Cam kết của **đối tác** hướng *về* SME (vd: đối tác trả tiền cho mình, bảo hành, giao hàng). Phân biệt với `nghĩa_vụ` (SME phải làm). Hiển thị tab riêng UI; reminder label khác ("đối tác cần… cho bạn"). |
+| **Party** | Đối tác trong tài liệu, được chuẩn hóa. Trường (mới DEC-030): `name`, `tax_code`, `address`, contact, **`role_label`** (vai trò trong HĐ: "Owner", "Bên A", "NSDLĐ", "Bên thuê", ... — extracted verbatim, D-06 read-only). **Self-party (DEC-030):** SME entity name = `tenants.legal_name` (separate `tenant_profile` model — xem SRS); auto-match `parties[].name` để derive Obligation `direction`. |
 | **Event (Ledger)** | Bản ghi append-only mọi thay đổi trạng thái (ingest, sửa term, hoàn thành nghĩa vụ, đã gửi nhắc…). Sửa = ghi event mới (reversal), **không** edit-in-place. Tái dùng pattern SpurX. |
 | **Template / Clause** | Mẫu/điều khoản do firm thẩm định, có version. *Định nghĩa sẵn trong glossary nhưng chưa kích hoạt ở MVP.* |
 | **Tenant** | Một SME (cô lập dữ liệu, theo pattern `tenantDb` của SpurX). |
@@ -175,8 +177,15 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 - **FR-IN-04** Endpoints live (staging): `POST /ingest/upload` (single, multipart) + `POST /ingest/bulk` (≤20 files) — xem SRS §2.
 
 ### 7.2 Extraction — AI safe-read (FR-EX)
-- **FR-EX-01** Tự nhận **loại tài liệu** — `DocType` enum (Backend M0): `hd_thue_mat_bang` (HĐ thuê mặt bằng), `hd_nha_cung_cap` (HĐ nhà cung cấp), `hd_lao_dong` (HĐ lao động), `khac` (other).
-- **FR-EX-02** Bóc **7 CANONICAL_FIELDS** (Backend M0 contract): `doi_tac`, `ngay_hieu_luc`, `ngay_het_han` (nullable, derivable per FR-OB-01), `gia_tri_hd`, `thoi_han_hd`, `dieu_khoan_gia_han`, `dieu_khoan_thanh_toan`. *(KHE_AI insight: HĐ VN thường ghi `ngày_hiệu_lực + thời_hạn`, không ghi thẳng `ngày_hết_hạn` → derive ở Obligation tier, xem FR-OB-01.)*
+- **FR-EX-01 (DEC-029 v2):** Tự nhận **`doc_type_group`** trước (taxonomy 11 giá trị, collapse từ 126 loại HĐ): `dan_su` · `thuong_mai` · `lao_dong` · `bat_dong_san` · `van_tai_logistics` · `xay_dung` · `cong_nghe_ip` · `tai_chinh` · `bao_dam` · `hanh_chinh` · `other`. *(Old `DocType` enum 4 giá trị deprecated — M0 dùng for legacy docs.)*
+- **FR-EX-02 (DEC-029 v2):** Bóc **12 universal CANONICAL_FIELDS**:
+  - **7 BASE** (Claude fallback bóc tới đây): `doi_tac`, `ngay_hieu_luc`, `ngay_het_han` (nullable, derivable per FR-OB-01), `gia_tri_hd`, `thoi_han_hd`, `dieu_khoan_gia_han`, `dieu_khoan_thanh_toan`.
+  - **5 V2_UNIVERSAL** (Gemini-only): `doc_type_group`, `ngay_ky`, `tien_dat_coc`, `thoi_han_bao_hanh`, `thoi_han_thong_bao`.
+  - Plus **9 TYPE_SPECIFIC field sets** (~30 fields tổng) per `doc_type_group` (vd `lao_dong`: `luong_co_ban`, `thoi_gian_thu_viec`; `tai_chinh`: `lai_suat`...) — bóc qua `NamedExtractedField` keyed list.
+  - **2-tier schema (KHE_AI PR #135):** Gemini Flash (primary) trả full v2; Claude Haiku/Sonnet (fallback) chỉ 7 BASE — schema rộng hơn → "too many states" hoặc "Schema is too complex" timeout deterministic. *(KHE_AI insight: HĐ VN thường ghi `ngày_hiệu_lực + thời_hạn`, không ghi thẳng `ngày_hết_hạn` → derive ở Obligation tier.)*
+- **FR-EX-06 (NEW DEC-030):** Bóc `parties[]` = `{name, role_label}` — vai trò các bên trong HĐ (Owner/Operator/Bên A/NSDLĐ...) extracted verbatim. KHÔNG quyết bên nào là SME (Backend match `legal_name` + user confirm per D-02). Gemini-only.
+- **FR-EX-07 (NEW DEC-027/030):** Bóc `payment_schedule[]` = `{amount, due_date, milestone, recurrence, payer}` — cùng 1 vision call (không thêm cost). `payer` = bên phải trả mỗi kỳ. Backend derive thành `payment` Obligations per item.
+- **FR-EX-08 (NEW DEC-026):** Bóc `clauses[]` (xem FR-CQ-02 + SRS §5.9) — same vision call. Gemini-only (`list[ClauseItem]` không qua Claude grammar).
 - **FR-EX-03** AI **chỉ đọc** — không sinh/sửa nội dung pháp lý (P-1).
 - **FR-EX-04** Mọi field bóc ra phải **cho người sửa**; sửa → ghi Event (P-2).
 - **FR-EX-05** Hiện độ tin cậy / cờ "cần kiểm tra" khi không chắc.
@@ -190,23 +199,35 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 - **FR-OB-01** Tự sinh Obligation từ Term (vd: `ngày_hết_hạn` → nghĩa vụ "gia hạn/chấm dứt trước N ngày"). **Derivation rule:** nếu `ngày_hết_hạn IS NULL` AND cả `ngày_hiệu_lực` + `thời_hạn` (dạng số tháng/năm) đều có → derive `ngày_hết_hạn = ngày_hiệu_lực + thời_hạn`. Nếu `thời_hạn` phi-số ("vô thời hạn", "kể từ khi nghiệm thu") → policy chờ PM (tracked ambiguity v0.2 — engine fallback: skip expiry obligation, vẫn sinh được recurring obligations độc lập như BHXH).
 - **FR-OB-02** Hỗ trợ nghĩa vụ **một lần** và **lặp** (hàng tháng/quý).
 - **FR-OB-03** Tính tất định "nghĩa vụ nào tới hạn trong [khoảng]" — **không phải AI đoán**, là truy vấn trên kho.
-- **FR-OB-04** Cho người đánh dấu hoàn thành / hoãn / hủy → ghi Event.
-- **FR-OB-05** *(Option kiến trúc)* Logic nhắc có thể chạy như **một tenant của SpurX** (rule: `hết_hạn − hôm_nay ≤ N → bắn nhắc`).
+- **FR-OB-04** Cho người đánh dấu hoàn thành / hủy → ghi Event. **Status enum chính thức (FE PR #69 ratified):** `pending` · `done` · `cancelled`. `overdue` / `due_soon` / `upcoming` = **FE-derived urgency buckets** từ `due_date` so với hôm nay, **không phải** status (BRD wording cũ `active/missed` superseded).
+- **FR-OB-05 (Backend PR #64):** Obligation engine derive từ confirmed-amends chain effective terms; attach to chain **terminal** (newest amendment) doc; `source_doc_chain` + `resolution_method="last_writer_wins"` recorded. Re-derive deletes chỉ `pending` (preserve `done`/`cancelled` per D-02).
+- **FR-OB-06 (NEW DEC-027):** `payment_schedule[]` items với `due_date` → `pending` Obligation rows, `obligation_type="payment"`. Idempotent re-extract via `source_doc_chain IS NULL` delete (derived obligations luôn set `source_doc_chain`; payment rows never set).
+- **FR-OB-07 (NEW DEC-030 — Direction derivation):** Mỗi Obligation phải có `direction` từ góc nhìn SME:
+  - `nghĩa_vụ` — `obligor` match `legal_name` (SME phải làm).
+  - `quyền_lợi` — `obligor` match party khác (đối tác phải làm cho SME).
+  - `null` + `needs_review=true` — `legal_name` chưa configured HOẶC auto-match fail. User confirm qua UI extraction review (D-02). **Ratified Kevin 2026-06-20.**
+- **FR-OB-08 (NEW DEC-030):** Tenant phải có **`legal_name`** trong `tenant_profile` (separate model — xem SRS) để direction derivation hoạt động. Auto-match per-Document: cross-check `parties[].name` LIKE `legal_name`. Fail → fall through FR-OB-07.
 
 ### 7.5 Reminders / notifications (FR-RM)
 - **FR-RM-01** Nhắc qua **Telegram bot** (kênh chính — DEC-006, bot token từ @BotFather, không cần approval) — fallback email. *(Thay Zalo ZNS để tránh blocker OA registration 4-6 tuần.)*
 - **FR-RM-02** Mặc định nhắc trước 30 ngày + 7 ngày; cho chỉnh.
-- **FR-RM-03** Ghi Event mỗi lần gửi nhắc (đã gửi / thất bại).
-- **FR-RM-04** Digest định kỳ: "tuần này / tháng này có gì sắp tới."
+- **FR-RM-03** Ghi Event mỗi lần gửi nhắc: `reminder_sent` (success) · `reminder_failed` (delivery failed, retryable) · `reminder_batch` (audit) · `obligation_overdue` (status flip).
+- **FR-RM-04** Digest định kỳ: "tuần này / tháng này có gì sắp tới." Scheduler daily sweep 08:00 ICT, multi-tenant (Backend PR #66).
+- **FR-RM-05 (DEC-025 per-tenant routing — Backend PR #66):** Reminder destination = tenant's active **`reminder_send` consent** `channel_target_ref`. Global `TELEGRAM_CHAT_ID` là **dev-only fallback** — prod KHÔNG route qua đó. Tenant không có destination → skipped, không leak. `reminder_send` consent **separate** from `vision_extraction` consent.
+- **FR-RM-06 (NEW DEC-030):** Reminder label theo `direction`:
+  - `nghĩa_vụ` → "Bạn cần [action] trước [date]"
+  - `quyền_lợi` → "Đối tác [obligor name] cần [action] cho bạn trước [date]"
 
 ### 7.6 Chat — query/read mode (FR-CQ) — *DEC-026 LLM function-calling*
 - **FR-CQ-01** Hệ thống nhận query ngôn ngữ tự nhiên (tiếng Việt) → **LLM (Gemini Flash) phân tích intent → gọi tool phù hợp → format answer từ kết quả tool**. LLM KHÔNG tự sinh nội dung pháp lý (D-06). Chat **chỉ đọc** ở MVP; mọi câu trả lời truy ra Document / Obligation / Clause cụ thể (có dẫn nguồn, không bịa).
-- **FR-CQ-02** **3 tools available** (LLM function-calling surface):
-  - `search_terms(field_name, doc_hint)` — tìm trong 7 CANONICAL_FIELDS (xem §7.2 FR-EX-02).
-  - `search_obligations(due_within_days, status)` — tìm deadline/nghĩa vụ.
-  - `search_clauses(query, doc_hint)` — full-text search trong `clauses` table per-tenant (xem SRS §5.9).
+- **FR-CQ-02** **3 tools available** (LLM function-calling surface, evolved Backend PR #115/#125/#132):
+  - `search_terms(field_name, doc_hint, value_contains, party_filter, doc_type_filter)` — search trong 12 CANONICAL_FIELDS + type-specific. `doc_hint` = filename keyword (NOT party name). `value_contains` = substring trên `field_value`. `party_filter` = cross-field join lọc docs theo `doi_tac` ("field X của HĐ với công ty Y"). `doc_type_filter` (DEC-029) = exact `doc_type_group`. AND-compose all filters. Max 10 rows + `truncation_hint`.
+  - `search_obligations(due_within_days, status, doc_hint, due_from, due_to, doc_type_filter, direction)` — `due_within_days` forward-only window (`due_date >= today`, không trả overdue). `due_from`/`due_to` ISO inclusive both ends. `status` ∈ `{pending, done, cancelled}` hoặc `overdue` (derived urgency). `direction` (DEC-030) = `nghĩa_vụ`/`quyền_lợi`. VN calendar phrases ("tháng này", "quý sau", "X ngày tới") → LLM resolve thành `due_from`/`due_to` qua today's-date injection in system prompt.
+  - `search_clauses(query, doc_hint)` — full-text trong `clauses` table per-tenant (xem SRS §5.9). **Caveat (DEC-026 addendum):** chỉ available khi Gemini Flash xử lý extraction; Claude fallback → `clauses=[]` → tool returns empty (chat gracefully falls back sang `search_terms` + `search_obligations`).
 - **FR-CQ-03 (D-08 hard fallback):** Nếu **tất cả tools trả empty** → trả về **exact string** `"Không tìm thấy thông tin này trong hồ sơ của bạn."` LLM KHÔNG được improvise/paraphrase fallback. KHÔNG phỏng đoán.
 - **FR-CQ-04 (new):** Query có tên file hoặc tên đối tác → LLM extract làm `doc_hint` filter. Query không có hint + tenant có >1 doc → multi-doc search qua `search_clauses` + `search_obligations` (không hạn ở 1 doc).
+- **FR-CQ-05 (NEW DEC-028 — Chat learning loop):** Log `{question, tool_calls, found}` mỗi query → PM/QC weekly review → fold misroute vào catalog (issue #118) → update few-shot prompt + QC test. **🔴 COMPLIANCE DEBT (NĐ 13/2023):** assume-consent bypass tạm thời cho staging/pilot-dev; **PHẢI đóng trước prod** (KHE_Compliance tracks #119). Routing log shape PII-safe (tool name + canonical `field_name` + arg keys present; **KHÔNG** log raw `party_filter`/`value_contains`/`doc_hint` value hoặc `question`). Cross-tenant few-shot trong shared prompt phải **synthetic/scrubbed**.
+- **FR-CQ-06 (DEC-026 D-08 strict enforcement, Backend PR #132):** Backend caller enforce **exact triple** `{answer: "Không tìm thấy thông tin này trong hồ sơ của bạn.", sources: [], found: False}` khi (a) LLM paraphrase negation (`_is_negative_answer` narrow regex) HOẶC (b) all tools empty. Regex narrow để KHÔNG suppress valid content như `thoi_han_hd="không xác định thời hạn"`. Frontend match byte-exact (D-08 single source of truth).
 
 ### 7.7 Search & retrieval (FR-SR)
 - **FR-SR-01** Tìm theo: loại, đối tác, khoảng ngày hết hạn, từ khóa nội dung.
@@ -321,4 +342,4 @@ M-1 → M3 chạy, **2 firm partner trả tiền** + **≥20 SME** kích hoạt 
 
 ---
 
-*Hết v0.5 — DEC-026 chat LLM function-calling + clauses fold. Bước kế tiếp: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7 trước launch.*
+*Hết v0.6 — cycle 4 fold (DEC-027/028/029/030 + Sprint 1 staging-complete). Bước kế tiếp: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7, đóng DEC-028 NĐ 13 compliance debt trước prod.*
