@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
-from app.models.tenant import Document, Event, Obligation
+from app.models.tenant import Document, Event, Obligation, OBLIGATION_STATUSES
+from app.services.obligation_chain import propagate_obligation_done
 from app.schemas.obligations import (
     ObligationListOut,
     ObligationOut,
@@ -98,7 +99,7 @@ def patch_obligation(
     db: Session = Depends(get_db),
 ):
     """Update an obligation's status. SME/status-machine edits only (D-02)."""
-    allowed = {"pending", "done", "cancelled"}
+    allowed = set(OBLIGATION_STATUSES)
     if payload.status not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -118,6 +119,11 @@ def patch_obligation(
     db.commit()
     db.refresh(ob)
 
+    activated_count = 0
+    if payload.status == "done":
+        activated_count = propagate_obligation_done(ob.id, db)
+        db.refresh(ob)
+
     _log_event(
         db,
         user.tenant_id,
@@ -128,4 +134,4 @@ def patch_obligation(
         payload={"old_status": old_status, "new_status": payload.status},
     )
 
-    return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob))
+    return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob), activated_count=activated_count)

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.db.database import MasterSessionLocal, get_tenant_session
 from app.models.master import Tenant
 from app.services.reminders import send_reminders_for_tenant
+from app.services.obligation_expander import expand_recurring_obligations
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,24 @@ async def run_daily_reminder_job() -> None:
             tenant_db.close()
 
 
+async def run_expand_all_tenants() -> None:
+    """Weekly job: for each tenant, expand T2 recurring obligations."""
+    db: Session = MasterSessionLocal()
+    try:
+        tenants = db.query(Tenant).all()
+    finally:
+        db.close()
+
+    for tenant in tenants:
+        tenant_db = get_tenant_session(tenant.id)
+        try:
+            expand_recurring_obligations(tenant.id, tenant_db)
+        except Exception as exc:
+            logger.exception("Obligation expander job failed for tenant %s: %s", tenant.id, exc)
+        finally:
+            tenant_db.close()
+
+
 def create_scheduler() -> AsyncIOScheduler:
     """Create and configure the APScheduler."""
     scheduler = AsyncIOScheduler(timezone="Asia/Ho_Chi_Minh")
@@ -48,6 +67,12 @@ def create_scheduler() -> AsyncIOScheduler:
         run_daily_reminder_job,
         trigger=CronTrigger(hour=8, minute=0),
         id="daily_reminder_job",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_expand_all_tenants,
+        trigger=CronTrigger(day_of_week="mon", hour=2, minute=0),
+        id="obligation_expander",
         replace_existing=True,
     )
     return scheduler
