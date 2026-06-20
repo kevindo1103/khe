@@ -71,6 +71,39 @@ def _make_success_result_with_clauses(clauses=None):
     return result
 
 
+def _make_success_result_with_type_specific():
+    """Result with type-specific fields (labor) + payment schedule (DEC-027)."""
+    from modules.extraction import (
+        DocType, ExtractedField, ExtractionResult, PaymentScheduleItem, TokenUsage,
+    )
+
+    return ExtractionResult(
+        doc_type=DocType.LABOR,
+        doc_type_confidence=0.95,
+        fields={
+            "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+            "ngay_hieu_luc": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+            "ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.85, needs_review=False),
+            "gia_tri_hd": ExtractedField(value="50000000", confidence=0.8, needs_review=True),
+            "thoi_han_hd": ExtractedField(value="12 tháng", confidence=0.9, needs_review=False),
+            "dieu_khoan_gia_han": ExtractedField(value="Tự động gia hạn", confidence=0.7, needs_review=True),
+            "dieu_khoan_thanh_toan": ExtractedField(value="Chuyển khoản", confidence=0.9, needs_review=False),
+            "luong_co_ban": ExtractedField(value="15000000", confidence=0.85, needs_review=False),
+            "thoi_gian_thu_viec": ExtractedField(value="60 ngày", confidence=0.8, needs_review=True),
+        },
+        payment_schedule=[
+            PaymentScheduleItem(amount="15000000", due_date="2026-02-01", milestone="Tạm ứng tháng 1", recurrence=None),
+            PaymentScheduleItem(amount="15000000", due_date="2026-03-01", milestone="Tạm ứng tháng 2", recurrence=None),
+            PaymentScheduleItem(amount=None, due_date=None, milestone="Theo thông báo", recurrence=None),
+        ],
+        provider="fake_provider",
+        model="fake-model",
+        latency_ms=123.0,
+        usage=TokenUsage(input_tokens=1000, output_tokens=200),
+        cost_vnd=500.0,
+    )
+
+
 def _make_error_result():
     from modules.extraction import DocType, ExtractionResult, TokenUsage
 
@@ -324,3 +357,111 @@ class TestExtractionClauses:
             doc_id = r.json()["doc_id"]
 
         assert auth_client.get(f"/documents/{doc_id}").json()["clause_count"] == 0
+
+
+# ── Type-specific fields + payment schedule (#137) ──
+
+class TestTypeSpecificFields:
+    def test_type_specific_fields_persisted(self, auth_client):
+        """Type-specific fields (luong_co_ban, thoi_gian_thu_viec) stored as Term rows."""
+        fake = FakeProvider(_make_success_result_with_type_specific())
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("labor_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        data = auth_client.get(f"/documents/{doc_id}").json()
+        terms = {t["field_name"]: t for t in data["terms"]}
+        assert "luong_co_ban" in terms
+        assert terms["luong_co_ban"]["field_value"] == "15000000"
+        assert "thoi_gian_thu_viec" in terms
+        assert terms["thoi_gian_thu_viec"]["field_value"] == "60 ngày"
+        # Base fields still present
+        assert "doi_tac" in terms
+        assert "ngay_hieu_luc" in terms
+
+    def test_claude_fallback_base_fields_only(self, auth_client):
+        """Claude fallback (7 base fields only) still works — no type-specific fields."""
+        fake = FakeProvider(_make_success_result())
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("claude_fallback_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        data = auth_client.get(f"/documents/{doc_id}").json()
+        terms = {t["field_name"]: t for t in data["terms"]}
+        assert len(terms) == 7
+        assert "luong_co_ban" not in terms
+
+
+class TestPaymentScheduleObligations:
+    def test_payment_schedule_creates_obligations(self, auth_client):
+        """Payment schedule items with due_date create pending Obligation rows."""
+        fake = FakeProvider(_make_success_result_with_type_specific())
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("payment_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        # Check obligations via the document detail endpoint
+        data = auth_client.get(f"/documents/{doc_id}").json()
+        obligations = data.get("obligations", [])
+        # 2 payment obligations (items with due_date) + 1 expiry obligation from derive_obligations
+        payment_obs = [o for o in obligations if "Tạm ứng" in o.get("description", "")]
+        assert len(payment_obs) == 2
+        due_dates = {o["due_date"] for o in payment_obs}
+        assert "2026-02-01" in due_dates
+        assert "2026-03-01" in due_dates
+        # The item without due_date should NOT create an obligation
+        assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
+
+    def test_payment_schedule_no_due_date_skipped(self, auth_client):
+        """Payment schedule items without due_date are skipped (no obligation created)."""
+        from modules.extraction import (
+            DocType, ExtractedField, ExtractionResult, PaymentScheduleItem, TokenUsage,
+        )
+
+        result = ExtractionResult(
+            doc_type=DocType.LEASE,
+            doc_type_confidence=0.9,
+            fields={
+                "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+                "ngay_hieu_luc": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+                "ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.85, needs_review=False),
+                "gia_tri_hd": ExtractedField(value="100000000", confidence=0.8, needs_review=True),
+                "thoi_han_hd": ExtractedField(value="12 tháng", confidence=0.9, needs_review=False),
+                "dieu_khoan_gia_han": ExtractedField(value="Tự động gia hạn", confidence=0.7, needs_review=True),
+                "dieu_khoan_thanh_toan": ExtractedField(value="Chuyển khoản", confidence=0.9, needs_review=False),
+            },
+            payment_schedule=[
+                PaymentScheduleItem(amount="50000000", due_date=None, milestone="Theo thông báo", recurrence=None),
+            ],
+            provider="fake_provider",
+            model="fake-model",
+            latency_ms=123.0,
+            usage=TokenUsage(input_tokens=1000, output_tokens=200),
+            cost_vnd=500.0,
+        )
+
+        fake = FakeProvider(result)
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("no_due_date_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        data = auth_client.get(f"/documents/{doc_id}").json()
+        obligations = data.get("obligations", [])
+        # Only the expiry obligation from derive_obligations, no payment obligation
+        assert not any("Theo thông báo" in o.get("description", "") for o in obligations)

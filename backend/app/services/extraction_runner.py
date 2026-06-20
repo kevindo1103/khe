@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_tenant_session
-from app.models.tenant import Clause, Document, Event, Term
+from app.models.tenant import Clause, Document, Event, Obligation, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations
-from modules.extraction import CANONICAL_FIELDS, ExtractionUnavailable, get_extraction_provider
+from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +107,9 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             Clause.tenant_id == tenant_id,
         ).delete()
 
-        # 8. Persist terms.
-        for field_name in CANONICAL_FIELDS:
-            field = result.fields.get(field_name)
-            if field is None:
+        # 8. Persist terms — all fields returned by the provider (universal + type-specific).
+        for field_name, field in result.fields.items():
+            if field is None or field.value is None:
                 continue
             term = Term(
                 tenant_id=tenant_id,
@@ -166,6 +165,22 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # Derive obligations from the freshly extracted terms (chain-aware).
         derive_obligations(db, tenant_id, doc_id)
+
+        # 11. Persist payment obligations from payment_schedule (DEC-027 / #117).
+        #     Runs AFTER derive_obligations so the chain-aware pending-obligation
+        #     cleanup inside derive_obligations doesn't wipe these.
+        for ps in result.payment_schedule:
+            if not ps.due_date:
+                continue
+            db.add(Obligation(
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                description=ps.milestone or f"Thanh toán {ps.amount or ''}".strip(),
+                obligation_type="once",
+                due_date=ps.due_date,
+                status="pending",
+            ))
+        db.commit()
     finally:
         db.close()
 
