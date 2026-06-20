@@ -1,9 +1,43 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-20 | v1.8*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-20 | v1.9*
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
+
+---
+
+## ⚓ Product Anchor Principle (Kevin ratified 2026-06-20)
+
+> **"Khế giải multi-turn chat không phải bằng conversation memory —**
+> **mà bằng structured data + UI architecture."**
+
+Đây là **anchor quyết định mọi decision thiết kế chat**, từ API shape đến UX đến cost model.
+
+### Tại sao đây là moat, không chỉ là trade-off
+
+Generic RAG chatbots buộc phải dùng prose conversation history (Option C) vì chúng không có gì ngoài text. Khế có structured extraction — `obligations`, `terms`, `parties[]`, `clauses`, obligation graph — những thứ không AI chatbot nào tự có mà không có extraction pipeline. Điều đó cho phép Khế maintain **semantic state** (50 tokens JSON) thay vì **prose history** (2,000–5,000 tokens), và resolve reference bằng **structured lookup** thay vì LLM guessing.
+
+### 4 nguyên tắc triển khai từ anchor này
+
+| Nguyên tắc | Implication |
+|---|---|
+| **Context từ navigation, không từ NLP** | Chat sidebar trong DocumentDetail/Obligation view inherit context từ URL — zero LLM cost, zero hallucination |
+| **Structured semantic state, không prose history** | Mỗi turn server maintain `{active_doc_id, active_obligation_id, mentioned_parties[], last_intent}` — compact, cacheable, deterministic |
+| **Domain resolvers trước LLM** | "Bên A/B/thuê/cho thuê" → `parties[]` lookup deterministic. "Nghĩa vụ này" → `obligation_id` từ navigation. Không cần pronoun detection NLP |
+| **Narrow-first search, widen on miss** | Khi không có explicit doc reference, search last-mentioned doc trước → widen nếu miss → surface assumption rõ ràng ("Tìm trong HĐ Penfield — không thấy → mở rộng ra tất cả HĐ") |
+
+### Failure mode cần tránh
+
+Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong domain pháp lý = nguy hiểm hơn stateless (D-08 spirit). Mọi context carry-over phải **visible + correctable** (chip hiển thị doc đang scope, 1-tap để widen/switch).
+
+### Phase roadmap từ anchor
+
+- **MVP (now):** UI-contextual sidebar + `prev_doc_id` narrow-first + domain resolver parties[] + visible scope chip
+- **Phase 2:** Entity-level state (mentioned_dates, amounts) + persistent thread per doc/obligation (cross-session memory)
+- **Phase 3:** Obligation graph queries ("tất cả nghĩa vụ liên quan đến Penfield qua các HĐ") — genuine moat vs bất kỳ AI chatbot nào
+
+*DEC-031 — xem bảng Ratified Decisions bên dưới. KHE_Docs: fold vào PRODUCT_STRATEGY §Chat Architecture + BRD §FR-CQ.*
 
 ---
 
@@ -78,6 +112,8 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | DEC-029 | **doc_type_group taxonomy + full field schema.** Nguồn: lawyer Danh mục HĐ 126 loại → collapse 10 groups: `dan_su` · `thuong_mai` · `lao_dong` · `bat_dong_san` · `van_tai_logistics` · `xay_dung` · `cong_nghe_ip` · `tai_chinh` · `bao_dam` · `hanh_chinh` · `other`. 5 universal fields thêm vào CANONICAL_FIELDS: `doc_type_group` (required, classified first) · `ngay_ky` · `tien_dat_coc` · `thoi_han_bao_hanh` · `thoi_han_thong_bao`. 9 type-specific field sets (~30 fields): lao_dong (3) · bat_dong_san (3) · xay_dung (3) · bao_dam (3) · cong_nghe_ip (3) · thuong_mai (4) · van_tai_logistics (3) · tai_chinh (3) · hanh_chinh (2). Extraction strategy: classify doc_type_group FIRST → extract universal + type-specific conditional trong 1 vision call. Chat: thêm `doc_type_filter` param vào search_terms + search_obligations (exact match, not ILIKE). Issues: #123 (KHE_AI schema) + #124 (Backend chat filter, dep #123). ALL IN CURRENT PHASE (user ratified 2026-06-20). | **Ratified** (Kevin 2026-06-20) | 2026-06-20 |
 
 | DEC-030 | **4-axis Obligation model — REVISED (Kevin 2026-06-20 merge Phase 2 into MVP: PMF core).** Obligation = điểm trong không gian 4 trục độc lập: **(A) obligation_type** (category DEC-027) · **(B) direction + obligor** (góc SME) · **(C) recurrence** (cadence, renamed) · **(D) series metadata** (milestone_series_id / milestone_index / milestone_total / milestone_trigger). **Temporal taxonomy 4 pattern — tất cả MVP:** T1 once · T2 lặp đều (auto-expand engine) · T3 nhiều đợt hữu hạn (series grouping) · T4 vô thời hạn. **Event-chaining (MVP):** `trigger_obligation_id` FK self-ref + `trigger_delay_days` + `trigger_condition` — khi parent done → engine tính due_date con + notify. **Status enum mở rộng:** `pending · in_progress · partial · done · cancelled · waiting_trigger`. **amount_raw + amount_total_raw** lưu string (% hay tuyệt đối, không arithmetic MVP). **Direction:** `nghĩa_vụ / quyền_lợi / null` từ obligor match. **#122 RESOLVED** via Option B. **Extraction generalize:** `payment_schedule[]` → `obligation_schedule[]` (tất cả category). **KHE_AI thêm:** `trigger_condition`, `trigger_delay_days`, `series_id`, `milestone_index/total`, `trigger=date\|event`. **Backend:** migration tenant_005 (+8 cols) + event-chaining service + T2 auto-expand scheduler. **Frontend:** T3 progress chip "Đợt N/total", T3-event "Chờ: X", partial badge, dependency chain view. **Phase 3 còn lại:** cross-doc graph · bank/accounting integration · % parse → VND. D-06 ✅ D-02 ✅ D-08 ✅ D-01 ✅. Issues: #144 (KHE_AI revised) · #145 (Backend revised) · #146 (Frontend revised). | **Ratified** (Kevin 2026-06-20, Phase 2 → MVP) | 2026-06-20 |
+
+| DEC-031 | **Chat context = structured data + UI architecture, NOT conversation memory.** Anchor principle quyết định mọi chat design decision. Generic chatbots dùng prose history (5,000 tok) vì không có extraction. Khế dùng: (1) **UI-contextual** — chat sidebar inherit context từ navigation (DocumentDetail/Obligation), zero LLM cost; (2) **Structured semantic state** — 50-token JSON `{active_doc_id, active_obligation_id, mentioned_parties[], last_intent}` thay vì prose dump, cacheable; (3) **Domain resolvers** — "bên A/B/thuê" → `parties[]` lookup deterministic, không NLP; (4) **Narrow-first search** — search last-mentioned doc trước, widen on miss, surface assumption rõ. Silent wrong-context = D-08 spirit violation → mọi carry-over PHẢI visible + correctable (scope chip 1-tap). Phase 2: persistent thread per doc + entity-level state. Phase 3: cross-doc obligation graph queries. Ref: #178 (KHE_QC relay + PM BA). | **Ratified** (Kevin 2026-06-20) | 2026-06-20 |
 
 **Giữ nguyên (user confirm 2026-06-10):** DEC-002 (VisionExtractionProvider Gemini+Claude), DEC-006 (Telegram), DEC-010 (NĐ 13 Phase 1).
 
