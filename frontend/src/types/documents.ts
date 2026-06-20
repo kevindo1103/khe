@@ -59,3 +59,12 @@ export interface BulkUploadOut {
   count: number;
   documents: UploadOut[];
 }
+
+export interface SelfPartyConfirmIn {
+  role_label: string;
+}
+
+export interface SelfPartyConfirmOut {
+  ok: boolean;
+  updated: number;
+}

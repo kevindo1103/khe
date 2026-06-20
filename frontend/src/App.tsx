@@ -8,6 +8,7 @@ import DocumentList from './pages/admin/DocumentList';
 import DocumentDetail from './pages/admin/DocumentDetail';
 import Obligations from './pages/admin/Obligations';
 import Chat from './pages/admin/Chat';
+import Settings from './pages/admin/Settings';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="documents/:id" element={<DocumentDetail />} />
         <Route path="obligations" element={<Obligations />} />
         <Route path="chat" element={<Chat />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin/login" replace />} />
     </Routes>

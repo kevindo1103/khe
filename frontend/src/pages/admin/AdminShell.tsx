@@ -8,6 +8,7 @@ const navItems = [
   { to: '/admin/documents', label: 'Tài liệu' },
   { to: '/admin/obligations', label: 'Nghĩa vụ' },
   { to: '/admin/chat', label: 'Hỏi-đáp' },
+  { to: '/admin/settings', label: 'Cài đặt' },
 ];
 
 export default function AdminShell() {
