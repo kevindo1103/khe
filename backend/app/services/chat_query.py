@@ -461,7 +461,9 @@ def _tool_search_obligations(
     rows = query.order_by(Obligation.due_date.asc()).all()
     results = []
     for ob, doc in rows:
-        if not ob.due_date:
+        # waiting_trigger obligations have due_date=None by design (D-08: no fabricated date).
+        # Only skip null due_date for non-waiting_trigger rows.
+        if not ob.due_date and ob.status != "waiting_trigger":
             continue
         results.append(
             {
@@ -471,6 +473,7 @@ def _tool_search_obligations(
                 "field_name": "due_date",
                 "value": ob.due_date,
                 "status": ob.status,
+                "trigger_condition": ob.trigger_condition,
             }
         )
     return results
