@@ -940,3 +940,71 @@ class TestObligationScheduleMapping:
         assert payload["count"] == 1
         assert payload["items"][0]["description"] == "Thanh toán đợt 1"
         assert payload["items"][0]["obligation_type"] == "payment"
+
+    def test_unknown_obligation_type_coerced_to_other(self, auth_client, db):
+        """Unknown obligation_type from LLM → stored as 'other' (#163)."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+
+        doc_id = self._upload_and_extract(
+            auth_client, "coerce_type.pdf",
+            {"ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.9, needs_review=False)},
+            [ObligationScheduleItem(
+                obligation_type="alien_type",  # not in valid set
+                description="Nghĩa vụ lạ",
+                due_date="2026-12-01",
+            )],
+        )
+
+        # Filter to schedule-derived rows only (source_doc_chain IS NULL)
+        obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id, Obligation.source_doc_chain.is_(None)
+        ).all()
+        assert len(obs) == 1
+        assert obs[0].obligation_type == "other"
+
+    def test_unknown_trigger_coerced_to_date(self, auth_client, db):
+        """Unknown trigger from LLM → stored as 'date', status=pending (#163)."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+
+        doc_id = self._upload_and_extract(
+            auth_client, "coerce_trigger.pdf",
+            {"ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.9, needs_review=False)},
+            [ObligationScheduleItem(
+                obligation_type="payment",
+                description="Thanh toán trigger lạ",
+                due_date="2026-11-01",
+                trigger="unknown_trigger",  # not in valid set
+            )],
+        )
+
+        obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id, Obligation.source_doc_chain.is_(None)
+        ).all()
+        assert len(obs) == 1
+        assert obs[0].milestone_trigger == "date"
+        assert obs[0].status == "pending"
+        assert obs[0].due_date == "2026-11-01"
+
+    def test_event_trigger_nulls_due_date(self, auth_client, db):
+        """trigger=event with LLM-provided due_date → due_date stored as None (#163)."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+
+        doc_id = self._upload_and_extract(
+            auth_client, "event_null_date.pdf",
+            {"ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.9, needs_review=False)},
+            [ObligationScheduleItem(
+                obligation_type="payment",
+                description="Nghiệm thu bàn giao",
+                trigger="event",
+                due_date="2026-09-01",  # LLM emitted a date despite event trigger
+                trigger_condition="sau khi nghiệm thu",
+            )],
+        )
+
+        obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id, Obligation.source_doc_chain.is_(None)
+        ).all()
+        assert len(obs) == 1
+        assert obs[0].due_date is None
+        assert obs[0].status == "waiting_trigger"
+        assert obs[0].milestone_trigger == "event"
