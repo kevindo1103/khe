@@ -7,6 +7,7 @@
 """
 import os
 import sys
+from datetime import date
 
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, backend_dir)
@@ -200,6 +201,140 @@ class TestChatQuery:
         assert any(s["type"] == "obligation" and s["field_name"] == "due_date" for s in data["sources"])
         for s in data["sources"]:
             self._assert_source_shape(s)
+
+    def test_search_obligations_due_range(self, auth_client, db, monkeypatch):
+        """search_obligations filters by inclusive due_from/due_to range."""
+        doc = _seed(db)
+        # Add obligations outside the target range.
+        db.add_all(
+            [
+                Obligation(
+                    tenant_id="chat-tenant",
+                    document_id=doc.id,
+                    description="Hợp đồng hết hạn tháng 6",
+                    obligation_type="once",
+                    due_date="2026-06-15",
+                    status="pending",
+                ),
+                Obligation(
+                    tenant_id="chat-tenant",
+                    document_id=doc.id,
+                    description="Hợp đồng hết hạn tháng 7",
+                    obligation_type="once",
+                    due_date="2026-07-20",
+                    status="pending",
+                ),
+                Obligation(
+                    tenant_id="chat-tenant",
+                    document_id=doc.id,
+                    description="Hợp đồng hết hạn tháng 8",
+                    obligation_type="once",
+                    due_date="2026-08-10",
+                    status="pending",
+                ),
+            ]
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": None, "status": None, "doc_hint": None, "due_from": "2026-07-01", "due_to": "2026-07-31"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 hợp đồng hết hạn tháng 7."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ nào hết hạn tháng 7?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        values = [s["value"] for s in data["sources"] if s["type"] == "obligation"]
+        assert "2026-07-20" in values
+        assert "2026-06-15" not in values
+        assert "2026-08-10" not in values
+
+    def test_search_obligations_due_range_inclusive(self, auth_client, db, monkeypatch):
+        """Boundary due_from and due_to dates are inclusive."""
+        doc = _seed(db)
+        db.add(
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Boundary",
+                obligation_type="once",
+                due_date="2026-06-01",
+                status="pending",
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": None, "status": None, "doc_hint": None, "due_from": "2026-06-01", "due_to": "2026-06-01"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 hợp đồng."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ hết hạn ngày 2026-06-01?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["type"] == "obligation" and s["value"] == "2026-06-01" for s in data["sources"])
+
+    def test_search_obligations_due_range_and_status_and_doc_hint(self, auth_client, db, monkeypatch):
+        """due_from + due_to + status + doc_hint are AND-composed."""
+        doc = _seed(db)
+        db.add(
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Matching",
+                obligation_type="once",
+                due_date="2026-06-15",
+                status="pending",
+            )
+        )
+        db.add(
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Wrong status",
+                obligation_type="once",
+                due_date="2026-06-15",
+                status="done",
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": None, "status": "pending", "doc_hint": "lease_2026", "due_from": "2026-06-01", "due_to": "2026-06-30"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 pending."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ lease_2026 pending hết hạn tháng 6?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        sources = [s for s in data["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-06-15"
+        assert sources[0]["status"] == "pending"
+
+    def test_select_tools_prompt_includes_today_date(self):
+        """Router system prompt must include today's date and calendar-range rules."""
+        prompt = chat_query._build_router_system_prompt(date(2026, 6, 20))
+        assert "Hôm nay là 2026-06-20" in prompt
+        assert "due_from" in prompt
+        assert "due_to" in prompt
+        assert "tháng này" in prompt
+        assert "quý sau" in prompt
 
     def test_search_clauses_tool(self, auth_client, db, monkeypatch):
         """search_clauses returns clause content with clause_num + clause_title."""

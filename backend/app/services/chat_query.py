@@ -99,8 +99,16 @@ _TOOLS = [
                         "type": ["string", "null"],
                         "description": "Tên/gợi ý hợp đồng nếu người dùng đề cập cụ thể.",
                     },
+                    "due_from": {
+                        "type": ["string", "null"],
+                        "description": "Ngày bắt đầu khoảng tìm kiếm (ISO YYYY-MM-DD), inclusive. Dùng cho query theo lịch ('tháng này', 'quý 2').",
+                    },
+                    "due_to": {
+                        "type": ["string", "null"],
+                        "description": "Ngày kết thúc khoảng tìm kiếm (ISO YYYY-MM-DD), inclusive.",
+                    },
                 },
-                "required": ["due_within_days", "status", "doc_hint"],
+                "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to"],
             },
         },
     },
@@ -317,8 +325,10 @@ def _tool_search_obligations(
     due_within_days: int | None,
     status: str | None,
     doc_hint: str | None,
+    due_from: str | None = None,
+    due_to: str | None = None,
 ) -> list[dict]:
-    """Return obligation rows, optionally filtered by due window, status, or doc hint."""
+    """Return obligation rows, optionally filtered by due window, status, doc hint, or date range."""
     query = db.query(Obligation, Document).join(
         Document, Document.id == Obligation.document_id
     ).filter(
@@ -332,6 +342,11 @@ def _tool_search_obligations(
         if doc is None:
             return []
         query = query.filter(Obligation.document_id == doc.id)
+
+    if due_from:
+        query = query.filter(Obligation.due_date >= due_from)
+    if due_to:
+        query = query.filter(Obligation.due_date <= due_to)
 
     if due_within_days is not None:
         try:
@@ -422,6 +437,30 @@ def _get_llm_client():
 # LLM step 1: select tools
 # ---------------------------------------------------------------------------
 
+def _build_router_system_prompt(today: date) -> str:
+    """Build the system prompt for the LLM router, including the reference date."""
+    today_str = today.isoformat()
+    return (
+        "Bạn là trợ lý hợp đồng. Dựa vào câu hỏi của người dùng, quyết định nên gọi "
+        "công cụ nào để lấy dữ liệu từ hệ thống. Chỉ trả về JSON: "
+        '{"tool_calls": [{"name": "tool_name", "args": {...}}]}. '
+        f"Hôm nay là {today_str}. "
+        "Quy tắc chuyển cụm từ lịch tiếng Việt thành due_from/due_to ISO (YYYY-MM-DD):\n"
+        "- 'tháng này' → due_from=ngày 1 tháng hiện tại, due_to=ngày cuối tháng hiện tại\n"
+        "- 'tháng sau' → due_from=ngày 1 tháng kế tiếp, due_to=ngày cuối tháng kế tiếp\n"
+        "- 'quý này' / 'quý sau' → ngày đầu và cuối của quý tương ứng\n"
+        "- 'tuần này' / 'tuần tới' → từ thứ 2 đến chủ nhật của tuần (ISO week, Thứ 2 là đầu tuần)\n"
+        "- 'X ngày tới' / 'sắp tới' → dùng due_within_days=X, KHÔNG dùng due_from/due_to\n"
+        "Quy tắc quan trọng: doc_hint PHẢI là tên/gợi ý filename của hợp đồng (ví dụ: 'Mau HDV FLC'), "
+        "KHÔNG được là tên công ty, đối tác, hay từ khóa trong câu hỏi. "
+        "Khi người dùng tìm theo tên công ty/đối tác, dùng value_contains trong search_terms, KHÔNG đưa tên công ty vào doc_hint. "
+        "Khi user hỏi 'field X của hợp đồng với công ty Y', dùng party_filter=Y để lọc docs có đối tác Y, "
+        "sau đó trả field X của những docs đó. "
+        "Ví dụ: 'ngày hiệu lực HĐ với ALASKA' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA'). "
+        "Không tự bịa dữ liệu."
+    )
+
+
 async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict]:
     """Ask the LLM which tools to call. Returns a list of {"name": ..., "args": ...}.
 
@@ -439,18 +478,7 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
     except Exception:  # noqa: BLE001
         return []
 
-    system_prompt = (
-        "Bạn là trợ lý hợp đồng. Dựa vào câu hỏi của người dùng, quyết định nên gọi "
-        "công cụ nào để lấy dữ liệu từ hệ thống. Chỉ trả về JSON: "
-        '{"tool_calls": [{"name": "tool_name", "args": {...}}]}. '
-        "Quy tắc quan trọng: doc_hint PHẢI là tên/gợi ý filename của hợp đồng (ví dụ: 'Mau HDV FLC'), "
-        "KHÔNG được là tên công ty, đối tác, hay từ khóa trong câu hỏi. "
-        "Khi người dùng tìm theo tên công ty/đối tác, dùng value_contains trong search_terms, KHÔNG đưa tên công ty vào doc_hint. "
-        "Khi user hỏi 'field X của hợp đồng với công ty Y', dùng party_filter=Y để lọc docs có đối tác Y, "
-        "sau đó trả field X của những docs đó. "
-        "Ví dụ: 'ngày hiệu lực HĐ với ALASKA' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA'). "
-        "Không tự bịa dữ liệu."
-    )
+    system_prompt = _build_router_system_prompt(date.today())
 
     user_prompt = (
         f"Câu hỏi: {question}\n\n"
@@ -603,6 +631,8 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                     args.get("due_within_days"),
                     args.get("status"),
                     args.get("doc_hint"),
+                    args.get("due_from"),
+                    args.get("due_to"),
                 )
             )
         elif name == "search_clauses":
@@ -632,6 +662,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
             "file_name": r["file_name"],
             "field_name": r["field_name"],
             "value": r["value"],
+            "status": r.get("status"),
             "clause_num": r.get("clause_num"),
             "clause_title": r.get("clause_title"),
         }
