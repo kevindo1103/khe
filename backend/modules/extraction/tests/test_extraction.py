@@ -11,14 +11,20 @@ import os
 from pathlib import Path
 
 from ..schemas import (
+    ALL_TYPE_SPECIFIC_FIELDS,
+    BASE_CANONICAL_FIELDS,
     BENCHMARK_TARGET_FIELDS,
     CANONICAL_FIELDS,
+    DOC_TYPE_GROUPS,
+    TYPE_SPECIFIC_FIELDS,
     ClauseItem,
     ContractExtractionLLM,
     ContractExtractionLLMFull,
     DocType,
     ExtractedField,
     ExtractionResult,
+    NamedExtractedField,
+    PaymentScheduleItem,
     TokenUsage,
 )
 from .. import factory
@@ -330,6 +336,129 @@ def test_prompt_requests_clauses() -> None:
     instr = build_instruction("hd_lao_dong")
     assert "clauses" in instr
     assert "Điều" in instr and "Khoản" in instr  # asks for numbered articles/clauses
+
+
+# --- extraction schema v2: doc_type_group + type-specific + payment (#123/#117) ---
+
+
+def test_doc_type_groups_enum() -> None:
+    assert len(DOC_TYPE_GROUPS) == 11           # 10 groups + "other"
+    assert DOC_TYPE_GROUPS[-1] == "other"
+    assert "lao_dong" in DOC_TYPE_GROUPS and "xay_dung" in DOC_TYPE_GROUPS
+    assert len(set(DOC_TYPE_GROUPS)) == len(DOC_TYPE_GROUPS)  # no dupes
+
+
+def test_canonical_fields_v2_expanded() -> None:
+    # 7 original + 5 universal = 12; benchmark targets still a subset.
+    assert len(CANONICAL_FIELDS) == 12
+    for new in ("doc_type_group", "ngay_ky", "tien_dat_coc", "thoi_han_bao_hanh", "thoi_han_thong_bao"):
+        assert new in CANONICAL_FIELDS
+    assert set(BENCHMARK_TARGET_FIELDS).issubset(set(CANONICAL_FIELDS))
+
+
+def test_type_specific_fields_structure() -> None:
+    # Every group key is a real doc_type_group (excluding "other"/"dan_su" which
+    # have no type-specific set).
+    assert set(TYPE_SPECIFIC_FIELDS).issubset(set(DOC_TYPE_GROUPS))
+    # Flattened tuple is de-duplicated and covers every group's fields.
+    flat = [f for fields in TYPE_SPECIFIC_FIELDS.values() for f in fields]
+    assert len(ALL_TYPE_SPECIFIC_FIELDS) == len(set(flat))
+    assert "luong_co_ban" in ALL_TYPE_SPECIFIC_FIELDS  # labor
+    assert "lai_suat" in ALL_TYPE_SPECIFIC_FIELDS       # finance
+
+
+def test_payment_schedule_item_schema() -> None:
+    p = PaymentScheduleItem(amount="100000000", due_date="2026-07-15", milestone="Tạm ứng 30%")
+    assert p.amount == "100000000" and p.recurrence is None
+    # all fields optional — unstructured contract may have none
+    assert PaymentScheduleItem().due_date is None
+
+
+def test_extraction_result_payment_schedule_default_empty() -> None:
+    r = ExtractionResult(fields={}, doc_type="khac")
+    assert r.payment_schedule == []
+
+
+def test_full_schema_has_typespecific_payment_clauses() -> None:
+    llm = ContractExtractionLLMFull(doc_type=DocType.LABOR)
+    # All three extras default empty (DEC-026/027/029).
+    assert llm.payment_schedule == [] and llm.clauses == [] and llm.type_specific == []
+
+
+def test_base_schema_lean_for_claude() -> None:
+    # Claude flat schema must stay lean (it rejects wide schemas) — only the 7
+    # BASE_CANONICAL_FIELDS, no nested lists, no v2 universal fields.
+    llm = ContractExtractionLLM(doc_type=DocType.OTHER)
+    assert not hasattr(llm, "payment_schedule")
+    assert not hasattr(llm, "type_specific")
+    assert not hasattr(llm, "clauses")
+    assert not hasattr(llm, "doc_type_group")   # v2 → Full only
+    assert not hasattr(llm, "ngay_ky")
+    assert isinstance(llm.doi_tac, ExtractedField)  # core field present
+    # the v2 universal fields live on the Full (Gemini) schema instead
+    full = ContractExtractionLLMFull(doc_type=DocType.OTHER)
+    assert isinstance(full.doc_type_group, ExtractedField)
+    assert isinstance(full.ngay_ky, ExtractedField)
+
+
+def test_named_extracted_field_clamps_confidence() -> None:
+    nf = NamedExtractedField(key="luong_co_ban", value="15000000", confidence=1.7)
+    assert nf.key == "luong_co_ban" and nf.confidence == 1.0  # clamped
+    assert ExtractedField(confidence=-3).confidence == 0.0     # clamp lower bound
+
+
+def test_full_as_field_map_folds_type_specific_by_key() -> None:
+    llm = ContractExtractionLLMFull(
+        doc_type=DocType.LABOR,
+        type_specific=[
+            NamedExtractedField(key="luong_co_ban", value="15000000", confidence=0.9, needs_review=False),
+            NamedExtractedField(key="NOT_A_REAL_FIELD", value="x"),  # dropped
+        ],
+    )
+    fm = llm.as_field_map()
+    # canonical always present
+    for name in CANONICAL_FIELDS:
+        assert name in fm
+    # known type-specific key folded in; unknown key dropped (no fabricated field)
+    assert fm["luong_co_ban"].value == "15000000"
+    assert "NOT_A_REAL_FIELD" not in fm
+    # type-specific keys not emitted stay absent (not forced to null rows)
+    assert "lai_suat" not in fm
+    # Full map covers all 12 universal canonical fields
+    assert set(CANONICAL_FIELDS).issubset(set(fm))
+    # base (Claude) map is the lean 7 only
+    assert set(ContractExtractionLLM(doc_type=DocType.LABOR).as_field_map()) == set(BASE_CANONICAL_FIELDS)
+
+
+def test_to_result_maps_payment_schedule() -> None:
+    from ..providers.base import to_result
+
+    llm = ContractExtractionLLMFull(
+        doc_type=DocType.SUPPLIER,
+        payment_schedule=[PaymentScheduleItem(amount="5000000", due_date="2026-08-01", milestone="Đợt 1")],
+    )
+    res = to_result(
+        llm, provider="gemini_flash", model="gemini-2.5-flash",
+        latency_ms=10.0, usage=TokenUsage(input_tokens=5, output_tokens=2), cost=1.0,
+    )
+    assert len(res.payment_schedule) == 1 and res.payment_schedule[0].due_date == "2026-08-01"
+    # Claude flat schema → empty payment_schedule (backward compat)
+    flat = ContractExtractionLLM(doc_type=DocType.SUPPLIER)
+    res2 = to_result(
+        flat, provider="claude_haiku", model="claude-haiku-4-5",
+        latency_ms=5.0, usage=TokenUsage(input_tokens=3, output_tokens=1), cost=0.5,
+    )
+    assert res2.payment_schedule == []
+
+
+def test_prompt_has_doctype_group_and_payment() -> None:
+    from ..prompts import build_instruction
+
+    instr = build_instruction("hd_lao_dong")
+    assert "doc_type_group" in instr
+    assert "lao_dong" in instr and "xay_dung" in instr      # group enum listed
+    assert "payment_schedule" in instr                       # payment section present
+    assert "luong_co_ban" in instr                           # type-specific guidance present
 
 
 def _run_all() -> None:

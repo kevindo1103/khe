@@ -16,7 +16,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DocType(str, Enum):
@@ -30,7 +30,14 @@ class DocType(str, Enum):
 
 # Canonical extracted fields (FR-EX-02). Keys are stable snake_case Vietnamese
 # so downstream (obligation engine, frontend) bind to one source of truth.
-CANONICAL_FIELDS: tuple[str, ...] = (
+#
+# Split into two tiers because Claude's structured-output grammar rejects a wide
+# schema ("Schema is too complex"):
+# - BASE_CANONICAL_FIELDS (7): the lean set Claude (fallback) extracts. Includes ALL
+#   benchmark targets (ngay_het_han, gia_tri_hd, doi_tac, thoi_han_hd).
+# - V2_UNIVERSAL_FIELDS (5, DEC-029): extracted by Gemini (primary) only. Appear in
+#   80%+ of the 126 contract types but live on the Full schema to keep Claude valid.
+BASE_CANONICAL_FIELDS: tuple[str, ...] = (
     "doi_tac",                # parties / bên ký
     "ngay_hieu_luc",          # effective date (ISO yyyy-mm-dd when parseable)
     "ngay_het_han",           # expiry date — M-3 target ≥90%
@@ -39,6 +46,15 @@ CANONICAL_FIELDS: tuple[str, ...] = (
     "dieu_khoan_gia_han",     # renewal clause
     "dieu_khoan_thanh_toan",  # payment terms
 )
+V2_UNIVERSAL_FIELDS: tuple[str, ...] = (
+    "doc_type_group",         # enum DOC_TYPE_GROUPS — classified first
+    "ngay_ky",                # signing date (≠ effective date — common gap)
+    "tien_dat_coc",           # deposit / guarantee amount
+    "thoi_han_bao_hanh",      # warranty period
+    "thoi_han_thong_bao",     # notice period before termination
+)
+# Full universal set (12) — what the terms layer + Gemini Full schema bind to.
+CANONICAL_FIELDS: tuple[str, ...] = (*BASE_CANONICAL_FIELDS, *V2_UNIVERSAL_FIELDS)
 
 # Fields the Sprint-0 benchmark scores against (issue #3 acceptance):
 # ngày hết hạn · giá trị HĐ · bên ký · thời hạn HĐ.
@@ -49,10 +65,87 @@ BENCHMARK_TARGET_FIELDS: tuple[str, ...] = (
     "thoi_han_hd",
 )
 
+# doc_type_group enum (DEC-029) — 10 groups collapsed from the 126-type lawyer
+# catalogue + "other" fallback. AI classifies this FIRST; if unsure → "other"
+# (D-08 spirit: never guess). D-05: general core, no hardcoded vertical lock-in.
+DOC_TYPE_GROUPS: tuple[str, ...] = (
+    "dan_su",             # Dân sự: cho mượn, vay, dịch vụ, ủy quyền
+    "thuong_mai",         # Thương mại: NDA, MOU, đại lý, nhượng quyền
+    "lao_dong",           # Lao động & việc làm — NĐ 337/2025 catalyst
+    "bat_dong_san",       # Bất động sản & đất đai
+    "van_tai_logistics",  # Vận tải, hạ tầng, năng lượng, logistics
+    "xay_dung",           # Xây dựng, tư vấn thiết kế, cung ứng, bảo trì
+    "cong_nghe_ip",       # Công nghệ, SaaS, sở hữu trí tuệ
+    "tai_chinh",          # Tài chính, ngân hàng, bảo hiểm
+    "bao_dam",            # Thế chấp, cầm cố, bảo lãnh, đặt cọc, ký quỹ
+    "hanh_chinh",         # Ủy quyền, APA, công chứng, hành chính DN
+    "other",              # Không xác định / mixed
+)
+
+# Type-specific field sets (DEC-029) — extracted only when doc_type_group matches.
+# Stored as Term rows like any other field (terms table is key-value → no migration).
+LABOR_FIELDS: tuple[str, ...] = (
+    "luong_co_ban", "thoi_gian_thu_viec", "chu_ky_dong_bao_hiem",
+)
+REALESTATE_FIELDS: tuple[str, ...] = (
+    "dia_chi_tai_san", "dien_tich", "lich_nop_tien_theo_tien_do",
+)
+CONSTRUCTION_FIELDS: tuple[str, ...] = (
+    "tien_bao_lanh_thuc_hien", "tien_giu_lai_bao_hanh", "lich_tien_do_thi_cong",
+)
+SECURITY_FIELDS: tuple[str, ...] = (
+    "tai_san_the_chap", "gia_tri_bao_dam", "thoi_han_dang_ky_bien_phap",
+)
+TECH_FIELDS: tuple[str, ...] = (
+    "so_luong_nguoi_dung", "uptime_cam_ket", "chu_ky_gia_han_ban_quyen",
+)
+COMMERCIAL_FIELDS: tuple[str, ...] = (
+    "pham_vi_dia_ly", "chi_tieu_doanh_so", "thoi_han_doc_quyen", "thoi_han_bao_mat",
+)
+TRANSPORT_FIELDS: tuple[str, ...] = (
+    "tuyen_duong", "trong_tai_hang_hoa", "phuong_thuc_van_chuyen",
+)
+FINANCE_FIELDS: tuple[str, ...] = (
+    "lai_suat", "lich_tra_goc_lai", "tai_san_dam_bao",
+)
+ADMIN_FIELDS: tuple[str, ...] = (
+    "pham_vi_uy_quyen", "thoi_han_uy_quyen",
+)
+
+TYPE_SPECIFIC_FIELDS: dict[str, tuple[str, ...]] = {
+    "lao_dong": LABOR_FIELDS,
+    "bat_dong_san": REALESTATE_FIELDS,
+    "xay_dung": CONSTRUCTION_FIELDS,
+    "bao_dam": SECURITY_FIELDS,
+    "cong_nghe_ip": TECH_FIELDS,
+    "thuong_mai": COMMERCIAL_FIELDS,
+    "van_tai_logistics": TRANSPORT_FIELDS,
+    "tai_chinh": FINANCE_FIELDS,
+    "hanh_chinh": ADMIN_FIELDS,
+}
+
+# Flat, de-duplicated tuple of every type-specific field (stable order).
+ALL_TYPE_SPECIFIC_FIELDS: tuple[str, ...] = tuple(
+    dict.fromkeys(f for fields in TYPE_SPECIFIC_FIELDS.values() for f in fields)
+)
+
+
+def _clamp_confidence(v: float) -> float:
+    """Clamp to [0,1] in code instead of via Field(ge/le).
+
+    Pydantic's ge/le emit JSON-schema minimum/maximum, which Gemini's structured-output
+    grammar turns into a 'complex value matcher' — across many fields these blow past
+    the 'too many states for serving' limit. A validator keeps the [0,1] invariant
+    without putting bounds in the response schema."""
+    try:
+        return min(1.0, max(0.0, float(v)))
+    except (TypeError, ValueError):
+        return 0.0
+
 
 class ExtractedField(BaseModel):
     """One extracted Term. value is None when not found on the page (D-08: say so,
-    don't guess). confidence ∈ [0,1]; needs_review flags low-confidence / ambiguous."""
+    don't guess). confidence ∈ [0,1] (clamped); needs_review flags low-confidence."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,12 +153,26 @@ class ExtractedField(BaseModel):
         default=None,
         description="Giá trị bóc ra đúng như trên tài liệu, hoặc null nếu không tìm thấy.",
     )
-    confidence: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Độ tin cậy 0..1."
-    )
+    confidence: float = Field(default=0.0, description="Độ tin cậy 0..1.")
     needs_review: bool = Field(
         default=True, description="True nếu cần người kiểm tra (FR-EX-05)."
     )
+
+    @field_validator("confidence")
+    @classmethod
+    def _clamp(cls, v: float) -> float:
+        return _clamp_confidence(v)
+
+
+class NamedExtractedField(ExtractedField):
+    """An ExtractedField that names its own canonical key (DEC-029).
+
+    Type-specific fields are emitted as ONE list of these instead of ~27 fixed object
+    properties — a single array is far cheaper in Gemini's grammar state budget than
+    dozens of optional bounded objects. `key` must be one of ALL_TYPE_SPECIFIC_FIELDS;
+    unknown keys are dropped on mapping (no fabricated field names)."""
+
+    key: str = Field(description="Canonical key của trường, vd 'luong_co_ban'.")
 
 
 class TokenUsage(BaseModel):
@@ -97,6 +204,30 @@ class ClauseItem(BaseModel):
     )
 
 
+class PaymentScheduleItem(BaseModel):
+    """One payment/installment due in the contract (DEC-027 / #117).
+
+    Backend `derive_obligations` turns each entry with a `due_date` into a
+    `payment`-type Obligation row. Unstructured payment text ("theo từng đợt theo
+    thông báo") → emit nothing here and keep the free-text `dieu_khoan_thanh_toan`
+    Term instead (D-06 — no fabrication when structure isn't extractable)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    amount: Optional[str] = Field(
+        default=None, description="Số tiền của kỳ thanh toán (VND, giữ nguyên như trên tài liệu). null nếu không rõ."
+    )
+    due_date: Optional[str] = Field(
+        default=None, description="Ngày đến hạn — ISO yyyy-mm-dd nếu rõ, hoặc mô tả tương đối nếu không. null nếu không có."
+    )
+    milestone: Optional[str] = Field(
+        default=None, description='Mốc/diễn giải kỳ thanh toán, vd "Tạm ứng 30%". null nếu không có.'
+    )
+    recurrence: Optional[str] = Field(
+        default=None, description='Chu kỳ lặp: "monthly" | "quarterly" | null (một lần). KHÔNG đoán nếu không nêu rõ.'
+    )
+
+
 # --- LLM-facing structured-output schemas ----------------------------------
 # Two tiers:
 #
@@ -114,15 +245,19 @@ class ClauseItem(BaseModel):
 
 
 class ContractExtractionLLM(BaseModel):
-    """Flat schema for Claude structured outputs (output_format=). No nested arrays."""
+    """Lean flat schema for Claude structured outputs (output_format=). No nested
+    arrays, only the 7 BASE_CANONICAL_FIELDS — Claude rejects a wider schema
+    ('Schema is too complex'). Includes every benchmark target field."""
 
     model_config = ConfigDict(from_attributes=True)
 
     doc_type: DocType = Field(
         description="Loại tài liệu: hd_thue_mat_bang | hd_nha_cung_cap | hd_lao_dong | khac."
     )
-    doc_type_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    # No ge/le here — bounds become a Gemini grammar 'complex matcher' (state blow-up).
+    doc_type_confidence: float = Field(default=0.0)
 
+    # original 7 (BASE_CANONICAL_FIELDS)
     doi_tac: ExtractedField = Field(default_factory=ExtractedField)
     ngay_hieu_luc: ExtractedField = Field(default_factory=ExtractedField)
     ngay_het_han: ExtractedField = Field(default_factory=ExtractedField)
@@ -132,19 +267,49 @@ class ContractExtractionLLM(BaseModel):
     dieu_khoan_thanh_toan: ExtractedField = Field(default_factory=ExtractedField)
 
     def as_field_map(self) -> dict[str, ExtractedField]:
-        return {name: getattr(self, name) for name in CANONICAL_FIELDS}
+        return {name: getattr(self, name) for name in BASE_CANONICAL_FIELDS}
 
 
 class ContractExtractionLLMFull(ContractExtractionLLM):
-    """Extended schema for Gemini (response_schema=). Adds clauses list (DEC-026).
+    """Extended schema for Gemini (response_schema=). Adds the v2 universal fields
+    (DEC-029), the type-specific fields as ONE keyed list, the clause list (DEC-026),
+    and the payment schedule (DEC-027 / #117).
 
-    Gemini supports nested object arrays; Claude grammar compiler times out on
-    list[ClauseItem], so Claude providers continue using the base flat schema."""
+    Gemini handles nested arrays + a wider field set; Claude rejects them, so Claude
+    stays on the lean base. Type-specific fields use a single `type_specific` array
+    (not ~27 object properties) to stay within Gemini's grammar state budget.
+    `to_result()` reads the extras via getattr, so both tiers map cleanly."""
 
+    # v2 universal (DEC-029) — Gemini-only (Claude base omits them to stay valid)
+    doc_type_group: ExtractedField = Field(default_factory=ExtractedField)
+    ngay_ky: ExtractedField = Field(default_factory=ExtractedField)
+    tien_dat_coc: ExtractedField = Field(default_factory=ExtractedField)
+    thoi_han_bao_hanh: ExtractedField = Field(default_factory=ExtractedField)
+    thoi_han_thong_bao: ExtractedField = Field(default_factory=ExtractedField)
+
+    type_specific: list[NamedExtractedField] = Field(
+        default_factory=list,
+        description="Các trường theo nhóm doc_type_group (DEC-029), mỗi phần tử có 'key'.",
+    )
     clauses: list[ClauseItem] = Field(
         default_factory=list,
         description="Danh sách MỌI điều/khoản/mục trong tài liệu, nguyên văn (DEC-026).",
     )
+    payment_schedule: list[PaymentScheduleItem] = Field(
+        default_factory=list,
+        description="Các kỳ thanh toán có ngày đến hạn (DEC-027). Rỗng nếu thanh toán phi cấu trúc.",
+    )
+
+    def as_field_map(self) -> dict[str, ExtractedField]:
+        fields = {name: getattr(self, name) for name in CANONICAL_FIELDS}
+        # Fold type-specific entries in by key; drop unknown keys (no fabricated fields).
+        valid = set(ALL_TYPE_SPECIFIC_FIELDS)
+        for nf in self.type_specific:
+            if nf.key in valid:
+                fields[nf.key] = ExtractedField(
+                    value=nf.value, confidence=nf.confidence, needs_review=nf.needs_review
+                )
+        return fields
 
 
 class ExtractionResult(BaseModel):
@@ -162,6 +327,9 @@ class ExtractionResult(BaseModel):
     # Full clause list from the same vision call (DEC-026). Default empty →
     # backward-compatible: existing callers that ignore `clauses` keep working.
     clauses: list[ClauseItem] = Field(default_factory=list)
+    # Structured payment installments (DEC-027 / #117) → Backend derives `payment`
+    # Obligation rows. Default empty (Claude fallback + unstructured payment text).
+    payment_schedule: list[PaymentScheduleItem] = Field(default_factory=list)
 
     provider: str = ""             # e.g. "gemini_flash"
     model: str = ""                # e.g. "gemini-2.5-flash"
