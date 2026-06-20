@@ -104,6 +104,7 @@ _Last updated: 2026-06-20 (#162 DEC-030 Phase 2 merged → staging; #153 closed;
 
 | # | Title | Status | Notes |
 |---|-------|--------|-------|
+| — | DOC/DOCX upload support | `status:planned` (no issue yet) | Convert DOC/DOCX → PDF via `libreoffice --headless` before extraction. Scope: expand `_is_pdf()` → `_validate_file_type()`, add conversion step in `_persist_upload()`, KHE_Infra cài `libreoffice-core` trên VPS. Vision providers unchanged (receive PDF bytes). |
 | #118 | Chat query pattern catalog | `relay` `for:backend` `for:qc` `for:docs` | Backend pick ~8 few-shot examples for `_select_tools` prompt. QC uses full catalog for test cases. |
 | #96 | Chat retrieval Unicode fix + expiring_within + find_by_party | `status:planned` | **Superseded** by DEC-026 overhaul (PR #99). Close as duplicate after verifying DEC-026 covers all 3 fixes. |
 
