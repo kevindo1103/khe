@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
-from app.models.tenant import Document, Event, Obligation
+from app.models.tenant import Document, Event, Obligation, OBLIGATION_STATUSES
+from app.services.obligation_chain import propagate_obligation_done
 from app.schemas.obligations import (
     ObligationListOut,
     ObligationOut,
@@ -43,7 +44,6 @@ def _log_event(
         payload=json.dumps(payload) if payload else None,
     )
     db.add(event)
-    db.commit()
 
 
 @router.get("/", response_model=ObligationListOut)
@@ -98,7 +98,7 @@ def patch_obligation(
     db: Session = Depends(get_db),
 ):
     """Update an obligation's status. SME/status-machine edits only (D-02)."""
-    allowed = {"pending", "done", "cancelled"}
+    allowed = set(OBLIGATION_STATUSES)
     if payload.status not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -115,8 +115,10 @@ def patch_obligation(
 
     old_status = ob.status
     ob.status = payload.status
-    db.commit()
-    db.refresh(ob)
+
+    activated_count = 0
+    if payload.status == "done":
+        activated_count = propagate_obligation_done(ob.id, db)
 
     _log_event(
         db,
@@ -128,4 +130,7 @@ def patch_obligation(
         payload={"old_status": old_status, "new_status": payload.status},
     )
 
-    return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob))
+    db.commit()
+    db.refresh(ob)
+
+    return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob), activated_count=activated_count)

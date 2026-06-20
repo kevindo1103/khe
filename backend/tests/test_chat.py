@@ -1417,3 +1417,97 @@ class TestDocTypeFilter:
         prompt = _build_router_system_prompt(date.today())
         assert "doc_type_filter" in prompt
         assert "lao_dong" in prompt
+
+
+class TestSeriesFilter:
+    """#153 Part 5 — series_id + waiting_trigger filters for search_obligations."""
+
+    def test_search_obligations_series_id_filter(self, auth_client, db, monkeypatch):
+        """search_obligations(series_id=...) returns only obligations in that series."""
+        # Clean up prior test data
+        db.query(Obligation).filter(Obligation.tenant_id == "chat-tenant").delete()
+        db.commit()
+
+        doc = _seed(db)
+        db.add_all([
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Installment 1", recurrence="once", obligation_type="payment",
+                       due_date="2026-07-01", status="pending",
+                       milestone_series_id="series-abc", milestone_index=1, milestone_total=3),
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Installment 2", recurrence="once", obligation_type="payment",
+                       due_date="2026-08-01", status="pending",
+                       milestone_series_id="series-abc", milestone_index=2, milestone_total=3),
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Standalone", recurrence="once", obligation_type="expiration",
+                       due_date="2026-12-31", status="pending"),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": None, "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": None,
+                    "doc_type_filter": None,
+                    "series_id": "series-abc", "waiting_trigger": False,
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("2 installments."))
+
+        r = auth_client.post("/chat/query", json={"question": "còn bao nhiêu đợt thanh toán"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 2
+        values = sorted(s["value"] for s in sources)
+        assert values == ["2026-07-01", "2026-08-01"]
+
+    def test_search_obligations_waiting_trigger_filter(self, auth_client, db, monkeypatch):
+        """search_obligations(waiting_trigger=True) returns only waiting_trigger obligations."""
+        db.query(Obligation).filter(Obligation.tenant_id == "chat-tenant").delete()
+        db.commit()
+
+        doc = _seed(db)
+        db.add_all([
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Pending", recurrence="once", obligation_type="payment",
+                       due_date="2026-07-01", status="pending"),
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Waiting", recurrence="once", obligation_type="delivery",
+                       due_date="2026-09-01", status="waiting_trigger", milestone_trigger="event"),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": None, "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": None,
+                    "doc_type_filter": None,
+                    "series_id": None, "waiting_trigger": True,
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("1 waiting."))
+
+        r = auth_client.post("/chat/query", json={"question": "chờ sự kiện gì"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] is not None  # description-based
+
+    def test_prompt_includes_series_and_trigger_rules(self):
+        """Router prompt must include series_id + waiting_trigger examples."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        assert "series_id" in prompt
+        assert "waiting_trigger" in prompt

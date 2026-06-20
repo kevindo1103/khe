@@ -49,6 +49,11 @@ class Term(TenantBase):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+OBLIGATION_STATUSES = [
+    "pending", "in_progress", "partial", "done", "cancelled", "waiting_trigger",
+]
+
+
 class Obligation(TenantBase):
     __tablename__ = "obligations"
 
@@ -66,6 +71,15 @@ class Obligation(TenantBase):
     # ── tenant_002 chain resolution ──
     source_doc_chain = Column(Text, nullable=True)       # JSON list of doc IDs in chain order
     resolution_method = Column(String, nullable=True)    # e.g. "last_writer_wins"
+    # ── tenant_006: DEC-030 Phase 2 — series + event-chain ──
+    milestone_series_id = Column(Text, nullable=True)    # same series_id for all installments of one chain
+    milestone_index = Column(Integer, nullable=True)     # 1-based; None if not a series
+    milestone_total = Column(Integer, nullable=True)
+    milestone_trigger = Column(String, default="date")   # "date" | "event"
+    trigger_condition = Column(Text, nullable=True)      # verbatim from contract if trigger=event
+    trigger_delay_days = Column(Integer, nullable=True)  # e.g. 30 for "30 ngày sau nghiệm thu"
+    trigger_obligation_id = Column(Integer, nullable=True)  # self-ref to obligations.id
+    amount_raw = Column(Text, nullable=True)             # raw string, not parsed
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

@@ -16,6 +16,15 @@ class ObligationOut(BaseModel):
     remind_before_days: int
     source_doc_chain: str | None = None
     resolution_method: str | None = None
+    # ── DEC-030 Phase 2: series + event-chain ──
+    milestone_series_id: str | None = None
+    milestone_index: int | None = None
+    milestone_total: int | None = None
+    milestone_trigger: str | None = None
+    trigger_condition: str | None = None
+    trigger_delay_days: int | None = None
+    trigger_obligation_id: int | None = None
+    amount_raw: str | None = None
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -34,3 +43,4 @@ class ObligationPatchIn(BaseModel):
 class ObligationPatchOut(BaseModel):
     ok: bool
     obligation: ObligationOut
+    activated_count: int = 0

@@ -148,6 +148,14 @@ _TOOLS = [
                             "Null nếu không lọc theo loại."
                         ),
                     },
+                    "series_id": {
+                        "type": ["string", "null"],
+                        "description": "Lọc theo series ID — lấy tất cả đợt của 1 chuỗi (T3 series). Null = không lọc theo series.",
+                    },
+                    "waiting_trigger": {
+                        "type": ["boolean", "null"],
+                        "description": "True = chỉ lấy obligations đang chờ sự kiện (status=waiting_trigger). False/null = tất cả.",
+                    },
                 },
                 "required": ["due_within_days", "status", "doc_hint", "due_from", "due_to", "obligation_type", "direction", "doc_type_filter"],
             },
@@ -388,6 +396,8 @@ def _tool_search_obligations(
     obligation_type: str | None = None,
     direction: str | None = None,
     doc_type_filter: str | None = None,
+    series_id: str | None = None,
+    waiting_trigger: bool = False,
 ) -> list[dict]:
     """Return obligation rows, optionally filtered by due window, status, doc hint, or date range."""
     query = db.query(Obligation, Document).join(
@@ -429,6 +439,12 @@ def _tool_search_obligations(
         if not type_doc_ids:
             return []
         query = query.filter(Obligation.document_id.in_(type_doc_ids))
+
+    if series_id:
+        query = query.filter(Obligation.milestone_series_id == series_id)
+
+    if waiting_trigger:
+        query = query.filter(Obligation.status == "waiting_trigger")
 
     if due_within_days is not None:
         try:
@@ -558,6 +574,8 @@ def _build_router_system_prompt(today: date) -> str:
         "- 'HĐ lao động có bảo hiểm không?' → search_terms(field_name='chu_ky_dong_bao_hiem', doc_type_filter='lao_dong', doc_hint=null)\n"
         "- 'Obligations xây dựng tháng tới?' → search_obligations(due_within_days=30, doc_type_filter='xay_dung', obligation_type=null)\n"
         "- 'Tất cả HĐ thuê nhà?' → search_terms(field_name='ngay_het_han', doc_type_filter='bat_dong_san', doc_hint=null)\n"
+        "- 'còn bao nhiêu đợt' / 'lịch thanh toán' → search_obligations(series_id=, obligation_type='payment')\n"
+        "- 'chờ sự kiện gì' / 'waiting_trigger' → search_obligations(waiting_trigger=true)\n"
     )
 
 
@@ -786,6 +804,8 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                     args.get("obligation_type"),
                     args.get("direction"),
                     args.get("doc_type_filter"),
+                    args.get("series_id"),
+                    args.get("waiting_trigger"),
                 )
             )
         elif name == "search_clauses":

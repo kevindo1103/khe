@@ -204,36 +204,80 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         # Derive obligations from the freshly extracted terms (chain-aware).
         derive_obligations(db, tenant_id, doc_id)
 
-        # 11. Persist payment obligations from payment_schedule (DEC-027 / #117).
+        # 11. Persist obligations from obligation_schedule (DEC-030 Phase 2, #153 Part 2).
+        #     Replaces the old payment_schedule block. Maps all 12 ObligationScheduleItem
+        #     fields → Obligation columns. Event-triggered items (trigger="event") get
+        #     status=waiting_trigger and due_date=None (D-08: no fabricated date).
         #     Runs AFTER derive_obligations so its chain-aware pending-obligation
-        #     cleanup doesn't wipe these. derive_obligations only clears pending
-        #     obligations in its happy path — on an early skip (no parseable due
-        #     date) it returns before deleting, so clear our own payment rows
-        #     explicitly to stay idempotent on re-extraction. Payment rows are
+        #     cleanup doesn't wipe these. Clear our own schedule-derived rows
+        #     explicitly to stay idempotent on re-extraction. Schedule rows are
         #     identifiable by a NULL source_doc_chain (derived obligations always
         #     set it).
         db.query(Obligation).filter(
             Obligation.tenant_id == tenant_id,
             Obligation.document_id == doc_id,
-            Obligation.status == "pending",
+            Obligation.status.in_(["pending", "waiting_trigger"]),
             Obligation.source_doc_chain.is_(None),
         ).delete(synchronize_session=False)
-        for ps in result.payment_schedule:
-            if not ps.due_date:
+        created_items = []
+        for item in result.obligation_schedule:
+            if item.trigger == "date" and not item.due_date:
+                continue  # D-08: no fabricated date
+            # Dedup guard: skip if a done/cancelled row with same identity tuple
+            # already exists (re-extraction after user marked obligation done).
+            existing = db.query(Obligation).filter(
+                Obligation.tenant_id == tenant_id,
+                Obligation.document_id == doc_id,
+                Obligation.description == item.description,
+                Obligation.obligation_type == item.obligation_type,
+                Obligation.due_date == item.due_date,
+                Obligation.status.in_(["done", "cancelled"]),
+                Obligation.source_doc_chain.is_(None),
+            ).first()
+            if existing:
                 continue
-            payer = getattr(ps, "payer", None)
-            direction = _derive_direction(tenant_id, payer, result) if payer else None
+            status = "waiting_trigger" if item.trigger == "event" else "pending"
+            direction = _derive_direction(tenant_id, item.obligor, result) if item.obligor else None
             db.add(Obligation(
                 tenant_id=tenant_id,
                 document_id=doc_id,
-                description=ps.milestone or f"Thanh toán {ps.amount or ''}".strip(),
-                recurrence="once",
-                obligation_type="payment",
-                due_date=ps.due_date,
-                status="pending",
-                obligor=payer,
+                description=item.description,
+                obligation_type=item.obligation_type,
+                recurrence=item.recurrence or "once",
+                obligor=item.obligor,
                 direction=direction,
+                due_date=item.due_date,
+                status=status,
+                milestone_series_id=item.series_id,
+                milestone_index=item.milestone_index,
+                milestone_total=item.milestone_total,
+                milestone_trigger=item.trigger,
+                trigger_condition=item.trigger_condition,
+                trigger_delay_days=item.trigger_delay_days,
+                amount_raw=item.amount_raw,
             ))
+            created_items.append(item)
+        if created_items:
+            event = Event(
+                tenant_id=tenant_id,
+                event_type="obligation_schedule_derived",
+                entity_type="document",
+                entity_id=doc_id,
+                actor="system",
+                payload=json.dumps({
+                    "count": len(created_items),
+                    "items": [
+                        {
+                            "description": i.description,
+                            "obligation_type": i.obligation_type,
+                            "due_date": i.due_date,
+                            "trigger": i.trigger,
+                        }
+                        for i in created_items
+                    ],
+                }),
+            )
+            db.add(event)
         db.commit()
     finally:
         db.close()
