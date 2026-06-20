@@ -23,6 +23,7 @@
 | v0.2 | 2026-06-19 | KHE_Docs | Cycle 3 fold (5 Backend + 1 AI + 1 PM comments). Add §2 ingest/documents/relationships API (PR #54 + #59 + #60 — staging live). Add §4 tenants quota columns (FR-TN). Update §5.2 terms CANONICAL_FIELDS 7 + §5.1 doc_type enum. Add §5.8 `document_relationships` table. Add §9 Extraction module API (`get_extraction_provider` factory, `ExtractionUnavailable`, `is_error` vs `needs_review`). Add §10 Audit Events (`extraction_performed` w/ `consent_reference`, term `updated` PII). |
 | v0.3 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §5.9 `clauses` table per-tenant (`doc_id` FK CASCADE, `clause_num`, `title`, `content`, `page_num`; idx_clauses_doc; migration `tenant_003_clauses.py` down_revision `tenant_002`). Populated từ `VisionExtractionResult.clauses[]` (same vision call). Powers `search_clauses` tool in FR-CQ-02. |
 | v0.4 | 2026-06-20 | KHE_Docs | **Cycle 4 fold.** §2 +`/obligations` GET/PATCH (PR #64), +`/chat/query` POST (PR #68), +`/reminders/test` (PR #66), +`/health/extraction` (PR #80 non-prod). §4 +`tenant_profile` table (Kevin choice: separate model, NOT tenants column — DEC-030 legal_name storage). §5.3 obligations schema rewrite: rename `obligation_type` (cadence) → `recurrence`; new `obligation_type` (category enum 8 per DEC-027); +`direction`, +`obligor`, +`source_doc_chain`, +`resolution_method`; status enum corrected to `{pending,done,cancelled}`. §5.2 terms expanded to 12 CANONICAL_FIELDS + type-specific via NamedExtractedField (DEC-029). §5.10 NEW `parties` schema with role_label (DEC-030). §6 +6.3 payment_schedule derivation (DEC-027), +6.4 direction derivation (DEC-030). §9 2-tier extraction schema (Claude lean / Gemini full). §10 +chat_query_logged Event (DEC-028 compliance debt) + reminder_*. |
+| v0.4.1 | 2026-06-20 | KHE_Docs | **Cycle 4.1 fix-up fold** (2 entries: Backend lead response + PR #138). §4.5 `tenant_profile` → `tenant_profiles` (plural) với Backend lead exact spec (`id` integer PK + `tenant_id` UNIQUE FK). §6.3 staging caveat: PR #141 `obligation_type="once"` pre-#145, flip post-migration. §3.3 SQLite Unicode `lower()` override (PR #138) for VN diacritics support. |
 
 ---
 
@@ -192,10 +193,11 @@ Cookie auth (not Bearer — Backend PR #46/#91, Bearer fully retired). All endpo
 - `get_db()` không bao giờ fallback ở prod — silent fallback đã bị remove (CRITICAL fix PR #12).
 - Engine cache: per-tenant SQLite engines được cache theo `tid` — tránh re-open cost.
 
-### 3.3 SQLite tuning (anti-deadlock)
+### 3.3 SQLite tuning (anti-deadlock + Unicode)
 
 - WAL mode enabled (`PRAGMA journal_mode=WAL`).
 - `synchronous=NORMAL` (mitigate same-thread deadlock pattern — xem CLAUDE.md Common Bug Patterns).
+- **Unicode `lower()` override (Backend PR #138):** Tenant engines register Python `str.lower()` as SQLite `lower()` function via `_register_unicode_lower` listener. Required for `.ilike()` to match VN diacritics (e.g., `Ệ` trong `DANH VIỆT`). SQLite default `lower()` is ASCII-only. Affects chat `party_filter` + `value_contains` searches.
 
 ---
 
@@ -259,19 +261,22 @@ Implements FR-AC-03 / D-10 — partner xuyên-tenant chỉ mở khi SME consent.
 
 **Lifecycle:** `pending → granted → revoked` (one-way; revoke is terminal until new consent row).
 
-### 4.5 `tenant_profile` (DEC-030 — Kevin choice cycle 4)
+### 4.5 `tenant_profiles` (DEC-030 — Kevin choice + Backend lead spec)
 
-Separate model from `tenants` (Kevin chose this over PM-recommended embed in `tenants` table — keeps registry minimal + profile fields can grow). Per-SME profile data; **canonical store for `legal_name`** used by FR-OB-07/08 direction derivation.
+Separate model from `tenants` (Kevin chose this over PM-recommended embed in `tenants` table — keeps registry minimal + profile fields can grow). Per-SME profile data; **canonical store for `legal_name`** used by FR-OB-07/08 direction derivation. Backend lead exact schema spec (comment [4757964128](https://github.com/kevindo1103/khe/issues/1#issuecomment-4757964128)):
 
 | Column | Type | Constraints | Note |
 |---|---|---|---|
-| `tenant_id` | VARCHAR | PK + FK → `tenants.id` (1:1) | Same slug as tenant |
-| `legal_name` | VARCHAR | NOT NULL | SME entity full legal name — auto-match `parties[].name` for self-party (DEC-030). User-editable. |
+| `id` | INTEGER | PK AUTOINCREMENT | Integer surrogate key |
+| `tenant_id` | VARCHAR | FK → `tenants.id` UNIQUE NOT NULL | 1:1 với tenant (slug) |
+| `legal_name` | VARCHAR | NULLABLE | SME entity legal name — auto-match `parties[].name` for self-party (DEC-030). User-editable. NULL → all docs' obligations `direction=NULL + needs_review=true` (FR-OB-07). |
 | `legal_name_aliases` | TEXT | NULLABLE | JSON array of common variants (vd shortened name, English name). Future enrichment. |
-| `created_at` | DATETIME | DEFAULT now | |
-| `updated_at` | DATETIME | DEFAULT now ON UPDATE | |
+| `created_at` | DATETIME | DEFAULT `now` | |
+| `updated_at` | DATETIME | DEFAULT `now` ON UPDATE | |
 
-**Why separate model:** legal_name + future profile fields (industry, size, address) are SME-business data, not auth/registry data. Tenants table stays minimal (slug, db_path, plan, quota). Migration adds `tenant_profile` table in master.db (NOT per-tenant DB — registry-level for cross-tenant query).
+**Helper:** `get_tenant_legal_name(tenant_id)` queries `tenant_profiles`. Backend pattern per Backend lead response.
+
+**Why separate model:** legal_name + future profile fields (industry, size, registered address, tax ID) are SME-business data, not auth/registry data. Tenants table stays minimal (slug, db_path, plan, quota). Migration adds `tenant_profiles` table in master.db (NOT per-tenant DB — registry-level for cross-tenant query).
 
 **Lifecycle:** Created on tenant onboarding (concierge or self-serve). Empty `legal_name` → all docs' obligations get `direction=NULL, needs_review=true` until configured. User updates → re-derive direction via background task.
 
@@ -463,6 +468,8 @@ For each item in payment_schedule[]:
 ```
 
 **Idempotency:** re-extraction delete `WHERE source_doc_chain IS NULL` then re-insert. Derived obligations always set `source_doc_chain`; payment rows never set.
+
+**Staging caveat (Backend lead correction [4757964128](https://github.com/kevindo1103/khe/issues/1#issuecomment-4757964128)):** PR #141 shipped với `obligation_type="once"` (NOT `"payment"` as PM catch-up table said). Đây là deliberate override — pre-#145 schema `obligation_type` vẫn là cadence axis (engine/scheduler/tests recognize `"once"` + `"open_ended_review"`). **Post-#145 migration** (tenant_005): runner flip thành `obligation_type="payment"` + `recurrence="once"`. Expiry obligations: `obligation_type="expiration"` + `recurrence="once"`|`"open_ended_review"`.
 
 ### 6.4 Direction derivation (DEC-030)
 
