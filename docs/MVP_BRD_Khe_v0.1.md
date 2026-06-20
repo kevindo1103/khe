@@ -9,8 +9,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.6 |
-| Trạng thái | Ratified — fold cycle 4 (DEC-027/028/029/030 + Sprint 1 staging-complete + status enum + reminder service + chat tool iteration) |
+| Phiên bản | v0.7 |
+| Trạng thái | Ratified — fold DEC-031 v2 chat architecture (Result-seeded Progressive State) per PM task |
 | Phạm vi | **Chỉ MVP** (tầng ingest + retrieve + deadline). Không phải full vision. |
 | Owner | Kevin (PM) |
 | Liên quan | Tái dùng hạ tầng SpurX (ledger, multi-tenant, infra v3) |
@@ -27,6 +27,7 @@
 | v0.3 | 2026-06-18 | KHE_Docs | Fold DEC-018 (Vertical = OPEN — không khóa F&B/bán lẻ; wedge chọn theo tín hiệu pilot). Revise §11 A-5 (vertical seed → wedge OPEN). Update §1 Executive summary + §10 R-1 wording. Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` (Personas, JTBD, Golden Circle, Dunford positioning). |
 | v0.4 | 2026-06-19 | KHE_Docs | Cycle 3 fold (8 DOCS_INBOX comments). Add **§7.11 FR-TN Tenant quota + billing** (FR-TN-01..03). Update §10 Tích hợp domain `khe.iceflow.cloud` (Infra PR #48). §7.2 FR-EX add CANONICAL_FIELDS 7 vocab (Backend M0 contract). §7.3 FR-DR add document_relationships (Backend PR #59 + DEC-019/020/021). §7.1 FR-IN reference ingest endpoints live (PR #54). |
 | v0.5 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** §7.6 FR-CQ-01..03 rewrite from regex/SQL pattern → LLM function-calling (Gemini Flash) với 3 tools (`search_terms`, `search_obligations`, `search_clauses`). D-08 hard fallback exact string. **FR-CQ-04 NEW:** doc_hint + multi-doc search routing. Cross-ref SRS §5.9 clauses table. |
+| v0.7 | 2026-06-20 | KHE_Docs | **DEC-031 v2 fold (priority PM task).** §7.6 FR-CQ +FR-CQ-07/08/09/10 — Result-seeded Progressive State chat architecture: `state_json` structured (NOT prose), scope chip mandatory (silent wrong-scope = D-08 spirit violation), ambiguity ask-clarify + cold-start guard, 30-min session invalidation. Anchor principle upstream in `PRODUCT_STRATEGY_Khe_v0.2.md` §5b. **Note:** PM task spec gọi tên IDs `FR-CQ-04..07` nhưng `04..06` đã occupied từ cycle 3+4 (doc_hint / DEC-028 learning / D-08 strict); DEC-031 reqs landed làm `FR-CQ-07..10` để không break IDs. Out-of-scope: prose history, auto-widen, NLP pronoun layer. Discard DEC-031 v1 spec (`1f6c5ad`) — v2 (`dc307eb`) is canonical. |
 | v0.6 | 2026-06-20 | KHE_Docs | **Cycle 4 fold (16 DOCS_INBOX entries).** Mega-decisions DEC-027 (8 obligation_type categories), DEC-028 (chat learning + compliance debt), DEC-029 (doc_type_group 11 + 12 canonical + 9 type-specific + payment_schedule), DEC-030 (direction/obligor/Quyền lợi/self-party/legal_name). §6 Obligation/Party schema update + Quyền lợi concept. §7.2 FR-EX-01/02 rewrite (taxonomy v2 + 2-tier schema), +FR-EX-06/07/08 (parties/payer/clauses). §7.4 FR-OB-04 status enum corrected ({pending,done,cancelled}; overdue=urgency), +FR-OB-05..08 (chain attach + payment derive + direction). §7.5 +FR-RM-05/06 (DEC-025 per-tenant routing + direction labels). §7.6 +FR-CQ-05/06 (chat learning + D-08 strict). Tool params evolved (party_filter, value_contains, due_from/to, doc_type_filter, direction, truncation). |
 
 ---
@@ -229,6 +230,13 @@ Sau 90 ngày 2-firm pilot, nếu xảy ra → pivot ngay:
 - **FR-CQ-05 (NEW DEC-028 — Chat learning loop):** Log `{question, tool_calls, found}` mỗi query → PM/QC weekly review → fold misroute vào catalog (issue #118) → update few-shot prompt + QC test. **🔴 COMPLIANCE DEBT (NĐ 13/2023):** assume-consent bypass tạm thời cho staging/pilot-dev; **PHẢI đóng trước prod** (KHE_Compliance tracks #119). Routing log shape PII-safe (tool name + canonical `field_name` + arg keys present; **KHÔNG** log raw `party_filter`/`value_contains`/`doc_hint` value hoặc `question`). Cross-tenant few-shot trong shared prompt phải **synthetic/scrubbed**.
 - **FR-CQ-06 (DEC-026 D-08 strict enforcement, Backend PR #132):** Backend caller enforce **exact triple** `{answer: "Không tìm thấy thông tin này trong hồ sơ của bạn.", sources: [], found: False}` khi (a) LLM paraphrase negation (`_is_negative_answer` narrow regex) HOẶC (b) all tools empty. Regex narrow để KHÔNG suppress valid content như `thoi_han_hd="không xác định thời hạn"`. Frontend match byte-exact (D-08 single source of truth).
 
+**Multi-turn chat — Result-seeded Progressive State (DEC-031 v2):** Khế giải multi-turn KHÔNG bằng prose conversation history mà bằng **structured state + UI visibility**. Anchor principle xem `PRODUCT_STRATEGY_Khe_v0.2.md` §5b. Out-of-scope: full prose history (any phase), auto-widen on miss, NLP pronoun detection layer.
+
+- **FR-CQ-07 (DEC-031):** Chat session duy trì `state_json` structured (`active_doc_ids[]`, `active_obligation_ids[]`, `working_set_label`, `last_tool_call`) per conversation thread — **KHÔNG dùng prose conversation history**. State được seeded từ query results của turn trước (result-seeded progressive state).
+- **FR-CQ-08 (DEC-031):** Mọi response có carry-over context PHẢI hiển thị **scope chip visible + correctable** (vd `📌 Đang trong context: 3 HĐ tháng 7 ▾`). User phải có thể widen / reset / switch trong 1 tap. **Silent wrong-scope = D-08 spirit violation.**
+- **FR-CQ-09 (DEC-031):** Ambiguous reference — multi-doc active hoặc deictic pronoun khi state trống → **ask-clarify, KHÔNG guess**. D-08 strict. Cold-start: Turn 1 deictic khi state trống → ask-clarify ("Bạn muốn hỏi về HĐ nào?").
+- **FR-CQ-10 (DEC-031):** Session invalidation: **30-min timeout** + explicit reset button + high-threshold intent-shift detection → ask user trước khi switch context.
+
 ### 7.7 Search & retrieval (FR-SR)
 - **FR-SR-01** Tìm theo: loại, đối tác, khoảng ngày hết hạn, từ khóa nội dung.
 - **FR-SR-02** Bộ lọc nhanh: "sắp hết hạn", "đã hết hạn", "theo đối tác".
@@ -342,4 +350,4 @@ M-1 → M3 chạy, **2 firm partner trả tiền** + **≥20 SME** kích hoạt 
 
 ---
 
-*Hết v0.6 — cycle 4 fold (DEC-027/028/029/030 + Sprint 1 staging-complete). Bước kế tiếp: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7, đóng DEC-028 NĐ 13 compliance debt trước prod.*
+*Hết v0.7 — DEC-031 v2 chat architecture fold. Bước kế tiếp: chốt DEC-016 freemium lever, `thoi_han_hd` phi-số policy, naming R-7, đóng DEC-028 NĐ 13 compliance debt trước prod.*

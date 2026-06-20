@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-20 (v0.5 — fold cycle 4: DEC-027/028/029/030 + Sprint 1 staging-complete) — Upstream PRODUCT_STRATEGY v0.2 + MVP BRD v0.6 reference*
+*Last updated: 2026-06-20 (v0.6 — fold DEC-031 v2 chat architecture extension) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.7 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,7 +9,7 @@
 
 ## Project context
 
-**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (upstream — Why/Personas/JTBD/Positioning + §7.1 Billing) · `docs/MVP_BRD_Khe_v0.1.md` (v0.6) · `docs/SRS_v0.1.md` (v0.4) · `docs/GLOSSARY_v0.1.md` (v0.5) · `docs/PROJECT_PLAN_v0.1.md` (v0.4)
+**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (v0.3 — Why/Personas/JTBD/Positioning + §5b Chat Architecture + §7.1 Billing) · `docs/MVP_BRD_Khe_v0.1.md` (v0.7) · `docs/SRS_v0.1.md` (v0.4.1) · `docs/GLOSSARY_v0.1.md` (v0.5) · `docs/PROJECT_PLAN_v0.1.md` (v0.4)
 
 **Doc cascade:** PRODUCT_STRATEGY → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup. PRODUCT_STRATEGY thắng về *tại sao / cho ai / job gì*; BRD thắng về *hệ thống phải làm gì*.
 
@@ -278,6 +278,7 @@ Pattern (mirror Bingxue):
 **D-07 (FR-EX-04):** Mọi field bóc ra phải cho người sửa; sửa → ghi Event.
 
 **D-08 (FR-CQ-03):** Chat không trả lời được → nói thẳng "không tìm thấy", không phỏng đoán.
+*(DEC-031 extension: silent wrong-scope = D-08 spirit violation. Carry-over context PHẢI visible + correctable. Auto-widen on miss = không được phép.)*
 
 **D-09 (FR-FP-03):** Firm KHÔNG sửa dữ liệu SME ở MVP (chỉ xem + nhận tín hiệu).
 
@@ -365,6 +366,8 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.6 — folded DEC-031 v2 (Result-seeded Progressive State chat architecture). D-08 extension note: silent wrong-scope = spirit violation; carry-over context PHẢI visible + correctable; auto-widen on miss cấm. Discard DEC-031 v1 spec (`1f6c5ad`) — v2 (`dc307eb`) canonical. Cascade: PRODUCT_STRATEGY v0.3 → BRD v0.7 → CLAUDE.md v0.6.*
 
 *v0.5 — folded DOCS_INBOX 23-52 (cycle 4 — Sprint 1 staging-complete + DEC-027/028/029/030 mega-batch). +D-12 chat learning compliance debt, +D-13 direction derivation. +3 bug patterns (pydantic-settings env_file, Claude grammar schema-complex, Gemini ge/le too-many-states). Obligations schema rewrite per #122 Option B (`obligation_type` = category 8, `recurrence` renamed, status enum corrected). tenant_profile separate model (Kevin q2 ratify). DEC-025 PWA standalone Vite scope. Cascade: PRODUCT_STRATEGY v0.2 → BRD v0.6 → SRS v0.4 → Glossary v0.5 → PROJECT_PLAN v0.4 → CLAUDE.md v0.5.*
 
