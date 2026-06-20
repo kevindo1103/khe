@@ -242,13 +242,13 @@ class TestDirectionStoredOnObligation:
 
 def _mock_select_tools(calls):
     async def _select(*args, **kwargs):
-        return calls
+        return calls, {"in": 100, "out": 20}
     return _select
 
 
 def _mock_format_answer(answer):
     async def _format(*args, **kwargs):
-        return answer
+        return answer, {"in": 200, "out": 50}
     return _format
 
 

@@ -579,22 +579,30 @@ def _build_router_system_prompt(today: date) -> str:
     )
 
 
-async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict]:
-    """Ask the LLM which tools to call. Returns a list of {"name": ..., "args": ...}.
+def _extract_usage(response) -> dict:
+    """Extract token usage from a Gemini response's usage_metadata."""
+    meta = getattr(response, "usage_metadata", None)
+    in_tok = getattr(meta, "prompt_token_count", 0) or 0
+    out_tok = getattr(meta, "candidates_token_count", 0) or 0
+    return {"in": in_tok, "out": out_tok}
 
-    Any failure (missing SDK, network, malformed JSON, invalid tool name) returns []
+
+async def _select_tools(db: Session, tenant_id: str, question: str) -> tuple[list[dict], dict]:
+    """Ask the LLM which tools to call. Returns (tool_calls, usage).
+
+    Any failure (missing SDK, network, malformed JSON, invalid tool name) returns ([], {})
     so the caller falls back to D-08 instead of raising a 500.
 
     Deterministic tests can monkeypatch this function; no live call is required.
     """
     client = _get_llm_client()
     if client is None:
-        return []
+        return [], {}
 
     try:
         from google.genai import types
     except Exception:  # noqa: BLE001
-        return []
+        return [], {}
 
     system_prompt = _build_router_system_prompt(date.today())
 
@@ -617,15 +625,16 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
             config=config,
         )
         text = getattr(response, "text", "") or ""
+        usage = _extract_usage(response)
     except Exception as exc:  # noqa: BLE001 - network/5xx/timeout/rate-limit
         logger.warning(f"_select_tools LLM error: {exc}")
-        return []
+        return [], {}
 
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
         logger.warning(f"_select_tools LLM JSON decode error: {exc}")
-        return []
+        return [], usage
 
     calls = parsed.get("tool_calls", []) if isinstance(parsed, dict) else []
     validated = []
@@ -639,7 +648,7 @@ async def _select_tools(db: Session, tenant_id: str, question: str) -> list[dict
         if not isinstance(args, dict):
             args = {}
         validated.append({"name": name, "args": args})
-    return validated
+    return validated, usage
 
 
 # ---------------------------------------------------------------------------
@@ -663,21 +672,23 @@ def _format_answer_deterministic(tool_results: list[dict]) -> str:
     return "\n".join(parts)
 
 
-async def _format_answer(question: str, tool_results: list[dict]) -> str:
+async def _format_answer(question: str, tool_results: list[dict]) -> tuple[str, dict]:
     """Ask the LLM to format a concise Vietnamese answer from the tool results.
 
     D-06/D-08: the LLM is instructed to only use the provided data and never
     fabricate legal interpretations. Falls back to a deterministic formatter on
     any failure so the endpoint never raises a 500.
+
+    Returns (answer_text, usage_dict).
     """
     client = _get_llm_client()
     if client is None:
-        return _format_answer_deterministic(tool_results)
+        return _format_answer_deterministic(tool_results), {}
 
     try:
         from google.genai import types
     except Exception:  # noqa: BLE001
-        return _format_answer_deterministic(tool_results)
+        return _format_answer_deterministic(tool_results), {}
 
     system_prompt = (
         "Bạn là trợ lý hợp đồng. Dựa vào dữ liệu công cụ được cung cấp, hãy trả lời "
@@ -704,10 +715,11 @@ async def _format_answer(question: str, tool_results: list[dict]) -> str:
             config=config,
         )
         text = (getattr(response, "text", "") or "").strip()
+        usage = _extract_usage(response)
     except Exception:  # noqa: BLE001 - network/5xx/timeout/rate-limit
-        return _format_answer_deterministic(tool_results)
+        return _format_answer_deterministic(tool_results), {}
 
-    return text or _format_answer_deterministic(tool_results)
+    return text or _format_answer_deterministic(tool_results), usage
 
 
 # ---------------------------------------------------------------------------
@@ -721,6 +733,10 @@ def _log_chat_query(
     tool_calls: list[dict],
     found: bool,
     result_count: int,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cost_vnd: float = 0.0,
+    llm_calls: int = 0,
 ) -> None:
     """Write one chat_query_log row (DEC-028). Isolated in try/except —
     a logging failure must never break the chat response."""
@@ -731,6 +747,10 @@ def _log_chat_query(
             tool_calls=json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
             found=found,
             result_count=result_count,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_vnd=cost_vnd,
+            llm_calls=llm_calls,
         )
         db.add(log)
         db.commit()
@@ -739,10 +759,16 @@ def _log_chat_query(
         logger.warning("chat_query_log write failed for tenant=%s", tenant_id, exc_info=True)
 
 
-def _safe_log_chat_query(db, tenant_id, question, tool_calls, found, result_count):
+def _safe_log_chat_query(
+    db, tenant_id, question, tool_calls, found, result_count,
+    input_tokens=0, output_tokens=0, cost_vnd=0.0, llm_calls=0,
+):
     """Wrapper that never raises — defense in depth for answer_question call sites."""
     try:
-        _log_chat_query(db, tenant_id, question, tool_calls, found, result_count)
+        _log_chat_query(
+            db, tenant_id, question, tool_calls, found, result_count,
+            input_tokens, output_tokens, cost_vnd, llm_calls,
+        )
     except Exception:
         logger.warning("chat_query_log failed for tenant=%s", tenant_id, exc_info=True)
 
@@ -752,12 +778,20 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
 
     Returns {"answer": str, "sources": list[dict], "found": bool}.
     """
+    from modules.extraction import cost_vnd as _cost_vnd, TokenUsage
+    _GEMINI_IN, _GEMINI_OUT = 0.30, 2.50  # gemini-2.5-flash per-1M-token USD
+
     if not question or not question.strip():
         _safe_log_chat_query(db, tenant_id, question, [], False, 0)
         return {"answer": _NOT_FOUND, "sources": [], "found": False}
 
     # Step 1: let the LLM decide which tools to call.
-    tool_calls = await _select_tools(db, tenant_id, question)
+    tool_calls, routing_usage = await _select_tools(db, tenant_id, question)
+
+    # Accumulate token usage across all LLM calls.
+    total_in = routing_usage.get("in", 0)
+    total_out = routing_usage.get("out", 0)
+    llm_calls = 1 if routing_usage else 0
 
     # PII-safe routing log (NĐ 13/2023): log tool name + field_name + arg keys present,
     # NOT raw arg values (party_filter/value_contains may contain personal names).
@@ -820,16 +854,26 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
 
     # D-08 hard rule: if no tool returned data, return the exact not-found string.
     if not all_results:
-        _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0)
+        _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
+        _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0,
+                             input_tokens=total_in, output_tokens=total_out,
+                             cost_vnd=_cost, llm_calls=llm_calls)
         return {"answer": _NOT_FOUND, "sources": [], "found": False}
 
     # Step 3: format answer from results (D-06: only use provided data).
-    answer = await _format_answer(question, all_results)
+    answer, format_usage = await _format_answer(question, all_results)
+    total_in += format_usage.get("in", 0)
+    total_out += format_usage.get("out", 0)
+    if format_usage:
+        llm_calls += 1
 
     # D-08: detect LLM paraphrases of "not found" and force the exact string.
     # KHÔNG re-introduce paraphrase path (D-08) — any negative phrasing → exact triple.
     if _is_negative_answer(answer):
-        _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0)
+        _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
+        _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0,
+                             input_tokens=total_in, output_tokens=total_out,
+                             cost_vnd=_cost, llm_calls=llm_calls)
         return {"answer": _NOT_FOUND, "sources": [], "found": False}
 
     # Step 4: build provenance sources (exclude internal truncation hints from the response).
@@ -848,5 +892,8 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
         if r["type"] != "truncation_hint"
     ]
 
-    _safe_log_chat_query(db, tenant_id, question, tool_calls, True, len(sources))
+    _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
+    _safe_log_chat_query(db, tenant_id, question, tool_calls, True, len(sources),
+                         input_tokens=total_in, output_tokens=total_out,
+                         cost_vnd=_cost, llm_calls=llm_calls)
     return {"answer": answer, "sources": sources, "found": True}

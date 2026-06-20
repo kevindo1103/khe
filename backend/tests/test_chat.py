@@ -127,18 +127,18 @@ def _seed(db):
     return doc
 
 
-def _mock_select_tools(calls):
-    """Return an async function that yields the given tool_calls."""
+def _mock_select_tools(calls, usage=None):
+    """Return an async function that yields the given tool_calls + usage."""
     async def _select(*args, **kwargs):
-        return calls
+        return calls, usage or {"in": 100, "out": 20}
 
     return _select
 
 
-def _mock_format_answer(answer):
-    """Return an async function that yields the canned answer."""
+def _mock_format_answer(answer, usage=None):
+    """Return an async function that yields the canned answer + usage."""
     async def _format(*args, **kwargs):
-        return answer
+        return answer, usage or {"in": 200, "out": 50}
 
     return _format
 
@@ -1511,3 +1511,166 @@ class TestSeriesFilter:
         prompt = _build_router_system_prompt(date.today())
         assert "series_id" in prompt
         assert "waiting_trigger" in prompt
+
+
+class TestChatTokenomics:
+    """Token usage + cost tracking on ChatQueryLog (#164)."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_tenant(self):
+        init_master_db()
+        init_tenant_db("tokenomics-tenant")
+        db = MasterSessionLocal()
+        tenant = db.query(Tenant).filter(Tenant.id == "tokenomics-tenant").first()
+        if not tenant:
+            db.add(Tenant(id="tokenomics-tenant", name="Tokenomics Tenant", db_path="tenants/tokenomics-tenant.db"))
+            db.commit()
+        db.close()
+
+        # Seed a doc + term so search_terms can return data
+        tdb = get_tenant_session("tokenomics-tenant")
+        doc = Document(tenant_id="tokenomics-tenant", file_name="tok_test.pdf", file_path="x/tok_test.pdf", status="extracted")
+        tdb.add(doc)
+        tdb.commit()
+        tdb.refresh(doc)
+        term = Term(tenant_id="tokenomics-tenant", document_id=doc.id, field_name="ngay_het_han", field_value="2026-12-31", confidence=0.9)
+        tdb.add(term)
+        tdb.commit()
+        tdb.close()
+
+        from app.core.security import get_password_hash
+        db = MasterSessionLocal()
+        user = db.query(TenantUser).filter(TenantUser.tenant_id == "tokenomics-tenant", TenantUser.username == "tokadmin").first()
+        if not user:
+            db.add(TenantUser(tenant_id="tokenomics-tenant", username="tokadmin", hashed_password=get_password_hash("test123"), role="admin"))
+            db.commit()
+        db.close()
+
+        yield
+
+    def _auth(self):
+        client = TestClient(app)
+        r = client.post("/auth/login", json={"tenant_id": "tokenomics-tenant", "username": "tokadmin", "password": "test123"})
+        assert r.status_code == 200
+        return client
+
+    def test_normal_2_call_tokens_persisted(self, monkeypatch):
+        """Normal 2-call path: input/output/cost/llm_calls=2 persisted."""
+        routing_usage = {"in": 1500, "out": 30}
+        format_usage = {"in": 3000, "out": 80}
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": "tok_test"}}], usage=routing_usage),
+        )
+        monkeypatch.setattr(
+            chat_query, "_format_answer",
+            _mock_format_answer("Hết hạn 2026-12-31.", usage=format_usage),
+        )
+
+        client = self._auth()
+        r = client.post("/chat/query", json={"question": "tok_test hết hạn khi nào?"})
+        assert r.status_code == 200
+        assert r.json()["found"] is True
+
+        tdb = get_tenant_session("tokenomics-tenant")
+        log = tdb.query(ChatQueryLog).filter(ChatQueryLog.tenant_id == "tokenomics-tenant").order_by(ChatQueryLog.id.desc()).first()
+        assert log is not None
+        assert log.llm_calls == 2
+        assert log.input_tokens == 4500  # 1500 + 3000
+        assert log.output_tokens == 110   # 30 + 80
+        assert log.cost_vnd > 0
+        tdb.close()
+
+    def test_d_08_no_results_routing_tokens_captured(self, monkeypatch):
+        """D-08 no-results path: routing call tokens captured, llm_calls=1."""
+        routing_usage = {"in": 1800, "out": 25}
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([], usage=routing_usage),
+        )
+
+        client = self._auth()
+        r = client.post("/chat/query", json={"question": "notfound doc hết hạn?"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+        tdb = get_tenant_session("tokenomics-tenant")
+        log = tdb.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "tokenomics-tenant",
+            ChatQueryLog.question == "notfound doc hết hạn?",
+        ).first()
+        assert log is not None
+        assert log.llm_calls == 1
+        assert log.input_tokens == 1800
+        assert log.output_tokens == 25
+        assert log.cost_vnd > 0
+        tdb.close()
+
+    def test_no_llm_zero_cost(self, monkeypatch):
+        """When LLM client is None: llm_calls=0, cost=0."""
+        monkeypatch.setattr(chat_query, "_get_llm_client", lambda: None)
+
+        client = self._auth()
+        r = client.post("/chat/query", json={"question": "any question here"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+        tdb = get_tenant_session("tokenomics-tenant")
+        log = tdb.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "tokenomics-tenant",
+            ChatQueryLog.question == "any question here",
+        ).first()
+        assert log is not None
+        assert log.llm_calls == 0
+        assert log.input_tokens == 0
+        assert log.output_tokens == 0
+        assert log.cost_vnd == 0.0
+        tdb.close()
+
+    def test_stats_endpoint_tenant_isolated(self, monkeypatch):
+        """Stats endpoint: tenant sees only its own data (cross-tenant isolation)."""
+        # Seed a query for tokenomics-tenant
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([], usage={"in": 500, "out": 10}),
+        )
+        client = self._auth()
+        client.post("/chat/query", json={"question": "isolation test query"})
+
+        # Create a second tenant and seed data
+        init_tenant_db("tokenomics-other")
+        db = MasterSessionLocal()
+        other = db.query(Tenant).filter(Tenant.id == "tokenomics-other").first()
+        if not other:
+            db.add(Tenant(id="tokenomics-other", name="Other", db_path="tenants/tokenomics-other.db"))
+            db.commit()
+        user2 = db.query(TenantUser).filter(TenantUser.tenant_id == "tokenomics-other", TenantUser.username == "otheradmin").first()
+        if not user2:
+            db.add(TenantUser(tenant_id="tokenomics-other", username="otheradmin", hashed_password=get_password_hash("test123"), role="admin"))
+            db.commit()
+        db.close()
+
+        # Seed a log row directly in the other tenant
+        odb = get_tenant_session("tokenomics-other")
+        odb.add(ChatQueryLog(tenant_id="tokenomics-other", question="other query", found=False, result_count=0, input_tokens=9999, output_tokens=9999, cost_vnd=999.0, llm_calls=99))
+        odb.commit()
+        odb.close()
+
+        # Login as other tenant and check stats
+        client2 = TestClient(app)
+        r = client2.post("/auth/login", json={"tenant_id": "tokenomics-other", "username": "otheradmin", "password": "test123"})
+        assert r.status_code == 200
+
+        r2 = client2.get("/chat/stats")
+        assert r2.status_code == 200
+        stats2 = r2.json()
+        assert stats2["total_queries"] == 1
+        assert stats2["total_input_tokens"] == 9999
+        assert stats2["total_llm_calls"] == 99
+
+        # Original tenant should NOT see the other tenant's data
+        r1 = client.get("/chat/stats")
+        assert r1.status_code == 200
+        stats1 = r1.json()
+        assert stats1["total_input_tokens"] != 9999
+        assert stats1["total_llm_calls"] != 99

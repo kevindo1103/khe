@@ -183,3 +183,8 @@ class ChatQueryLog(TenantBase):
     found = Column(Boolean, nullable=False, server_default="0")
     result_count = Column(Integer, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
+    # Tokenomics (#164)
+    input_tokens = Column(Integer, server_default="0")
+    output_tokens = Column(Integer, server_default="0")
+    cost_vnd = Column(Float, server_default="0.0")
+    llm_calls = Column(Integer, server_default="0")
