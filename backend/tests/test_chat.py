@@ -286,7 +286,11 @@ class TestChatQuery:
 
     def test_search_obligations_due_range_and_status_and_doc_hint(self, auth_client, db, monkeypatch):
         """due_from + due_to + status + doc_hint are AND-composed."""
-        doc = _seed(db)
+        unique_name = "unique_due_range_test.pdf"
+        doc = Document(tenant_id="chat-tenant", file_name=unique_name, file_path="x/y.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
         db.add(
             Obligation(
                 tenant_id="chat-tenant",
@@ -313,12 +317,12 @@ class TestChatQuery:
             chat_query,
             "_select_tools",
             _mock_select_tools(
-                [{"name": "search_obligations", "args": {"due_within_days": None, "status": "pending", "doc_hint": "lease_2026", "due_from": "2026-06-01", "due_to": "2026-06-30"}}]
+                [{"name": "search_obligations", "args": {"due_within_days": None, "status": "pending", "doc_hint": "unique_due_range_test", "due_from": "2026-06-01", "due_to": "2026-06-30"}}]
             ),
         )
         monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 pending."))
 
-        r = auth_client.post("/chat/query", json={"question": "HĐ lease_2026 pending hết hạn tháng 6?"})
+        r = auth_client.post("/chat/query", json={"question": "HĐ unique_due_range_test pending hết hạn tháng 6?"})
         assert r.status_code == 200
         data = r.json()
         assert data["found"] is True
