@@ -16,6 +16,15 @@ def _enable_wal(dbapi_conn, _connection_record):
     cursor.close()
 
 
+def _register_unicode_lower(dbapi_conn, _connection_record):
+    """Override SQLite built-in lower() with Python str.lower() for Unicode (Vietnamese) case-folding.
+
+    SQLite's native lower() only folds ASCII. Without this, .ilike() on Vietnamese
+    diacritic characters (e.g. 'Ệ' in 'DANH VIỆT') silently fails to match.
+    """
+    dbapi_conn.create_function("lower", 1, lambda s: s.lower() if s is not None else None, deterministic=True)
+
+
 # ── Per-tenant engine cache ────────────────────────────────────────────────
 _engine_cache: dict[str, Engine] = {}
 _cache_lock = threading.Lock()
@@ -44,6 +53,7 @@ def _get_tenant_engine(tenant_id: str) -> Engine:
                 connect_args={"check_same_thread": False},
             )
             event.listen(eng, "connect", _enable_wal)
+            event.listen(eng, "connect", _register_unicode_lower)
             _engine_cache[tenant_id] = eng
         return _engine_cache[tenant_id]
 
