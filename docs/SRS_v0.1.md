@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.3 |
-| Trạng thái | Fold DEC-026 (chat LLM function-calling + clauses table per issue #100) |
+| Phiên bản | v0.4 |
+| Trạng thái | Fold cycle 4 — 16 entries (Sprint 1 staging-complete + DEC-027/028/029/030) |
 | Owner | KHE_Docs |
-| Source of truth | BRD v0.5 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
+| Source of truth | BRD v0.6 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
 
 ---
 
@@ -22,6 +22,7 @@
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Fold Sprint 0 backend scaffold: API contract `/auth/login` + `/health`, JWT claims, master.db (4 bảng) + per-tenant (7 bảng) schema. Fold FR-OB-01 derivation rule (entry 9). |
 | v0.2 | 2026-06-19 | KHE_Docs | Cycle 3 fold (5 Backend + 1 AI + 1 PM comments). Add §2 ingest/documents/relationships API (PR #54 + #59 + #60 — staging live). Add §4 tenants quota columns (FR-TN). Update §5.2 terms CANONICAL_FIELDS 7 + §5.1 doc_type enum. Add §5.8 `document_relationships` table. Add §9 Extraction module API (`get_extraction_provider` factory, `ExtractionUnavailable`, `is_error` vs `needs_review`). Add §10 Audit Events (`extraction_performed` w/ `consent_reference`, term `updated` PII). |
 | v0.3 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §5.9 `clauses` table per-tenant (`doc_id` FK CASCADE, `clause_num`, `title`, `content`, `page_num`; idx_clauses_doc; migration `tenant_003_clauses.py` down_revision `tenant_002`). Populated từ `VisionExtractionResult.clauses[]` (same vision call). Powers `search_clauses` tool in FR-CQ-02. |
+| v0.4 | 2026-06-20 | KHE_Docs | **Cycle 4 fold.** §2 +`/obligations` GET/PATCH (PR #64), +`/chat/query` POST (PR #68), +`/reminders/test` (PR #66), +`/health/extraction` (PR #80 non-prod). §4 +`tenant_profile` table (Kevin choice: separate model, NOT tenants column — DEC-030 legal_name storage). §5.3 obligations schema rewrite: rename `obligation_type` (cadence) → `recurrence`; new `obligation_type` (category enum 8 per DEC-027); +`direction`, +`obligor`, +`source_doc_chain`, +`resolution_method`; status enum corrected to `{pending,done,cancelled}`. §5.2 terms expanded to 12 CANONICAL_FIELDS + type-specific via NamedExtractedField (DEC-029). §5.10 NEW `parties` schema with role_label (DEC-030). §6 +6.3 payment_schedule derivation (DEC-027), +6.4 direction derivation (DEC-030). §9 2-tier extraction schema (Claude lean / Gemini full). §10 +chat_query_logged Event (DEC-028 compliance debt) + reminder_*. |
 
 ---
 
@@ -131,9 +132,44 @@ Body: `{confirmed_by_sme: true}` — only `true` accepted.
 - **400:** `{confirmed_by_sme: false}` rejected (one-way confirm).
 - **404:** cross-tenant or not-found.
 
-### 2.7 Public API surface boundary
+### 2.7 Obligation endpoints (Backend PR #64)
 
-Cookie auth (not Bearer). All endpoints above except `/auth/*` + `/health` + `/` require active session.
+#### `GET /obligations?due_within=<days>&status=<…>&doc_type_filter=<group>&direction=<…>&due_from=<iso>&due_to=<iso>&page&page_size`
+- **200:** `{items: [{id, document_id, description, obligation_type, recurrence, due_date, status, direction, obligor, remind_before_days, source_doc_chain, ...}], page, page_size, total}`
+- `due_within` forward-only (`due_date >= today`).
+- `direction` (DEC-030): `nghĩa_vụ` / `quyền_lợi` / `null`.
+
+#### `PATCH /obligations/{id}`
+Body: `{status: "pending" | "done" | "cancelled"}` — status-only edit MVP (reschedule `due_date` deferred Sprint 2 per PR #64).
+- **200:** updated row + `updated` Event logged (D-02).
+- **400:** invalid status. **404:** cross-tenant.
+
+### 2.8 Chat query (Backend PR #68, refactored PR #104 + #115/#125/#132)
+
+#### `POST /chat/query`
+Body: `{question: str}`. Cookie auth + tenant-scoped.
+- **200:** `{answer: str, found: bool, sources: [{type: "obligation"|"term"|"document"|"clause", document_id, file_name, field_name?, value?, clause_num?, clause_title?, status?}]}`
+- LLM (Gemini Flash) function-calling with 3 tools (FR-CQ-02). D-08 hard fallback: `{answer: "Không tìm thấy thông tin này trong hồ sơ của bạn.", sources: [], found: False}` (byte-exact).
+- Graceful degradation: LLM error (no key/network/5xx/timeout/malformed JSON) → deterministic fallback, **never 500**.
+- **PII routing log (DEC-028):** tool name + canonical `field_name` + arg keys present only. **NEVER** raw `party_filter`/`value_contains`/`doc_hint` value or `question`.
+
+### 2.9 Reminders (Backend PR #66)
+
+#### `POST /reminders/test` (dev/staging only)
+Smoke endpoint — fire test reminder via active `reminder_send` consent channel. 404 in production.
+
+Scheduler: APScheduler daily sweep 08:00 ICT, multi-tenant. Routing per FR-RM-05 (per-tenant consent `channel_target_ref`). Event types: `reminder_sent` / `reminder_failed` / `reminder_batch` / `obligation_overdue`.
+
+### 2.10 Diagnostic — `GET /api/health/extraction` (Backend PR #80)
+
+**Non-production only** (404 if `ENVIRONMENT not in {development, staging, test, local}`).
+
+- **200:** `{environment, any_provider_configured, providers: [{name, env_vars: [...], configured: bool, present_per_var: {KEY: bool, ...}}], hint}`
+- **Locked invariant:** NEVER echoes key VALUES — only env-var NAMES + presence booleans. Test `test_diagnostic_with_gemini` asserts no key value in response.
+
+### 2.11 Public API surface boundary
+
+Cookie auth (not Bearer — Backend PR #46/#91, Bearer fully retired). All endpoints above except `/auth/*` + `/health` + `/` require active session. Admin SPA at `/`, PWA at `/pwa/` (DEC-025 Option A — locked PR #95).
 
 ---
 
@@ -223,9 +259,25 @@ Implements FR-AC-03 / D-10 — partner xuyên-tenant chỉ mở khi SME consent.
 
 **Lifecycle:** `pending → granted → revoked` (one-way; revoke is terminal until new consent row).
 
+### 4.5 `tenant_profile` (DEC-030 — Kevin choice cycle 4)
+
+Separate model from `tenants` (Kevin chose this over PM-recommended embed in `tenants` table — keeps registry minimal + profile fields can grow). Per-SME profile data; **canonical store for `legal_name`** used by FR-OB-07/08 direction derivation.
+
+| Column | Type | Constraints | Note |
+|---|---|---|---|
+| `tenant_id` | VARCHAR | PK + FK → `tenants.id` (1:1) | Same slug as tenant |
+| `legal_name` | VARCHAR | NOT NULL | SME entity full legal name — auto-match `parties[].name` for self-party (DEC-030). User-editable. |
+| `legal_name_aliases` | TEXT | NULLABLE | JSON array of common variants (vd shortened name, English name). Future enrichment. |
+| `created_at` | DATETIME | DEFAULT now | |
+| `updated_at` | DATETIME | DEFAULT now ON UPDATE | |
+
+**Why separate model:** legal_name + future profile fields (industry, size, address) are SME-business data, not auth/registry data. Tenants table stays minimal (slug, db_path, plan, quota). Migration adds `tenant_profile` table in master.db (NOT per-tenant DB — registry-level for cross-tenant query).
+
+**Lifecycle:** Created on tenant onboarding (concierge or self-serve). Empty `legal_name` → all docs' obligations get `direction=NULL, needs_review=true` until configured. User updates → re-derive direction via background task.
+
 ---
 
-## 5. Schema — per-tenant `tenants/<slug>.db` (7 bảng)
+## 5. Schema — per-tenant `tenants/<slug>.db` (9 bảng — DEC-026 clauses + DEC-030 parties)
 
 Skeleton landed in Sprint 0 via `create_all()` (no Alembic per-tenant loop yet — carry-over Sprint 1). Mọi bảng có cột `tenant_id` (indexed) cho query parity dù DB file đã cô lập.
 
@@ -242,17 +294,33 @@ File metadata + phân loại.
 | `needs_review` | Aggregate flag — `true` if any child Term has `needs_review=true` |
 | `created_at` | Upload timestamp |
 
-### 5.2 `terms` — EAV with CANONICAL_FIELDS vocab (Backend M0 contract)
+### 5.2 `terms` — EAV with CANONICAL_FIELDS vocab v2 (DEC-029 Backend PR #135)
 
-Per-Document extracted Term rows. Schema is **EAV** (entity-attribute-value); `field_name` is constrained to `CANONICAL_FIELDS` vocab (7 values, Backend `modules/extraction/schemas.py`):
+Per-Document extracted Term rows. Schema is **EAV** (entity-attribute-value); `field_name` constrained to vocab tổng **12 universal + ~30 type-specific** (Backend `modules/extraction/schemas.py`):
 
-1. `doi_tac` — đối tác
-2. `ngay_hieu_luc` — ngày hiệu lực
-3. `ngay_het_han` — ngày hết hạn (**nullable**, derivable per §6.1)
-4. `gia_tri_hd` — giá trị HĐ *(renamed from `gia_tri` per Backend correction 2026-06-18)*
-5. `thoi_han_hd` — thời hạn HĐ
-6. `dieu_khoan_gia_han` — điều khoản gia hạn
-7. `dieu_khoan_thanh_toan` — điều khoản thanh toán *(new per Backend correction 2026-06-18)*
+**7 BASE_CANONICAL_FIELDS** (Claude fallback trả tới đây — schema lean per PR #135 grammar limit):
+1. `doi_tac` · 2. `ngay_hieu_luc` · 3. `ngay_het_han` (nullable, derivable §6.1)
+4. `gia_tri_hd` · 5. `thoi_han_hd` · 6. `dieu_khoan_gia_han` · 7. `dieu_khoan_thanh_toan`
+
+**5 V2_UNIVERSAL_FIELDS** (Gemini-only):
+8. `doc_type_group` (enum 11 — xem §9.5) · 9. `ngay_ky` · 10. `tien_dat_coc`
+11. `thoi_han_bao_hanh` · 12. `thoi_han_thong_bao`
+
+**9 TYPE_SPECIFIC_FIELDS sets (~30 fields)** — emit qua `NamedExtractedField` keyed array; persist 1 Term row per item (Backend PR #141 dynamic iteration):
+- `lao_dong`: `luong_co_ban`, `thoi_gian_thu_viec`, ...
+- `bat_dong_san`: ...
+- `xay_dung`, `bao_dam`, `cong_nghe_ip`, `thuong_mai`, `van_tai_logistics`, `tai_chinh`, `hanh_chinh`: per-group field sets per `modules/extraction/schemas.py` `TYPE_SPECIFIC_FIELDS` dict.
+
+| Column | Note |
+|---|---|
+| `id` | PK |
+| `document_id` | FK → `documents` |
+| `field_name` | VARCHAR ∈ 12 universal ∪ type-specific |
+| `field_value` | TEXT (free form; date/numeric coercion at consumer) |
+| `confidence` | FLOAT (per FR-EX-05) — Gemini grammar workaround: removed `ge/le` bounds, `@field_validator` clamps server-side (PR #135) |
+| `needs_review` | BOOLEAN, D-08 / FR-EX-05 |
+| `is_superseded` | BOOLEAN (DEC-019/020/021 chain resolution) |
+| `overrides_term_id`, `inherited_from_doc_id` | NULLABLE (chain resolution annotations) |
 
 | Column | Note |
 |---|---|
@@ -263,20 +331,37 @@ Per-Document extracted Term rows. Schema is **EAV** (entity-attribute-value); `f
 | `confidence` | FLOAT, per FR-EX-05 |
 | `needs_review` | BOOLEAN, D-08 / FR-EX-05 |
 
-### 5.3 `obligations` (trái tim MVP)
+### 5.3 `obligations` (trái tim MVP) — **schema rewrite DEC-027/030 #122 Option B**
 
 | Column | Note |
 |---|---|
 | `id` | PK |
-| `document_id` | FK → `documents` |
-| `description` | Mô tả nghĩa vụ |
-| `obligation_type` | `once` / `monthly` / `quarterly` / `yearly` |
-| `due_date` | DATE — derived hoặc trực tiếp |
-| `status` | `pending` / `done` / `overdue` / `cancelled` |
+| `document_id` | FK → `documents` (chain terminal per FR-OB-05) |
+| `description` | Mô tả nghĩa vụ; `amount` embedded vào string cho payment rows (no dedicated column yet — Backend PR #141 ambiguity) |
+| **`obligation_type`** | **Category enum 8 (DEC-027):** `payment` · `delivery` · `handover` · `expiration` · `renewal` · `review` · `warranty` · `other`. *Renamed concept: trước v0.4 `obligation_type` = cadence; per #122 Option B → cadence moved to `recurrence`.* |
+| **`recurrence`** | **Cadence enum (renamed from old `obligation_type`):** `once` · `monthly` · `quarterly` · `yearly` · `open_ended_review`. `open_ended_review` = `thoi_han_hd` phi-số case (DEC-020), `due_date=NULL`. Migration `tenant_005` per PM relay. |
+| `due_date` | DATE — derived per FR-OB-01 hoặc từ `payment_schedule[].due_date`. NULL khi `recurrence=open_ended_review`. |
+| `status` | **Enum {`pending`, `done`, `cancelled`}** per FE PR #69 ratification. **`overdue` KHÔNG phải status** — FE-derived urgency bucket từ `due_date` so với hôm nay. |
 | `remind_before_days` | INTEGER (default 30, 7) |
+| **`direction`** (DEC-030) | `nghĩa_vụ` / `quyền_lợi` / `NULL`. Derived per FR-OB-07 (legal_name auto-match). NULL → `needs_review=true`. |
+| **`obligor`** (DEC-030) | VARCHAR — bên chịu nghĩa vụ (party name từ `parties[]`). NULL hợp lệ khi AI không xác định (D-08). |
+| `source_doc_chain` | TEXT JSON array of doc_ids per chain (DEC-019/020/021). Derived obligations luôn set; payment rows từ `payment_schedule[]` KHÔNG set (idempotency key) |
+| `resolution_method` | VARCHAR — `"last_writer_wins"` (Backend PR #59) |
+| `needs_review` | BOOLEAN — flag cho user verify (D-02), vd `direction=NULL` |
 
-### 5.4 `parties`
-Party normalization (FR-DR-02). Fields: `name`, `tax_code`, `address`, `contact_*`.
+### 5.4 `parties` — **schema update DEC-030**
+
+Party normalization (FR-DR-02 + FR-EX-06).
+
+| Column | Note |
+|---|---|
+| `id` | PK |
+| `name` | NOT NULL — extracted verbatim |
+| `tax_code` | NULLABLE |
+| `address` | NULLABLE |
+| `contact_email`, `contact_phone` | NULLABLE |
+| **`role_label`** (DEC-030) | VARCHAR — vai trò trong HĐ (`"Owner"`, `"Bên A"`, `"NSDLĐ"`, `"Bên thuê"`, ...) — extracted verbatim, D-06 read-only. AI KHÔNG quyết bên nào là SME. |
+| `document_id` | FK — parties per-document (1 party có thể appear nhiều docs với role_label khác) |
 
 ### 5.5 `events`
 Append-only ledger (FR-AU-01, P-2). Fields: `id`, `event_type`, `entity_type`, `entity_id`, `payload` (JSON), `actor_user_id`, `created_at`. **NEVER UPDATE** — sửa = ghi event reversal.
@@ -357,7 +442,49 @@ THEN
 
 ### 6.2 Recurrence rules (Sprint 1+)
 
-`obligation_type` lặp → expand instances per FR-OB-02. Detail TBD Sprint 1.
+`recurrence` lặp (`monthly`/`quarterly`/`yearly`) → expand instances per FR-OB-02. Detail TBD Sprint 2 (PR #66 reminder service handles `once` + chain-derived; monthly/quarterly recurrence parsing deferred — needs `dieu_khoan_thanh_toan` parser).
+
+### 6.3 Payment schedule derivation (DEC-027 — Backend PR #141)
+
+`ExtractionResult.payment_schedule[]` items với `due_date` → `pending` Obligation rows:
+```
+For each item in payment_schedule[]:
+   IF item.due_date IS NOT NULL:
+      INSERT obligations(
+         description = f"{item.milestone or 'Thanh toán'} — {item.amount} VND",
+         obligation_type = "payment",
+         recurrence = "once",  # monthly/quarterly collapse to single 'once' rows per due_date (Sprint 2 will expand)
+         due_date = item.due_date,
+         obligor = item.payer,
+         direction = derive_direction(item.payer, legal_name),  # §6.4
+         source_doc_chain = NULL,  # idempotency key — distinguishes payment from chain-derived
+         status = "pending",
+      )
+```
+
+**Idempotency:** re-extraction delete `WHERE source_doc_chain IS NULL` then re-insert. Derived obligations always set `source_doc_chain`; payment rows never set.
+
+### 6.4 Direction derivation (DEC-030)
+
+Mỗi Obligation phải có `direction`:
+```
+legal_name = tenant_profile.legal_name  # NULL = chưa configured
+
+IF legal_name IS NULL:
+   direction = NULL
+   needs_review = True
+ELIF obligor LIKE legal_name OR legal_name LIKE obligor (case-insensitive, alias-aware):
+   direction = "nghĩa_vụ"
+ELIF obligor IS NOT NULL:
+   direction = "quyền_lợi"
+ELSE:  # obligor NULL → AI không xác định
+   direction = NULL
+   needs_review = True
+```
+
+**Auto-match fail behavior (Kevin cycle 4 q3 ratify):** `direction=NULL` + `needs_review=true`. User confirm via UI extraction review screen (D-02). NOT block extraction, NOT default to `nghĩa_vụ`.
+
+**Re-derivation:** when `tenant_profile.legal_name` changes, background task re-derive direction across all obligations. Open task — implementation deferred Sprint 2.
 
 ---
 
@@ -414,6 +541,45 @@ Two distinct concepts. Do **NOT** conflate.
 
 Factory currently on `staging` (PR #58). PR #55 was reverted from `main` via #57 (wrong base — skipped `feature → staging → main` flow). Re-lands on `main` at next promote.
 
+### 9.5 2-tier schema (DEC-026 addendum + DEC-029 + DEC-030)
+
+Provider grammar limits buộc tách 2-tier:
+
+| Schema | Used by | Fields | Why |
+|---|---|---|---|
+| **`ContractExtractionLLM`** | Claude Haiku/Sonnet (fallback) | 7 BASE_CANONICAL_FIELDS (flat) | Schema rộng → `Schema is too complex` (deterministic 400) trên Claude `messages.parse()` với `list[ClauseItem]` hoặc many bounded fields |
+| **`ContractExtractionLLMFull`** | Gemini Flash (primary) | 12 universal + `clauses[]` + `parties[]` + `payment_schedule[]` + `NamedExtractedField` keyed list for type-specific | Gemini chấp nhận nested + larger schema |
+
+**`to_result()` mapping:** `getattr(parsed, "clauses", [])` — safe accessor cho fallback path.
+
+**Consequence:** doc extract qua Claude fallback có `clauses=[]`, `parties=[]`, `payment_schedule=[]`, `doc_type_group=NULL`, no type-specific fields. **Carry-over ambiguity (PM #143):** propose `Document.provider` column để phân biệt "HĐ không có clauses" vs "extract qua Claude, clauses unavailable" + enable re-extract-prefer-Gemini policy cho docs cần clauses.
+
+### 9.6 DOC_TYPE_GROUPS enum (DEC-029)
+
+11 values (10 contract groups + `other`), reflect `modules/extraction/schemas.py`:
+`dan_su` · `thuong_mai` · `lao_dong` · `bat_dong_san` · `van_tai_logistics` · `xay_dung` · `cong_nghe_ip` · `tai_chinh` · `bao_dam` · `hanh_chinh` · `other`
+
+Old `DocType` enum (4 values: `hd_thue_mat_bang`/`hd_nha_cung_cap`/`hd_lao_dong`/`khac`) **deprecated** but retained on Document for M0 legacy docs.
+
+### 9.7 PaymentScheduleItem (DEC-027 + DEC-030)
+
+```python
+class PaymentScheduleItem:
+    amount: str                # text — VN currency variants
+    due_date: date | None
+    milestone: str | None      # "Tạm ứng 30%", "Bàn giao mặt bằng", ...
+    recurrence: str | None     # "monthly"/"quarterly"/"once" — Sprint 2 expand
+    payer: str | None          # party name — DEC-030
+```
+
+### 9.8 PartyItem (DEC-030)
+
+```python
+class PartyItem:
+    name: str          # extracted verbatim, D-06
+    role_label: str    # "Owner", "Bên A", "NSDLĐ", ... — verbatim
+```
+
 ---
 
 ## 10. Audit Event types (NĐ 13/2023 compliance)
@@ -425,7 +591,13 @@ Events in per-tenant `events` ledger. Append-only.
 | `consent_granted` | `tenant` / `firm_partner` | SME / admin | Consent grant flow | `{consent_kind, consent_reference}` |
 | `consent_revoked` | `tenant` / `firm_partner` | SME / admin | Consent revoke | `{consent_kind, consent_reference}` |
 | `extraction_performed` | `document` | `"system"` | Backend PR #60 worker post-extract | `{provider, model, cost_vnd, latency_ms, consent_reference}` — `consent_reference` provides O(1) back-link to the consent record per Compliance §A.2 |
-| `extraction_failed` | `document` | `"system"` | Worker hit `is_error` or `ExtractionUnavailable` | `{reason, provider}` |
+| `extraction_failed` | `document` | `"system"` | Worker hit `is_error` or `ExtractionUnavailable` | `{reason, provider}` — reason now richer per PR #80 (names exact env vars missing) but **NEVER key values** |
+| `obligation_derived` | `obligation` | `"system"` | Backend PR #64 engine | `{document_id, source_doc_chain, resolution_method, recurrence, obligation_type}` |
+| `reminder_sent` | `obligation` | `"system"` | Backend PR #66 scheduler | `{channel, channel_target_ref, consent_reference, direction, message}` — `message` text per FR-RM-06 |
+| `reminder_failed` | `obligation` | `"system"` | Telegram delivery error | `{reason, retry_at}` |
+| `reminder_batch` | `tenant` | `"system"` | Daily 08:00 ICT sweep | `{total_sent, total_failed, scheduler_run_id}` |
+| `obligation_overdue` | `obligation` | `"system"` | Status flip when `due_date < today` | `{previous_status}` |
+| `chat_query_logged` (DEC-028) | `tenant` | User | Every `/chat/query` | **PII-safe (FR-CQ-05):** `{tool_name, field_name_canonical, arg_keys_present, found, source_count}`. **NEVER** raw `question` or filter values. **🔴 COMPLIANCE DEBT:** assume-consent bypass; must add explicit consent gate before prod (KHE_Compliance #119). |
 | `updated` | `term` | User | PATCH term (D-07) | `{old, new}` — **PII flag:** carries extracted contract values, intended NĐ 13 audit trail per PR #54 ack |
 
 **Compliance pipeline:** `consent_granted` (logged) → `extraction_performed` (with back-link via `consent_reference`) → `updated` (term edits with old/new PII). End-to-end traceability who-changed-what.
@@ -444,4 +616,4 @@ Events in per-tenant `events` ledger. Append-only.
 
 ---
 
-*Hết v0.3 — DEC-026 fold: §5.9 clauses table. Bước kế tiếp: Sprint 1 obligation engine + reminder scheduler spec (issue #26) + chat LLM API surface (issue #99).*
+*Hết v0.4 — cycle 4 mega-fold (DEC-027/028/029/030 + Sprint 1 staging-complete). Bước kế tiếp: re-extraction script post-promote, `Document.provider` column ratify (clause-gap), open_ended_review recurrence handling Sprint 2, NĐ 13 chat learning consent close pre-prod.*
