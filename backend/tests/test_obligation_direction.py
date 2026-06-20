@@ -28,8 +28,8 @@ from modules.extraction import (
     DocType,
     ExtractedField,
     ExtractionResult,
+    ObligationScheduleItem,
     PartyItem,
-    PaymentScheduleItem,
     TokenUsage,
 )
 from tests.conftest import FakeVisionProvider, make_extraction_result
@@ -140,25 +140,27 @@ class TestDirectionStoredOnObligation:
     def test_payment_obligation_gets_direction(
         self, auth_client, tenant_with_legal_name, db
     ):
-        """Payment schedule with payer → Obligation.direction set."""
+        """Obligation schedule with obligor → Obligation.direction set."""
         result = make_extraction_result(
             doc_type_group="thuong_mai",
             parties=[
                 PartyItem(name="Công ty TNHH Test ABC", role_label="Bên A"),
                 PartyItem(name="Công ty XYZ", role_label="Bên B"),
             ],
-            payment_schedule=[
-                PaymentScheduleItem(
-                    amount="50000000",
+            obligation_schedule=[
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Thanh toán đợt 1",
+                    amount_raw="50000000",
                     due_date="2026-03-01",
-                    milestone="Thanh toán đợt 1",
-                    payer="Bên A",
+                    obligor="Bên A",
                 ),
-                PaymentScheduleItem(
-                    amount="30000000",
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Thanh toán đợt 2",
+                    amount_raw="30000000",
                     due_date="2026-06-01",
-                    milestone="Thanh toán đợt 2",
-                    payer="Bên B",
+                    obligor="Bên B",
                 ),
             ],
         )
@@ -184,15 +186,16 @@ class TestDirectionStoredOnObligation:
         assert ob2.obligor == "Bên B"
 
     def test_no_payer_no_direction(self, auth_client, test_tenant, db):
-        """Payment schedule without payer → direction=None."""
+        """Obligation schedule without obligor → direction=None."""
         result = make_extraction_result(
             doc_type_group="thuong_mai",
-            payment_schedule=[
-                PaymentScheduleItem(
-                    amount="50000000",
+            obligation_schedule=[
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Thanh toán đợt 1",
+                    amount_raw="50000000",
                     due_date="2026-03-01",
-                    milestone="Thanh toán đợt 1",
-                    payer=None,
+                    obligor=None,
                 ),
             ],
         )
@@ -209,18 +212,19 @@ class TestDirectionStoredOnObligation:
     def test_no_legal_name_no_direction(
         self, auth_client, test_tenant, db
     ):
-        """Tenant without legal_name → direction=None even with payer."""
+        """Tenant without legal_name → direction=None even with obligor."""
         result = make_extraction_result(
             doc_type_group="thuong_mai",
             parties=[
                 PartyItem(name="Công ty A", role_label="Bên A"),
             ],
-            payment_schedule=[
-                PaymentScheduleItem(
-                    amount="50000000",
+            obligation_schedule=[
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Thanh toán",
+                    amount_raw="50000000",
                     due_date="2026-03-01",
-                    milestone="Thanh toán",
-                    payer="Bên A",
+                    obligor="Bên A",
                 ),
             ],
         )

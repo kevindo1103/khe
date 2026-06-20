@@ -685,3 +685,150 @@ class TestPatchChainIntegration:
             r = auth_client.patch(f"/obligations/{obl.id}", json={"status": s})
             assert r.status_code == 200, f"status={s} should be accepted"
             assert r.json()["obligation"]["status"] == s
+
+
+# ── DEC-030 Phase 2 Part 2 — obligation_schedule mapping ──
+
+
+class TestObligationScheduleMapping:
+    """Part 2 — extraction_runner maps obligation_schedule[] → Obligation rows."""
+
+    def _upload_and_extract(self, auth_client, file_name, fields, obligation_schedule):
+        from modules.extraction import (
+            DocType, ExtractedField, ExtractionResult, ObligationScheduleItem, TokenUsage,
+        )
+
+        class FakeProvider:
+            def __init__(self, result):
+                self._result = result
+
+            async def extract(self, *args, **kwargs):
+                return self._result
+
+        result = ExtractionResult(
+            doc_type=DocType.LEASE,
+            doc_type_confidence=0.95,
+            fields=fields,
+            obligation_schedule=obligation_schedule,
+            provider="fake_provider",
+            model="fake-model",
+            latency_ms=123.0,
+            usage=TokenUsage(input_tokens=1000, output_tokens=200),
+            cost_vnd=500.0,
+        )
+        fake = FakeProvider(result)
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": (file_name, io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            return r.json()["doc_id"]
+
+    def test_date_trigger_creates_pending(self, auth_client, db):
+        """Obligation schedule item with trigger=date → status=pending, due_date set."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+
+        doc_id = self._upload_and_extract(
+            auth_client, "schedule_date.pdf",
+            {
+                "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+                "ngay_hieu_luc": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+                "ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.85, needs_review=False),
+            },
+            [
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Thanh toán đợt 1",
+                    amount_raw="100000000",
+                    due_date="2026-06-01",
+                    obligor="Bên A",
+                ),
+            ],
+        )
+
+        obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id,
+            Obligation.description == "Thanh toán đợt 1",
+        ).all()
+        assert len(obs) == 1
+        assert obs[0].status == "pending"
+        assert obs[0].due_date == "2026-06-01"
+        assert obs[0].obligation_type == "payment"
+        assert obs[0].amount_raw == "100000000"
+
+    def test_event_trigger_creates_waiting_trigger(self, auth_client, db):
+        """Obligation schedule item with trigger=event → status=waiting_trigger, due_date=None."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+
+        doc_id = self._upload_and_extract(
+            auth_client, "schedule_event.pdf",
+            {
+                "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+                "ngay_hieu_luc": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+                "ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.85, needs_review=False),
+            },
+            [
+                ObligationScheduleItem(
+                    obligation_type="delivery",
+                    description="Giao hàng sau nghiệm thu",
+                    trigger="event",
+                    trigger_condition="sau khi nghiệm thu",
+                    trigger_delay_days=15,
+                    obligor="Bên B",
+                ),
+            ],
+        )
+
+        obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id,
+            Obligation.description == "Giao hàng sau nghiệm thu",
+        ).all()
+        assert len(obs) == 1
+        assert obs[0].status == "waiting_trigger"
+        assert obs[0].due_date is None
+        assert obs[0].milestone_trigger == "event"
+        assert obs[0].trigger_condition == "sau khi nghiệm thu"
+        assert obs[0].trigger_delay_days == 15
+
+    def test_series_fields_mapped(self, auth_client, db):
+        """Obligation schedule items with series_id → milestone_* fields mapped."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+
+        doc_id = self._upload_and_extract(
+            auth_client, "schedule_series.pdf",
+            {
+                "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+                "ngay_hieu_luc": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+                "ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.85, needs_review=False),
+            },
+            [
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Đợt 1",
+                    amount_raw="50000000",
+                    due_date="2026-03-01",
+                    series_id="series-001",
+                    milestone_index=1,
+                    milestone_total=3,
+                ),
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Đợt 2",
+                    amount_raw="50000000",
+                    due_date="2026-06-01",
+                    series_id="series-001",
+                    milestone_index=2,
+                    milestone_total=3,
+                ),
+            ],
+        )
+
+        series_obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id,
+            Obligation.milestone_series_id == "series-001",
+        ).order_by(Obligation.milestone_index).all()
+        assert len(series_obs) == 2
+        assert series_obs[0].milestone_index == 1
+        assert series_obs[0].milestone_total == 3
+        assert series_obs[1].milestone_index == 2

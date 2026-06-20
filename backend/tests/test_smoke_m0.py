@@ -26,8 +26,8 @@ from modules.extraction import (
     DocType,
     ExtractedField,
     ExtractionResult,
+    ObligationScheduleItem,
     PartyItem,
-    PaymentScheduleItem,
     TokenUsage,
 )
 from tests.conftest import FakeVisionProvider, make_extraction_result
@@ -69,12 +69,13 @@ class TestM0VerticalSlice:
                 PartyItem(name="Công ty TNHH Test ABC", role_label="Bên thuê"),
                 PartyItem(name="Công ty Landlord", role_label="Bên cho thuê"),
             ],
-            payment_schedule=[
-                PaymentScheduleItem(
-                    amount="250000000",
+            obligation_schedule=[
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Thanh toán đợt 1",
+                    amount_raw="250000000",
                     due_date=due_date_str,
-                    milestone="Thanh toán đợt 1",
-                    payer="Bên thuê",
+                    obligor="Bên thuê",
                 ),
             ],
         )
@@ -105,7 +106,7 @@ class TestM0VerticalSlice:
         assert exp_obs[0]["due_date"] == due_date_str
         assert exp_obs[0]["recurrence"] == "once"
 
-        # Payment obligation from payment_schedule
+        # Payment obligation from obligation_schedule
         pay_obs = [o for o in obligations if o["obligation_type"] == "payment"]
         assert len(pay_obs) == 1
         assert pay_obs[0]["due_date"] == due_date_str

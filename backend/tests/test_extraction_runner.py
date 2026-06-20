@@ -72,9 +72,9 @@ def _make_success_result_with_clauses(clauses=None):
 
 
 def _make_success_result_with_type_specific():
-    """Result with type-specific fields (labor) + payment schedule (DEC-027)."""
+    """Result with type-specific fields (labor) + obligation schedule (DEC-030 Phase 2)."""
     from modules.extraction import (
-        DocType, ExtractedField, ExtractionResult, PaymentScheduleItem, TokenUsage,
+        DocType, ExtractedField, ExtractionResult, ObligationScheduleItem, TokenUsage,
     )
 
     return ExtractionResult(
@@ -91,10 +91,10 @@ def _make_success_result_with_type_specific():
             "luong_co_ban": ExtractedField(value="15000000", confidence=0.85, needs_review=False),
             "thoi_gian_thu_viec": ExtractedField(value="60 ngày", confidence=0.8, needs_review=True),
         },
-        payment_schedule=[
-            PaymentScheduleItem(amount="15000000", due_date="2026-02-01", milestone="Tạm ứng tháng 1", recurrence=None),
-            PaymentScheduleItem(amount="15000000", due_date="2026-03-01", milestone="Tạm ứng tháng 2", recurrence=None),
-            PaymentScheduleItem(amount=None, due_date=None, milestone="Theo thông báo", recurrence=None),
+        obligation_schedule=[
+            ObligationScheduleItem(obligation_type="payment", description="Tạm ứng tháng 1", amount_raw="15000000", due_date="2026-02-01", recurrence=None),
+            ObligationScheduleItem(obligation_type="payment", description="Tạm ứng tháng 2", amount_raw="15000000", due_date="2026-03-01", recurrence=None),
+            ObligationScheduleItem(obligation_type="payment", description="Theo thông báo", amount_raw=None, due_date=None, recurrence=None),
         ],
         provider="fake_provider",
         model="fake-model",
@@ -429,9 +429,9 @@ class TestPaymentScheduleObligations:
         assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
 
     def test_payment_schedule_no_due_date_skipped(self, auth_client):
-        """Payment schedule items without due_date are skipped (no obligation created)."""
+        """Obligation schedule items without due_date (trigger=date) are skipped (no obligation created)."""
         from modules.extraction import (
-            DocType, ExtractedField, ExtractionResult, PaymentScheduleItem, TokenUsage,
+            DocType, ExtractedField, ExtractionResult, ObligationScheduleItem, TokenUsage,
         )
 
         result = ExtractionResult(
@@ -446,8 +446,8 @@ class TestPaymentScheduleObligations:
                 "dieu_khoan_gia_han": ExtractedField(value="Tự động gia hạn", confidence=0.7, needs_review=True),
                 "dieu_khoan_thanh_toan": ExtractedField(value="Chuyển khoản", confidence=0.9, needs_review=False),
             },
-            payment_schedule=[
-                PaymentScheduleItem(amount="50000000", due_date=None, milestone="Theo thông báo", recurrence=None),
+            obligation_schedule=[
+                ObligationScheduleItem(obligation_type="payment", description="Theo thông báo", amount_raw="50000000", due_date=None, recurrence=None),
             ],
             provider="fake_provider",
             model="fake-model",
@@ -472,13 +472,13 @@ class TestPaymentScheduleObligations:
 
     def test_payment_obligations_idempotent_on_re_extraction_skip_path(self, auth_client):
         """Re-extraction on a doc where derive_obligations skips (no derivable expiry)
-        must not duplicate payment obligations — regression for #141 blocker 2."""
+        must not duplicate obligation schedule obligations — regression for #141 blocker 2."""
         from modules.extraction import (
-            DocType, ExtractedField, ExtractionResult, PaymentScheduleItem, TokenUsage,
+            DocType, ExtractedField, ExtractionResult, ObligationScheduleItem, TokenUsage,
         )
 
         # No ngay_het_han, no ngay_hieu_luc + numeric thoi_han_hd → derive_obligations skips.
-        # Payment schedule has 2 items with due_date → 2 payment obligations expected.
+        # Obligation schedule has 2 items with due_date → 2 payment obligations expected.
         result = ExtractionResult(
             doc_type=DocType.OTHER,
             doc_type_confidence=0.5,
@@ -491,9 +491,9 @@ class TestPaymentScheduleObligations:
                 "dieu_khoan_gia_han": ExtractedField(value=None, confidence=0.0, needs_review=True),
                 "dieu_khoan_thanh_toan": ExtractedField(value="Theo đợt", confidence=0.7, needs_review=True),
             },
-            payment_schedule=[
-                PaymentScheduleItem(amount="25000000", due_date="2026-06-01", milestone="Đợt 1", recurrence=None),
-                PaymentScheduleItem(amount="25000000", due_date="2026-09-01", milestone="Đợt 2", recurrence=None),
+            obligation_schedule=[
+                ObligationScheduleItem(obligation_type="payment", description="Đợt 1", amount_raw="25000000", due_date="2026-06-01", recurrence=None),
+                ObligationScheduleItem(obligation_type="payment", description="Đợt 2", amount_raw="25000000", due_date="2026-09-01", recurrence=None),
             ],
             provider="fake_provider",
             model="fake-model",

@@ -46,8 +46,8 @@ from modules.extraction import (
     DocType,
     ExtractedField,
     ExtractionResult,
+    ObligationScheduleItem,
     PartyItem,
-    PaymentScheduleItem,
     TokenUsage,
 )
 
@@ -280,7 +280,7 @@ def make_extraction_result(
     fields=None,
     type_specific=None,
     parties=None,
-    payment_schedule=None,
+    obligation_schedule=None,
 ) -> ExtractionResult:
     """Build an ExtractionResult for tests.
 
@@ -290,7 +290,7 @@ def make_extraction_result(
         fields: Dict of field_name → ExtractedField. Merged with defaults.
         type_specific: Dict of type-specific field_name → ExtractedField.
         parties: List of PartyItem (DEC-030).
-        payment_schedule: List of PaymentScheduleItem (DEC-027).
+        obligation_schedule: List of ObligationScheduleItem (DEC-030 Phase 2).
     """
     base_fields = {
         "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
@@ -312,7 +312,7 @@ def make_extraction_result(
         doc_type_confidence=0.95,
         fields=base_fields,
         parties=parties or [],
-        payment_schedule=payment_schedule or [],
+        obligation_schedule=obligation_schedule or [],
         provider="fake_qc_provider",
         model="fake-qc-model",
         latency_ms=42.0,
