@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from app.core.security import get_password_hash
 from app.db.database import MasterSessionLocal, get_tenant_session, init_master_db, init_tenant_db
 from app.models.master import Tenant, TenantUser
-from app.models.tenant import Clause, Document, Obligation, Term
+from app.models.tenant import ChatQueryLog, Clause, Document, Obligation, Term
 from app.services import chat_query
 from main import app
 
@@ -1168,3 +1168,133 @@ class TestObligationTypeDirectionFilter:
         assert "nghĩa_vụ" in prompt
         assert "quyền_lợi" in prompt
         assert "obligation_type" in prompt or "payment" in prompt
+
+
+class TestChatQueryLog:
+    """#119 — chat_query_log rows written on every POST /chat/query (DEC-028)."""
+
+    def test_log_written_on_hit(self, auth_client, db, monkeypatch):
+        """A successful query writes a chat_query_log row with found=True."""
+        doc = _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "ngay_het_han", "doc_hint": None, "value_contains": None, "party_filter": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-12-31."))
+
+        r = auth_client.post("/chat/query", json={"question": "khi nào hết hạn"})
+        assert r.status_code == 200
+
+        log = db.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "chat-tenant",
+            ChatQueryLog.question == "khi nào hết hạn",
+        ).first()
+        assert log is not None
+        assert log.found is True
+        assert log.result_count > 0
+
+    def test_log_written_on_miss(self, auth_client, db, monkeypatch):
+        """A D-08 miss writes a chat_query_log row with found=False."""
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "nonexistent", "doc_hint": None, "value_contains": None, "party_filter": None},
+            }]),
+        )
+
+        r = auth_client.post("/chat/query", json={"question": "số tài khoản ngân hàng"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+        log = db.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "chat-tenant",
+            ChatQueryLog.question == "số tài khoản ngân hàng",
+        ).first()
+        assert log is not None
+        assert log.found is False
+        assert log.result_count == 0
+
+    def test_log_tool_calls_json_roundtrip(self, auth_client, db, monkeypatch):
+        """tool_calls JSON in chat_query_log round-trips with name + args."""
+        doc = _seed(db)
+        tool_calls = [{
+            "name": "search_terms",
+            "args": {"field_name": "ngay_het_han", "doc_hint": None, "value_contains": None, "party_filter": None},
+        }]
+        monkeypatch.setattr(chat_query, "_select_tools", _mock_select_tools(tool_calls))
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-12-31."))
+
+        r = auth_client.post("/chat/query", json={"question": "tool_calls json test"})
+        assert r.status_code == 200
+
+        import json as _json
+        log = db.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "chat-tenant",
+            ChatQueryLog.question == "tool_calls json test",
+        ).first()
+        assert log is not None
+        assert log.tool_calls is not None
+        parsed = _json.loads(log.tool_calls)
+        assert len(parsed) == 1
+        assert parsed[0]["name"] == "search_terms"
+        assert parsed[0]["args"]["field_name"] == "ngay_het_han"
+
+    def test_log_failure_does_not_break_response(self, auth_client, db, monkeypatch):
+        """A forced exception in _log_chat_query does not break the chat response."""
+        doc = _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "ngay_het_han", "doc_hint": None, "value_contains": None, "party_filter": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-12-31."))
+
+        def _failing_log(*args, **kwargs):
+            raise RuntimeError("simulated DB failure")
+
+        monkeypatch.setattr(chat_query, "_log_chat_query", _failing_log)
+
+        r = auth_client.post("/chat/query", json={"question": "resilience test query"})
+        assert r.status_code == 200
+        assert r.json()["found"] is True
+
+    def test_pii_safe_logger_unchanged(self, auth_client, db, monkeypatch):
+        """App logger stream must NOT contain raw PII (party names, values)."""
+        doc = _seed(db)
+        pii_value = "Công ty ABC"
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "doi_tac", "doc_hint": None, "value_contains": None, "party_filter": pii_value},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Đối tác là Công ty ABC."))
+
+        captured = []
+        original_info = chat_query.logger.info
+
+        def _capture_info(msg, *args, **kwargs):
+            captured.append(msg % args if args else msg)
+            original_info(msg, *args, **kwargs)
+
+        monkeypatch.setattr(chat_query.logger, "info", _capture_info)
+
+        r = auth_client.post("/chat/query", json={"question": "đối tác là ai"})
+        assert r.status_code == 200
+
+        # The PII-safe routing log must contain field_name + args_present but NOT raw party_filter value.
+        log_text = "\n".join(captured)
+        assert "doi_tac" in log_text
+        assert "party_filter" in log_text  # key name is fine
+        assert pii_value not in log_text  # raw value must NOT appear

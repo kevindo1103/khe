@@ -152,3 +152,20 @@ class DocumentRelationship(TenantBase):
     confirmed_by_sme = Column(Boolean, default=False)                          # D-02 gate
     confidence = Column(Float, nullable=True)                                  # AI suggestion score
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ChatQueryLog(TenantBase):
+    """Per-tenant chat query log for DEC-028 learning loop.
+
+    Raw PII (question + tool args) lives here — tenant-isolated, purgeable.
+    NOT in the append-only events ledger (NĐ 13/2023 compliance debt).
+    """
+    __tablename__ = "chat_query_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    question = Column(Text, nullable=False)
+    tool_calls = Column(Text, nullable=True)          # JSON: [{"name":..., "args":{...}}]
+    found = Column(Boolean, nullable=False, server_default="0")
+    result_count = Column(Integer, server_default="0")
+    created_at = Column(DateTime, server_default=func.now())
