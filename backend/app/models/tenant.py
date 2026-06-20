@@ -93,6 +93,9 @@ class Party(TenantBase):
     normalized_name = Column(String, nullable=True, index=True)
     party_type = Column(String, nullable=True)         # "landlord" | "supplier" | "employee" | ...
     contact_info = Column(Text, nullable=True)
+    # ── tenant_008: DEC-030 per-document parties + role_label (#155) ──
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    role_label = Column(Text, nullable=True)           # role as stated IN the contract
     created_at = Column(DateTime, server_default=func.now())
 
 
