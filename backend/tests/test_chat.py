@@ -108,7 +108,7 @@ def _seed(db):
         tenant_id="chat-tenant",
         document_id=doc.id,
         description="Hợp đồng lease_2026.pdf hết hạn ngày 2026-12-31",
-        obligation_type="once",
+        recurrence="once",
         due_date="2026-12-31",
         status="pending",
     )
@@ -212,7 +212,7 @@ class TestChatQuery:
                     tenant_id="chat-tenant",
                     document_id=doc.id,
                     description="Hợp đồng hết hạn tháng 6",
-                    obligation_type="once",
+                    recurrence="once",
                     due_date="2026-06-15",
                     status="pending",
                 ),
@@ -220,7 +220,7 @@ class TestChatQuery:
                     tenant_id="chat-tenant",
                     document_id=doc.id,
                     description="Hợp đồng hết hạn tháng 7",
-                    obligation_type="once",
+                    recurrence="once",
                     due_date="2026-07-20",
                     status="pending",
                 ),
@@ -228,7 +228,7 @@ class TestChatQuery:
                     tenant_id="chat-tenant",
                     document_id=doc.id,
                     description="Hợp đồng hết hạn tháng 8",
-                    obligation_type="once",
+                    recurrence="once",
                     due_date="2026-08-10",
                     status="pending",
                 ),
@@ -262,7 +262,7 @@ class TestChatQuery:
                 tenant_id="chat-tenant",
                 document_id=doc.id,
                 description="Boundary",
-                obligation_type="once",
+                recurrence="once",
                 due_date="2026-06-01",
                 status="pending",
             )
@@ -292,7 +292,7 @@ class TestChatQuery:
                 tenant_id="chat-tenant",
                 document_id=doc.id,
                 description="Matching",
-                obligation_type="once",
+                recurrence="once",
                 due_date="2026-06-15",
                 status="pending",
             )
@@ -302,7 +302,7 @@ class TestChatQuery:
                 tenant_id="chat-tenant",
                 document_id=doc.id,
                 description="Wrong status",
-                obligation_type="once",
+                recurrence="once",
                 due_date="2026-06-15",
                 status="done",
             )
@@ -866,7 +866,7 @@ class TestDueWithinDaysLowerBound:
                 tenant_id="chat-tenant",
                 document_id=doc.id,
                 description="Past obligation",
-                obligation_type="once",
+                recurrence="once",
                 due_date="2024-01-15",
                 status="pending",
             ),
@@ -874,7 +874,7 @@ class TestDueWithinDaysLowerBound:
                 tenant_id="chat-tenant",
                 document_id=doc.id,
                 description="Future obligation",
-                obligation_type="once",
+                recurrence="once",
                 due_date="2026-07-15",
                 status="pending",
             ),
@@ -908,7 +908,7 @@ class TestDueWithinDaysLowerBound:
                 tenant_id="chat-tenant",
                 document_id=doc.id,
                 description="Past overdue",
-                obligation_type="once",
+                recurrence="once",
                 due_date="2024-01-15",
                 status="overdue",
             ),
@@ -916,7 +916,7 @@ class TestDueWithinDaysLowerBound:
                 tenant_id="chat-tenant",
                 document_id=doc.id,
                 description="Future pending",
-                obligation_type="once",
+                recurrence="once",
                 due_date="2026-07-15",
                 status="pending",
             ),
@@ -1064,3 +1064,107 @@ class TestDocumentClauseCount:
         assert r.status_code == 200
         data = r.json()
         assert data["clause_count"] == 1
+
+
+class TestObligationTypeDirectionFilter:
+    """#145 — search_obligations filters by obligation_type (category) + direction."""
+
+    def test_filter_by_obligation_type_payment(self, auth_client, db, monkeypatch):
+        """search_obligations(obligation_type='payment') returns only payment obligations."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Tạm ứng đợt 1",
+                recurrence="once",
+                obligation_type="payment",
+                due_date="2026-07-01",
+                status="pending",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Hết hạn HĐ",
+                recurrence="once",
+                obligation_type="expiration",
+                due_date="2026-12-31",
+                status="pending",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": "pending", "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": "payment", "direction": None,
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 thanh toán."))
+
+        r = auth_client.post("/chat/query", json={"question": "thanh toán sắp tới"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-07-01"
+
+    def test_filter_by_direction_nghia_vu(self, auth_client, db, monkeypatch):
+        """search_obligations(direction='nghĩa_vụ') returns only nghĩa_vụ obligations."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Tạm ứng",
+                recurrence="once",
+                obligation_type="payment",
+                due_date="2026-07-01",
+                status="pending",
+                direction="nghĩa_vụ",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Đối tác giao hàng",
+                recurrence="once",
+                obligation_type="delivery",
+                due_date="2026-08-01",
+                status="pending",
+                direction="quyền_lợi",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": "pending", "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": "nghĩa_vụ",
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Nghĩa vụ của bạn."))
+
+        r = auth_client.post("/chat/query", json={"question": "nghĩa vụ phải trả"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-07-01"
+
+    def test_prompt_includes_direction_rules(self):
+        """Router prompt must include direction + obligation_type routing rules."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        assert "nghĩa_vụ" in prompt
+        assert "quyền_lợi" in prompt
+        assert "obligation_type" in prompt or "payment" in prompt

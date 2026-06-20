@@ -7,7 +7,10 @@ class ObligationOut(BaseModel):
     id: int
     document_id: int
     description: str
-    obligation_type: str
+    obligation_type: str          # category: payment/expiration/renewal/...
+    recurrence: str               # cadence: once/open_ended_review
+    direction: str | None = None  # nghĩa_vụ/quyền_lợi/null
+    obligor: str | None = None
     due_date: str | None = None
     status: str
     remind_before_days: int

@@ -109,7 +109,8 @@ class TestDeriveObligations:
 
         obs = db.query(Obligation).filter(Obligation.document_id == doc.id).all()
         assert len(obs) == 1
-        assert obs[0].obligation_type == "once"
+        assert obs[0].recurrence == "once"
+        assert obs[0].obligation_type == "expiration"
         assert obs[0].due_date == "2026-12-31"
         assert obs[0].status == "pending"
         assert "hết hạn ngày" in obs[0].description
@@ -124,7 +125,8 @@ class TestDeriveObligations:
 
         obs = db.query(Obligation).filter(Obligation.document_id == doc.id).all()
         assert len(obs) == 1
-        assert obs[0].obligation_type == "once"
+        assert obs[0].recurrence == "once"
+        assert obs[0].obligation_type == "expiration"
         # 12 months from 2026-01-01 -> 2027-01-01 (add_months semantics).
         assert obs[0].due_date == "2027-01-01"
 
@@ -138,7 +140,8 @@ class TestDeriveObligations:
 
         obs = db.query(Obligation).filter(Obligation.document_id == doc.id).all()
         assert len(obs) == 1
-        assert obs[0].obligation_type == "open_ended_review"
+        assert obs[0].recurrence == "open_ended_review"
+        assert obs[0].obligation_type == "expiration"
         assert obs[0].due_date is None
         # DEC-020: annual review nudge → 365 days, not the `once` default of 30.
         assert obs[0].remind_before_days == 365
@@ -151,7 +154,7 @@ class TestDeriveObligations:
         _make_term(db, doc.id, "ngay_het_han", "2026-12-31")
         derive_obligations(db, "obligation-tenant", doc.id)
         ob = db.query(Obligation).filter(Obligation.document_id == doc.id).first()
-        assert ob.obligation_type == "once"
+        assert ob.recurrence == "once"
         assert ob.remind_before_days == 30
 
     def test_insufficient_data_skips(self, db):
@@ -359,3 +362,66 @@ class TestObligationEndpoints:
 
         r3 = other_client.patch(f"/obligations/{ob['id']}", json={"status": "done"})
         assert r3.status_code == 404
+
+
+class TestDeriveDirection:
+    """Tests for _derive_direction (DEC-030)."""
+
+    def test_self_match_returns_nghia_vu(self):
+        """When obligor matches tenant's self-party → nghĩa_vụ."""
+        from app.services.extraction_runner import _derive_direction
+        from modules.extraction import PartyItem
+
+        # Simulate: tenant legal_name = "Công ty ABC", obligor = "Bên A"
+        # Party "Công ty ABC" has role_label "Bên A" → self-match → nghĩa_vụ
+        class FakeResult:
+            parties = [PartyItem(name="Công ty ABC", role_label="Bên A")]
+
+        with patch("app.services.extraction_runner._get_tenant_legal_name", return_value="Công ty ABC"):
+            result = _derive_direction("test-tenant", "Bên A", FakeResult())
+        assert result == "nghĩa_vụ"
+
+    def test_other_party_returns_quyen_loi(self):
+        """When obligor is the counterparty → quyền_lợi."""
+        from app.services.extraction_runner import _derive_direction
+        from modules.extraction import PartyItem
+
+        class FakeResult:
+            parties = [
+                PartyItem(name="Công ty ABC", role_label="Bên A"),
+                PartyItem(name="Công ty XYZ", role_label="Bên B"),
+            ]
+
+        with patch("app.services.extraction_runner._get_tenant_legal_name", return_value="Công ty ABC"):
+            result = _derive_direction("test-tenant", "Bên B", FakeResult())
+        assert result == "quyền_lợi"
+
+    def test_no_legal_name_returns_none(self):
+        """When tenant has no legal_name → None (D-08)."""
+        from app.services.extraction_runner import _derive_direction
+
+        class FakeResult:
+            parties = []
+
+        with patch("app.services.extraction_runner._get_tenant_legal_name", return_value=None):
+            result = _derive_direction("test-tenant", "Bên A", FakeResult())
+        assert result is None
+
+    def test_no_obligor_returns_none(self):
+        """When obligor is None → None (D-08)."""
+        from app.services.extraction_runner import _derive_direction
+
+        result = _derive_direction("test-tenant", None, None)
+        assert result is None
+
+    def test_no_party_match_returns_none(self):
+        """When no party matches tenant's legal_name → None (needs_review)."""
+        from app.services.extraction_runner import _derive_direction
+        from modules.extraction import PartyItem
+
+        class FakeResult:
+            parties = [PartyItem(name="Công ty XYZ", role_label="Bên B")]
+
+        with patch("app.services.extraction_runner._get_tenant_legal_name", return_value="Công ty ABC"):
+            result = _derive_direction("test-tenant", "Bên B", FakeResult())
+        assert result is None
