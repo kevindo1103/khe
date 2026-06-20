@@ -120,6 +120,13 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Detail header now shows 3 counts: 📋 thuộc tính · ⏰ nghĩa vụ · 📄 điều khoản.
 - **List-column half:** still deferred, awaiting PM/Backend call on #99 (add `clause_count` to list endpoint vs defer Phase 2).
 
+### 2026-06-20 — Admin chat relay (#129) → scope-gated → assigned Windsurf #131
+- #129: KHE_PWA_Chat handed off `POST /chat/query` contract + D-08 + source-chip pattern for an Admin chat UI.
+- **Decision Review Gate caught it:** Admin chat NOT in M0 screen set, NO Designer mockup (only `mockup_pwa_chat_v0.1`), chat is PWA's primary UX. Flagged PM before assigning.
+- **PM: "proceed, no mockup."** Opened **#131** Windsurf task: NEW `pages/admin/Chat.tsx` + `types/chat.ts`, route + nav wire, reuse `apiFetch` (cookie auth), byte-exact D-08, source chip with `clause_num`, #96 limitation note. Reimplement in Tailwind/design-system (NOT import from `pwa/`).
+- Backend dep #96 (unmerged): VN-filename + cross-doc queries → `found:false`. Non-blocking (single-doc queries work).
+- Commented #129 ack. Await Windsurf PR → review.
+
 ## Open dependencies
 
 | Dep | Status | Note |
