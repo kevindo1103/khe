@@ -140,6 +140,13 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Admin chat live on staging: `/admin/chat`, "Hỏi-đáp" nav. DOCS_INBOX #1 posted (flagged: no mockup, temp #96 note, no consent gating — PM to confirm).
 - **Follow-ups:** remove #96 note when backend #96 merges; confirm consent-gating intent; backfill Designer mockup if PM wants.
 
+### 2026-06-20 — Admin login fails on staging → diagnosed /api proxy mismatch → relay #136
+- User report: can't log in to Admin. Login page renders, login call fails.
+- **Frontend ruled out:** routes internally consistent; `LoginRequest{tenant_id,username,password}` == backend `LoginIn` exactly (no body drift); cookie auth correct.
+- **Root cause:** namespace mismatch. `deploy-staging.yml` builds Admin with `VITE_API_BASE_URL=.../api` → calls `/api/auth/login`. Backend mounts routers at ROOT (no `/api` prefix, no root_path). No nginx config in repo (VPS-side). So `/api/*` only reaches backend if nginx strips `/api` (trailing-slash proxy_pass). Missing/misconfigured → 404 or SPA fallthrough → login fails.
+- Relayed **#136** (`from:frontend`+`for:infra`+`relay`+`blocker:human-needed`): nginx `/api/`→`:8001/` with cookie pass-through + SPA try_files + `/pwa/` block; Backend confirm `/api` namespace contract. Couldn't curl-probe (egress 403 in this env).
+- **Blocked on Infra** for all Admin staging e2e verify.
+
 ## Open dependencies
 
 | Dep | Status | Note |
