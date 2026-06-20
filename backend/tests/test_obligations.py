@@ -836,3 +836,107 @@ class TestObligationScheduleMapping:
         assert series_obs[0].milestone_index == 1
         assert series_obs[0].milestone_total == 3
         assert series_obs[1].milestone_index == 2
+
+    def test_re_extraction_after_done_no_duplicate(self, auth_client, db):
+        """Re-extraction after a schedule obligation is marked done → no duplicate pending row."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+
+        schedule = [
+            ObligationScheduleItem(
+                obligation_type="payment",
+                description="Thanh toán đợt 1",
+                amount_raw="100000000",
+                due_date="2026-06-01",
+                obligor="Bên A",
+            ),
+        ]
+        fields = {
+            "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+            "ngay_hieu_luc": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+            "ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.85, needs_review=False),
+        }
+
+        # First extraction → creates pending obligation
+        doc_id = self._upload_and_extract(auth_client, "dedup_1.pdf", fields, schedule)
+        obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id,
+            Obligation.description == "Thanh toán đợt 1",
+        ).all()
+        assert len(obs) == 1
+        assert obs[0].status == "pending"
+
+        # User marks it done
+        obs[0].status = "done"
+        db.commit()
+
+        # Re-extract the same doc via run_extraction
+        from app.services.extraction_runner import run_extraction
+        from modules.extraction import (
+            DocType, ExtractionResult, TokenUsage as _TokenUsage,
+        )
+        result = ExtractionResult(
+            doc_type=DocType.LEASE,
+            doc_type_confidence=0.95,
+            fields=fields,
+            obligation_schedule=schedule,
+            provider="fake_provider",
+            model="fake-model",
+            latency_ms=123.0,
+            usage=_TokenUsage(input_tokens=1000, output_tokens=200),
+            cost_vnd=500.0,
+        )
+
+        class FakeProvider:
+            def __init__(self, result):
+                self._result = result
+
+            async def extract(self, *args, **kwargs):
+                return self._result
+
+        fake = FakeProvider(result)
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            run_extraction(doc_id, "obligation-tenant", None)
+
+        # Should still be 1 row — the done row survives, no new pending duplicate
+        db.expire_all()
+        obs = db.query(Obligation).filter(
+            Obligation.document_id == doc_id,
+            Obligation.description == "Thanh toán đợt 1",
+        ).all()
+        assert len(obs) == 1
+        assert obs[0].status == "done"
+
+    def test_event_ledger_entry_for_schedule(self, auth_client, db):
+        """Schedule obligation creation logs an obligation_schedule_derived Event."""
+        from modules.extraction import ExtractedField, ObligationScheduleItem
+        from app.models.tenant import Event
+
+        doc_id = self._upload_and_extract(
+            auth_client, "event_ledger.pdf",
+            {
+                "doi_tac": ExtractedField(value="Công ty A", confidence=0.9, needs_review=False),
+                "ngay_hieu_luc": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+                "ngay_het_han": ExtractedField(value="2027-01-01", confidence=0.85, needs_review=False),
+            },
+            [
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Thanh toán đợt 1",
+                    amount_raw="100000000",
+                    due_date="2026-06-01",
+                    obligor="Bên A",
+                ),
+            ],
+        )
+
+        events = db.query(Event).filter(
+            Event.entity_type == "document",
+            Event.entity_id == doc_id,
+            Event.event_type == "obligation_schedule_derived",
+        ).all()
+        assert len(events) == 1
+        import json as _json
+        payload = _json.loads(events[0].payload)
+        assert payload["count"] == 1
+        assert payload["items"][0]["description"] == "Thanh toán đợt 1"
+        assert payload["items"][0]["obligation_type"] == "payment"
