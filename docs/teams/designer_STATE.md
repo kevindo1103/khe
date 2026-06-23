@@ -101,7 +101,11 @@ Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey
   - **`JourneyEmptyState` 4-state matrix** (cold_start / processing / all_clear / no_match) — fixes the #198 false-reassurance anti-pattern; cold-start ≠ all-clear wording
   - `SetupProgress` stepper, `ReminderNudge` (ACTIVATED gate ≥1 channel, no hard-block), `LockedNav` (first-session only), `ScopeCard` (per-contract + hint loop, no "đã được bảo vệ"), `ConciergeWelcome` (D-02 Option B pre-fill→user self-confirm)
   - tagged `// PHASE-2-IA-DEBT` (entity vs job-shaped nav)
-- [ ] **Phase B** — Stage 0/3/6/7 screen mockups (priority: onboarding, doc-review trust point, chat aggregate vs retrieval, 3-tab obligations).
+- [ ] **Phase B** — Stage 0/3/6/7 screen mockups (priority):
+  - [x] Stage 0 `mockup_journey_stage0_onboarding_v0.1.jsx` — concierge (NEEDS_REVIEW pre-filled, D-02 Opt B) + self-serve (1 CTA, locked nav)
+  - [x] Stage 6 `mockup_journey_stage6_chat_v0.1.jsx` — aggregate≠retrieval split; cold-start nudge (no D-08 chips); D-08 only on real no-match
+  - [ ] Stage 3 — document review (trust point): revamp of `mockup_admin_document_detail` to v0.2 + side-by-side + self-party + confirm readback (D-02)
+  - [ ] Stage 7 — 3-tab obligations: revamp `mockup_admin_obligation_v0.2` to journey primitives (4-state empties per tab)
 - [ ] **Phase C** — Stage 1/2/4/5/8 (upload, processing narration, AHA obligation card, Telegram reminder, steady-state dashboard).
 - Watch: progressive-extraction (Stage 2) → FR-EX; chat aggregate/all-clear (Stage 6) → FR-CQ → DOCS_INBOX when those land.
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
