@@ -54,8 +54,22 @@ export const JOURNEY_LABEL = {
  * 2. JourneyEmptyState — the 4-STATE MATRIX (CRITICAL — fixes #198 anti-pattern)
  *   Apply on EVERY surface that renders a list. State 1 must NEVER borrow
  *   state 3's "Khế sẽ nhắc khi có hạn" message.
+ *
+ *   DRIFT GUARD (QC Gap B): this is a CLOSED contract — `state` MUST be one of
+ *   EMPTY_STATES. Free-form empty copy is forbidden; unknown state dev-warns +
+ *   renders nothing (so a wrong string can't silently regress to false
+ *   reassurance). QC checklist: every list surface uses <JourneyEmptyState>,
+ *   never an ad-hoc empty <div>. Recommend a lint rule blocking literal
+ *   "Khế sẽ nhắc" outside this file.
  * ========================================================================= */
+export const EMPTY_STATES = ["cold_start", "processing", "all_clear", "no_match"];
+
 export function JourneyEmptyState({ state, docCount = 0, onUpload, onRetry }) {
+  if (!EMPTY_STATES.includes(state)) {
+    // eslint-disable-next-line no-console
+    if (typeof console !== "undefined") console.warn(`[JourneyEmptyState] unknown state "${state}" — use one of ${EMPTY_STATES.join("|")}`);
+    return null;
+  }
   switch (state) {
     case "cold_start": // 0 documents — honest: nothing here yet, drive the 1 CTA
       return (
@@ -239,7 +253,66 @@ export function ConciergeWelcome({ firmName, docCount, oblCount, nearest, onRevi
 }
 
 /* ===========================================================================
- * 8. SHOWCASE
+ * 8. FAILURE / REFUSE PATHS (QC missing-scope flag) — honesty over silence
+ * ========================================================================= */
+
+/* 8.1 ExtractionFailure (Stage 2) — never a skeleton stuck forever.
+ *   D-08 spirit: say it plainly + give a way forward (retry / manual / contact). */
+export function ExtractionFailure({ fileName, reason = "Ảnh quá mờ", onRetry, onManual }) {
+  return (
+    <Card style={{ borderColor: t.color.dangerBorder }}>
+      <div style={{ display: "flex", gap: t.space[3], alignItems: "flex-start" }}>
+        <span style={{ fontSize: 20 }}>⚠️</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>
+            Khế chưa đọc được “{fileName}”
+          </div>
+          <div style={{ fontSize: t.font.size.sm, color: t.color.inkMuted, marginTop: 2, lineHeight: t.font.lineHeight.relaxed }}>
+            Lý do: {reason}. Bản gốc vẫn được lưu — bạn có thể thử lại hoặc nhập tay.
+          </div>
+          <div style={{ marginTop: t.space[3], display: "flex", gap: t.space[2], flexWrap: "wrap" }}>
+            <Button size="sm" onClick={onRetry}>Thử đọc lại</Button>
+            <Button size="sm" variant="secondary" onClick={onManual}>Nhập tay</Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* 8.2 PartialUpload (Stage 1) — batch with mixed outcomes; never hide the failures. */
+export function PartialUpload({ ok = 0, failed = [], onReviewFailed }) {
+  return (
+    <Card>
+      <div style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>
+        Đã xử lý {ok + failed.length} tài liệu
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: t.space[2], marginTop: t.space[3] }}>
+        <div style={{ display: "flex", alignItems: "center", gap: t.space[2] }}>
+          <Badge kind="done" dot>{ok} đã đọc xong</Badge>
+        </div>
+        {failed.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: t.space[2] }}>
+            <Badge kind="overdue" dot>{failed.length} chưa đọc được</Badge>
+            <span style={{ fontSize: t.font.size.xs, color: t.color.inkMuted }}>{failed.join(", ")}</span>
+          </div>
+        )}
+      </div>
+      {failed.length > 0 && (
+        <div style={{ marginTop: t.space[3] }}>
+          {/* batch stays partial — tenant stage NOT blocked by failed docs (per stage-vs-doc rule) */}
+          <Button size="sm" variant="secondary" onClick={onReviewFailed}>Xem {failed.length} tài liệu lỗi</Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* Note (Stage 4 refuse): handled by ReminderNudge (§6) — skip both channels → CONFIRMED
+ * (not ACTIVATED) + persistent top-bar nudge, never a hard block / stuck state. */
+
+/* ===========================================================================
+ * 9. SHOWCASE
  * ========================================================================= */
 function Block({ title, note, children }) {
   return (
@@ -316,6 +389,11 @@ export default function JourneyPrimitivesShowcase() {
         <div style={{ width: 420 }}>
           <ConciergeWelcome firmName="Đại lý thuế Chị Hằng" docCount={3} oblCount={7} nearest={{ label: "gia hạn mặt bằng Q7", days: 23 }} />
         </div>
+      </Block>
+
+      <Block title="Failure / refuse paths" note="QC missing-scope: extraction fail không để skeleton kẹt; batch partial không giấu lỗi; Stage 4 refuse → CONFIRMED + nudge (không stuck).">
+        <div style={{ width: 360 }}><ExtractionFailure fileName="HĐ thuê kho.jpg" onRetry={() => {}} onManual={() => {}} /></div>
+        <div style={{ width: 360 }}><PartialUpload ok={2} failed={["HĐ thuê kho.jpg"]} onReviewFailed={() => {}} /></div>
       </Block>
     </div>
   );

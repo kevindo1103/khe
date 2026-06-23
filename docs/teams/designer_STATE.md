@@ -108,6 +108,14 @@ Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey
   - [ ] Stage 7 — 3-tab obligations: revamp `mockup_admin_obligation_v0.2` to journey primitives (4-state empties per tab)
 - [ ] **Phase C** — Stage 1/2/4/5/8 (upload, processing narration, AHA obligation card, Telegram reminder, steady-state dashboard).
 - Watch: progressive-extraction (Stage 2) → FR-EX; chat aggregate/all-clear (Stage 6) → FR-CQ → DOCS_INBOX when those land.
+
+### QC #198 packet review — conditional GO, gaps addressed (2026-06-23)
+- **Gap B (drift enforcement):** `JourneyEmptyState` now CLOSED contract — `EMPTY_STATES` enum + dev-warn on unknown + render-null (can't silently regress to false reassurance). Recommend lint: block literal "Khế sẽ nhắc" outside primitive.
+- **Missing-scope (failure/refuse):** added `ExtractionFailure` (Stage 2, no stuck skeleton, retry/manual) + `PartialUpload` (Stage 1, failed docs don't block tenant stage). Stage 4 refuse handled by `ReminderNudge` (CONFIRMED + nudge, no hard block).
+- **Gap A (backend coord):** Stage 6 aggregate-vs-retrieval = FR-CQ spec change (chat intent classifier: aggregate answers from store, not D-08). → DOCS_INBOX #1 + relay `for:backend`, coordinate #27/#146. NOT pure UI rewrite.
+- **Gap C (v0.1 freeze, EXPLICIT):** v0.1 FROZEN, fix-forward in v0.2, migration MANDATORY. Proposed deadline: remove v0.1 imports within 2 weeks of all screens migrating — **needs PM/Frontend confirm**.
+- **QC open-Q accepted:** lock Stage 0/6 first (defer Stage 3 — heaviest, rework risk); OPEN PR for inline review; defer job-shaped nav post-pilot.
+
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
   Phase 2 detail design, flag via DOCS_INBOX (do not self-resolve).
