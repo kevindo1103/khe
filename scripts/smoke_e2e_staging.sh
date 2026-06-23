@@ -70,8 +70,8 @@ HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
   -H "Content-Type: application/json" \
   -d "$LOGIN_BODY" \
   "$BASE/auth/login")
-if [ "$HTTP" = "201" ]; then
-  ok "POST /auth/login → 201 (cookie set)"
+if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
+  ok "POST /auth/login → $HTTP (cookie set)"
 else
   die "POST /auth/login → $HTTP — cannot continue without auth"
   printf "\n══ ABORT: login failed. Check KHE_TENANT/KHE_USER/KHE_PASS. ══\n"
@@ -128,18 +128,20 @@ if [ -z "$TEST_FILE" ]; then
   CREATED_TEST_FILE=1
 fi
 
-UPLOAD_RESP=$(curl -s -b "$COOKIE_JAR" \
+# Single call — capture body + HTTP code together (a second curl would upload twice,
+# burning quota + creating a duplicate doc).
+UPLOAD_OUT=$(curl -s -w "\n%{http_code}" -b "$COOKIE_JAR" \
   -F "file=@${TEST_FILE}" \
   "$BASE/ingest/upload")
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" \
-  -F "file=@${TEST_FILE}" \
-  "$BASE/ingest/upload")
+HTTP=$(printf '%s' "$UPLOAD_OUT" | tail -n1)
+UPLOAD_RESP=$(printf '%s' "$UPLOAD_OUT" | sed '$d')
 
 # Clean up generated test file
 if [ "${CREATED_TEST_FILE:-}" = "1" ]; then rm -f "$TEST_FILE"; fi
 
 if [ "$HTTP" = "201" ] || [ "$HTTP" = "200" ]; then
-  DOC_ID=$(echo "$UPLOAD_RESP" | jq -r '.document_id // .id // empty')
+  # UploadOut.doc_id is the canonical field (backend/app/schemas/documents.py).
+  DOC_ID=$(echo "$UPLOAD_RESP" | jq -r '.doc_id // .document_id // .id // empty')
   ok "POST /ingest/upload → $HTTP (doc_id=$DOC_ID)"
 else
   die "POST /ingest/upload → $HTTP"
@@ -154,47 +156,46 @@ if [ -n "$DOC_ID" ]; then
   POLL_INTERVAL=3
   for i in $(seq 1 $MAX_POLLS); do
     DOC_RESP=$(curl -s -b "$COOKIE_JAR" "$BASE/documents/$DOC_ID")
-    DOC_STATUS=$(echo "$DOC_RESP" | jq -r '.extraction_status // .status // "unknown"')
+    # Terminal success = "extracted", failure = "failed" (extraction_runner.py).
+    DOC_STATUS=$(echo "$DOC_RESP" | jq -r '.status // "unknown"')
     printf "  poll %d/%d: status=%s\n" "$i" "$MAX_POLLS" "$DOC_STATUS"
 
-    if [ "$DOC_STATUS" = "completed" ] || [ "$DOC_STATUS" = "done" ]; then
-      ok "Extraction completed"
+    if [ "$DOC_STATUS" = "extracted" ]; then
+      ok "Extraction completed (status=extracted)"
 
-      # Check for obligation_schedule (DEC-030 Phase 2)
-      OBL_COUNT=$(echo "$DOC_RESP" | jq '[.obligation_schedule // [] | length] | .[0]')
-      CLAUSE_COUNT=$(echo "$DOC_RESP" | jq '[.clauses // [] | length] | .[0]')
+      # DocumentDetailOut fields: obligations[] · clause_count (int) · parties[] · terms[].
+      OBL_COUNT=$(echo "$DOC_RESP" | jq '[.obligations // [] | length] | .[0]')
+      CLAUSE_COUNT=$(echo "$DOC_RESP" | jq -r '.clause_count // 0')
       PARTY_COUNT=$(echo "$DOC_RESP" | jq '[.parties // [] | length] | .[0]')
-      COST=$(echo "$DOC_RESP" | jq -r '.cost_vnd // "n/a"')
-      PROVIDER=$(echo "$DOC_RESP" | jq -r '.provider // "n/a"')
-      printf "  provider=%s cost_vnd=%s obligations=%s clauses=%s parties=%s\n" \
-        "$PROVIDER" "$COST" "$OBL_COUNT" "$CLAUSE_COUNT" "$PARTY_COUNT"
+      printf "  obligations=%s clause_count=%s parties=%s\n" \
+        "$OBL_COUNT" "$CLAUSE_COUNT" "$PARTY_COUNT"
 
-      # Source anchors (#230 / FR-EX-05): assert at least one term has page_num.
-      # Gemini-only — Claude fallback leaves anchors null (graceful degrade, not a fail).
+      # ── #230 / FR-EX-05 anchor gate ──
+      # NOTE: DocumentDetailOut does NOT expose `provider`, so the script can't tell
+      # Gemini (anchors expected) from a Claude fallback (anchors null, graceful). The
+      # hard assertion therefore runs ONLY when a real KHE_TEST_FILE was supplied — the
+      # 67-byte synthetic PNG yields no extractable terms and would false-fail.
       TERM_COUNT=$(echo "$DOC_RESP" | jq '[.terms // [] | length] | .[0]')
       ANCHORED=$(echo "$DOC_RESP" | jq '[.terms // [] | map(select(.page_num != null)) | length] | .[0]')
       REFFED=$(echo "$DOC_RESP" | jq '[.terms // [] | map(select(.ref != null)) | length] | .[0]')
       printf "  terms=%s anchored(page_num)=%s with_ref=%s\n" "$TERM_COUNT" "$ANCHORED" "$REFFED"
-      if [ "$PROVIDER" = "gemini_flash" ]; then
-        if [ "${ANCHORED:-0}" -gt 0 ] 2>/dev/null; then
-          ok "#230 anchors populate ($ANCHORED/$TERM_COUNT terms have page_num)"
-        else
-          die "#230 anchors EMPTY on gemini_flash — grammar 'too many states' or dropped? Check raw terms[]"
-        fi
+      if [ "${CREATED_TEST_FILE:-}" = "1" ]; then
+        printf "  ℹ synthetic PNG used — anchor gate SKIPPED. Set KHE_TEST_FILE to a real contract to gate #230.\n"
+      elif [ "${ANCHORED:-0}" -gt 0 ] 2>/dev/null; then
+        ok "#230 anchors populate ($ANCHORED/$TERM_COUNT terms have page_num)"
       else
-        printf "  ℹ provider=%s (not gemini_flash) — anchors expected null (Claude fallback)\n" "$PROVIDER"
+        die "#230 anchors EMPTY — if extraction ran on gemini_flash this is a grammar 'too many states' / silent-drop failure; if a Claude fallback fired, anchors are expected null (confirm provider via audit/Event)."
       fi
       break
-    elif [ "$DOC_STATUS" = "failed" ] || [ "$DOC_STATUS" = "error" ]; then
-      die "Extraction failed"
-      printf "  Response: %s\n" "$(echo "$DOC_RESP" | jq -c '.')"
+    elif [ "$DOC_STATUS" = "failed" ]; then
+      die "Extraction failed: $(echo "$DOC_RESP" | jq -r '.failure_reason // "no reason"')"
       break
     fi
 
     sleep "$POLL_INTERVAL"
   done
 
-  if [ "$i" = "$MAX_POLLS" ] && [ "$DOC_STATUS" != "completed" ] && [ "$DOC_STATUS" != "done" ]; then
+  if [ "$i" = "$MAX_POLLS" ] && [ "$DOC_STATUS" != "extracted" ]; then
     die "Extraction did not complete within $((MAX_POLLS * POLL_INTERVAL))s (last status=$DOC_STATUS)"
   fi
 else
