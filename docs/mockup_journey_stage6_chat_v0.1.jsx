@@ -17,6 +17,30 @@
  *
  * SPEC WATCH: aggregate-vs-retrieval routing + all-clear answer touch FR-CQ →
  *   DOCS_INBOX when this composes into the built chat (coordinate Backend #27/#146).
+ *
+ * AGGREGATE RESPONSE CONTRACT (#199 — LOCKED 2026-06-23, backend builds to this)
+ *   Backend adds a 4th LLM tool `aggregate_obligations` (no separate classifier).
+ *   Decisions: (1) NO amount_raw sum in v1 — count + series progress only (D-06:
+ *   summing free-text money fabricates figures). (2) group_by axes = direction /
+ *   status / obligation_type / series. (3) Shape below (formalized from the
+ *   "có data" tab, line ~84):
+ *     {
+ *       intent: "aggregate" | "retrieval",
+ *       found: true,                 // ALWAYS true for aggregate — even total=0 (never D-08)
+ *       answer: "Bạn có 7 nghĩa vụ…",// composed prose
+ *       summary: {
+ *         total: 7, group_by: "direction",
+ *         groups: [{ key, label, count, nearest?: {title, days_left | trigger} }],
+ *         status_breakdown: { waiting_trigger, overdue, due_soon }  // cheap; powers the 3rd bullet
+ *       },
+ *       source: { obligation_count, doc_count, label: "7 nghĩa vụ · 3 hợp đồng" },
+ *       sources: [...]               // drill-down refs (FR-CQ-02)
+ *     }
+ *   THREE distinct zero-states (FE renders differently — keep separate):
+ *     • cold_start  → tenant has 0 docs → found:true + `tenant_empty:true` → onboarding nudge (NOT "0", NOT D-08)
+ *     • aggregate-0 → has data, filter count 0 → found:true, total:0 → "Bạn không có … quá hạn."
+ *     • retrieval no-match → found:false, intent:"retrieval", D-08 exact string, sources:[]
+ *   Suggestion chips are FE-static (not backend). Acceptance = QC 9-case surface on #199.
  */
 import React, { useState } from "react";
 import { tokens as t, Button } from "./mockup_design_system_v0.2.jsx";

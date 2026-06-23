@@ -113,6 +113,7 @@ Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey
   - Stage 5 `mockup_journey_stage5_reminder_v0.1.jsx` — Telegram message template (source + Đã xử lý/Nhắc lại sau + deep-link) + landing
   - Stage 8 `mockup_journey_stage8_dashboard_v0.1.jsx` — "Tổng quan" answers "cần lo gì?" — legitimate reassurance only (all-clear vs has-work) + ScopeCard (no overpromise)
 - Watch: progressive-extraction (Stage 2) → FR-EX; chat aggregate/all-clear (Stage 6) → FR-CQ → DOCS_INBOX when those land.
+- **#199 Stage 6 aggregate contract LOCKED (2026-06-23)** — formalized prose → structured shape; backend adds `aggregate_obligations` tool. NO amount sum v1 (D-06); axes direction/status/obligation_type/series; 3 zero-states (cold_start `tenant_empty` / aggregate-0 / retrieval-D-08). Folded into `mockup_journey_stage6_chat_v0.1.jsx` header. Backend unblocked.
 
 ### QC #198 packet review — conditional GO, gaps addressed (2026-06-23)
 - **Gap B (drift enforcement):** `JourneyEmptyState` now CLOSED contract — `EMPTY_STATES` enum + dev-warn on unknown + render-null (can't silently regress to false reassurance). Recommend lint: block literal "Khế sẽ nhắc" outside primitive.
