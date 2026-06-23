@@ -61,6 +61,25 @@ class TestLegalNameEndpoint:
         r = c.patch("/tenants/me/legal_name", json={"legal_name": "Test"})
         assert r.status_code == 401
 
+    def test_get_legal_name_null_when_unset(self, auth_client, test_tenant):
+        """GET returns legal_name=null when TenantProfile row not yet created (#176)."""
+        r = auth_client.get("/tenants/me/legal_name")
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "legal_name": None}
+
+    def test_get_legal_name_after_patch(self, auth_client, test_tenant):
+        """GET returns current legal_name after PATCH upsert (#176)."""
+        auth_client.patch("/tenants/me/legal_name", json={"legal_name": "Công ty ABC"})
+        r = auth_client.get("/tenants/me/legal_name")
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "legal_name": "Công ty ABC"}
+
+    def test_get_legal_name_requires_auth(self):
+        """Unauthenticated GET → 401."""
+        c = TestClient(__import__("main").app)
+        r = c.get("/tenants/me/legal_name")
+        assert r.status_code == 401
+
 
 class TestConfirmSelfParty:
     """POST /documents/{doc_id}/confirm_self_party — re-derive direction."""

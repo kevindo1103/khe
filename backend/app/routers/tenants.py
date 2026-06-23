@@ -19,7 +19,21 @@ class LegalNameIn(BaseModel):
 
 class LegalNameOut(BaseModel):
     ok: bool
-    legal_name: str
+    legal_name: str | None
+
+
+@router.get("/me/legal_name", response_model=LegalNameOut)
+def get_legal_name(
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_master_db),
+):
+    """Read current legal_name (null if not set yet)."""
+    profile = (
+        db.query(TenantProfile)
+        .filter(TenantProfile.tenant_id == user.tenant_id)
+        .first()
+    )
+    return {"ok": True, "legal_name": profile.legal_name if profile else None}
 
 
 @router.patch("/me/legal_name", response_model=LegalNameOut)
