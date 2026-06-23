@@ -33,7 +33,7 @@ from urllib.request import (
     build_opener,
 )
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "https://staging.khe.iceflow.cloud"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "https://staging.khe.iceflow.cloud/api"
 TENANT = os.environ.get("KHE_TENANT")
 USER = os.environ.get("KHE_USER")
 PASS = os.environ.get("KHE_PASS")

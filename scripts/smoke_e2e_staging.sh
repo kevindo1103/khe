@@ -14,7 +14,7 @@
 # ─────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-BASE="${1:-https://staging.khe.iceflow.cloud}"
+BASE="${1:-https://staging.khe.iceflow.cloud/api}"
 TENANT="${KHE_TENANT:?Set KHE_TENANT env var}"
 USER="${KHE_USER:?Set KHE_USER env var}"
 PASS="${KHE_PASS:?Set KHE_PASS env var}"
