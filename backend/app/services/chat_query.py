@@ -18,6 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.tenant import ChatQueryLog, Clause, Document, Obligation, Term
+from app.services import chat_session
 
 
 logger = logging.getLogger(__name__)
@@ -469,6 +470,7 @@ def _tool_search_obligations(
             {
                 "type": "obligation",
                 "document_id": doc.id,
+                "obligation_id": ob.id,
                 "file_name": doc.file_name,
                 "field_name": "due_date",
                 "value": ob.due_date or ob.trigger_condition or "chờ sự kiện",
@@ -784,17 +786,62 @@ def _safe_log_chat_query(
         logger.warning("chat_query_log failed for tenant=%s", tenant_id, exc_info=True)
 
 
-async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
+def _persist_query_and_session(
+    db, tenant_id, question, tool_calls, found, result_count,
+    input_tokens=0, output_tokens=0, cost_vnd=0.0, llm_calls=0,
+    user_id=None, session_id=None, state=None,
+):
+    """One transaction: chat_query_log row + optional chat_sessions upsert (#201).
+
+    Combining both writes into a single commit avoids the SQLite same-thread
+    write-lock (CLAUDE.md bug pattern). Never raises — a persistence failure must
+    not break the chat response.
+    """
+    try:
+        db.add(ChatQueryLog(
+            tenant_id=tenant_id,
+            question=question,
+            tool_calls=json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
+            found=found,
+            result_count=result_count,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_vnd=cost_vnd,
+            llm_calls=llm_calls,
+        ))
+        if session_id and state is not None:
+            chat_session.upsert_session(db, tenant_id, user_id, session_id, state)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning("chat persist (log+session) failed for tenant=%s", tenant_id, exc_info=True)
+
+
+async def answer_question(
+    db: Session,
+    tenant_id: str,
+    question: str,
+    *,
+    user_id: int | None = None,
+    session_id: str | None = None,
+) -> dict:
     """Answer a chat query within a tenant scope.
 
-    Returns {"answer": str, "sources": list[dict], "found": bool}.
+    Returns {"answer", "sources", "found", "context_label", "session_id"}.
+    Session state (DEC-031 v2) is a soft prior: present only when ``session_id``
+    is supplied; never changes whether data is found (D-08), only ranking/scope.
     """
     from modules.extraction import cost_vnd as _cost_vnd, TokenUsage
     _GEMINI_IN, _GEMINI_OUT = 0.30, 2.50  # gemini-2.5-flash per-1M-token USD
 
     if not question or not question.strip():
         _safe_log_chat_query(db, tenant_id, question, [], False, 0)
-        return {"answer": _NOT_FOUND, "sources": [], "found": False}
+        return {"answer": _NOT_FOUND, "sources": [], "found": False,
+                "context_label": None, "session_id": session_id}
+
+    # Load prior working set (soft prior). None when cold / no session.
+    prior_state = chat_session.load_session_state(db, tenant_id, user_id, session_id) if session_id else None
+    prior_doc_ids = (prior_state or {}).get("active_doc_ids") or []
 
     # Step 1: let the LLM decide which tools to call.
     tool_calls, routing_usage = await _select_tools(db, tenant_id, question)
@@ -869,7 +916,13 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
         _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0,
                              input_tokens=total_in, output_tokens=total_out,
                              cost_vnd=_cost, llm_calls=llm_calls)
-        return {"answer": _NOT_FOUND, "sources": [], "found": False}
+        return {"answer": _NOT_FOUND, "sources": [], "found": False,
+                "context_label": None, "session_id": session_id}
+
+    # Soft prior (DEC-031 v2): narrow to the working set only if it still matches;
+    # otherwise keep the full result set (never hide data → D-08 safe).
+    had_doc_hint = any(c["args"].get("doc_hint") for c in tool_calls)
+    all_results, _used_prior = chat_session.apply_soft_prior(all_results, prior_doc_ids, had_doc_hint)
 
     # Step 3: format answer from results (D-06: only use provided data).
     answer, format_usage = await _format_answer(question, all_results)
@@ -885,13 +938,15 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
         _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0,
                              input_tokens=total_in, output_tokens=total_out,
                              cost_vnd=_cost, llm_calls=llm_calls)
-        return {"answer": _NOT_FOUND, "sources": [], "found": False}
+        return {"answer": _NOT_FOUND, "sources": [], "found": False,
+                "context_label": None, "session_id": session_id}
 
     # Step 4: build provenance sources (exclude internal truncation hints from the response).
     sources = [
         {
             "type": r["type"],
             "document_id": r["document_id"],
+            "obligation_id": r.get("obligation_id"),
             "file_name": r["file_name"],
             "field_name": r["field_name"],
             "value": r["value"],
@@ -913,8 +968,28 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
         if r["type"] != "truncation_hint"
     ]
 
+    # Step 5: re-seed the working set (DEC-031 v2, #201). Pointer IDs only.
+    #   Over the size cap → don't persist a working set (context_label=null).
+    context_label = None
+    state_to_persist = None
+    if session_id:
+        doc_ids, obl_ids, label = chat_session.compute_working_set(sources)
+        if not chat_session.over_cap(doc_ids, obl_ids):
+            last_tool = tool_calls[0]["name"] if tool_calls else None
+            state_to_persist = chat_session.build_state(doc_ids, obl_ids, label, last_tool)
+            context_label = label
+
     _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
-    _safe_log_chat_query(db, tenant_id, question, tool_calls, True, len(sources),
-                         input_tokens=total_in, output_tokens=total_out,
-                         cost_vnd=_cost, llm_calls=llm_calls)
-    return {"answer": answer, "sources": sources, "found": True}
+    # Single transaction: chat_query_log row + chat_sessions upsert (SQLite lock).
+    _persist_query_and_session(
+        db, tenant_id, question, tool_calls, True, len(sources),
+        input_tokens=total_in, output_tokens=total_out, cost_vnd=_cost, llm_calls=llm_calls,
+        user_id=user_id, session_id=session_id, state=state_to_persist,
+    )
+    return {
+        "answer": answer,
+        "sources": sources,
+        "found": True,
+        "context_label": context_label,
+        "session_id": session_id,
+    }
