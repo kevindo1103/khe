@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID: str | None = os.getenv("TELEGRAM_CHAT_ID")
 
+    # Per-tenant engine cache cap (#184). LRU-evicts cold tenants so cached
+    # SQLite engines don't hold file handles forever (insurance for #181).
+    TENANT_ENGINE_CACHE_SIZE: int = int(os.getenv("TENANT_ENGINE_CACHE_SIZE", "20"))
+
     @property
     def MASTER_DB_URL(self) -> str:
         return f"sqlite:///{self.DATA_DIR / 'master.db'}"
