@@ -12,16 +12,22 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
 from app.db.database import MasterSessionLocal, get_tenant_session
 from app.models.master import Tenant
-from app.services.reminders import send_reminders_for_tenant
+from app.models.tenant import Event
+from app.services.reminders import (
+    retry_failed_reminders_for_tenant,
+    send_reminders_for_tenant,
+)
 from app.services.obligation_expander import expand_recurring_obligations
 
 logger = logging.getLogger(__name__)
 
 _ICT = ZoneInfo("Asia/Ho_Chi_Minh")
+_DAILY_REMINDER_HOUR = 8  # 08:00 ICT daily reminder fire time
 
 # One-time scheduler benchmark (#185). /health/scheduler reports how long a
 # multi-tenant tick takes and how many tenants it loops — to measure distance
@@ -92,20 +98,101 @@ async def run_expand_all_tenants() -> None:
     logger.info("obligation_expander tick: tenants=%d duration_ms=%s", len(tenants), elapsed_ms)
 
 
+async def run_retry_tick_all_tenants() -> None:
+    """Every-30-min retry tick (#183): re-attempt failed reminders per tenant."""
+    db: Session = MasterSessionLocal()
+    try:
+        tenants = db.query(Tenant).all()
+    finally:
+        db.close()
+
+    for tenant in tenants:
+        tenant_db = get_tenant_session(tenant.id)
+        try:
+            res = await retry_failed_reminders_for_tenant(tenant_db, tenant.id)
+            if res.get("retried") or res.get("dead"):
+                logger.info("retry tick tenant=%s %s", tenant.id, res)
+        except Exception as exc:
+            logger.exception("Retry tick failed for tenant %s: %s", tenant.id, exc)
+        finally:
+            tenant_db.close()
+
+
+async def catch_up_missed_daily_run(reference_time: datetime | None = None) -> bool:
+    """On startup, fire the daily reminder job if it was missed today (#183).
+
+    APScheduler's in-memory job store does not persist missed runs across a
+    process restart, so a crash during the 08:00 fire window would silently skip
+    a day. If it's already past the daily run hour and no tenant has a
+    reminder_batch Event dated today, run the job once now.
+
+    Returns True if a catch-up run was triggered.
+    """
+    now = reference_time or datetime.now(_ICT)
+    if now.hour < _DAILY_REMINDER_HOUR:
+        return False  # today's window hasn't opened yet — normal cron will fire.
+
+    today = now.date()
+    db: Session = MasterSessionLocal()
+    try:
+        tenants = db.query(Tenant).all()
+    finally:
+        db.close()
+
+    ran_today = False
+    for tenant in tenants:
+        tenant_db = get_tenant_session(tenant.id)
+        try:
+            batch = (
+                tenant_db.query(Event)
+                .filter(
+                    Event.entity_type == "tenant",
+                    Event.event_type == "reminder_batch",
+                )
+                .order_by(Event.created_at.desc())
+                .first()
+            )
+            if batch and batch.created_at and batch.created_at.date() == today:
+                ran_today = True
+                break
+        finally:
+            tenant_db.close()
+
+    if ran_today:
+        return False
+
+    logger.info("Daily reminder run missed for %s — firing catch-up now", today)
+    await run_daily_reminder_job()
+    return True
+
+
 def create_scheduler() -> AsyncIOScheduler:
     """Create and configure the APScheduler."""
     scheduler = AsyncIOScheduler(timezone="Asia/Ho_Chi_Minh")
     scheduler.add_job(
         run_daily_reminder_job,
-        trigger=CronTrigger(hour=8, minute=0),
+        trigger=CronTrigger(hour=_DAILY_REMINDER_HOUR, minute=0),
         id="daily_reminder_job",
         replace_existing=True,
+        # Tolerate event-loop lag / short pauses so a slightly-late fire still
+        # runs instead of being skipped (#183). Cross-restart catch-up is handled
+        # by catch_up_missed_daily_run() since the memory job store doesn't persist.
+        misfire_grace_time=4 * 3600,
+        coalesce=True,
     )
     scheduler.add_job(
         run_expand_all_tenants,
         trigger=CronTrigger(day_of_week="mon", hour=2, minute=0),
         id="obligation_expander",
         replace_existing=True,
+    )
+    scheduler.add_job(
+        run_retry_tick_all_tenants,
+        trigger=IntervalTrigger(minutes=30),
+        id="reminder_retry_tick",
+        replace_existing=True,
+        misfire_grace_time=600,
+        coalesce=True,
     )
     return scheduler
 
