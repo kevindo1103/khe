@@ -52,6 +52,7 @@ class DocumentDetailOut(BaseModel):
     terms: list[TermOut] = []
     obligations: list[Any] = []
     clause_count: int = 0
+    parties: list[dict] = []
     # When status == "failed", populated from the most recent extraction_failed
     # Event's payload.reason — surfaces the exact failure path (#79 follow-up)
     # so UAT can self-diagnose without VPS access. Null for non-failed docs.
@@ -70,3 +71,15 @@ class UploadOut(BaseModel):
 class BulkUploadOut(BaseModel):
     count: int
     documents: list[UploadOut]
+
+
+# ── Self-party confirmation (DEC-030, #155) ──
+
+
+class SelfPartyIn(BaseModel):
+    role_label: str
+
+
+class SelfPartyOut(BaseModel):
+    ok: bool
+    updated: int

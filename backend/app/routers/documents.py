@@ -32,12 +32,14 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
-from app.models.tenant import Clause, Document, Event, Obligation, Term
+from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
     DocumentDetailOut,
     DocumentListItem,
     DocumentListOut,
+    SelfPartyIn,
+    SelfPartyOut,
     TermOut,
     TermPatchIn,
     UploadOut,
@@ -393,6 +395,12 @@ def get_document(
         .all()
     )
 
+    parties = (
+        db.query(Party)
+        .filter(Party.document_id == doc_id, Party.tenant_id == user.tenant_id)
+        .all()
+    )
+
     clause_count = (
         db.query(Clause)
         .filter(Clause.document_id == doc_id, Clause.tenant_id == user.tenant_id)
@@ -430,6 +438,7 @@ def get_document(
         terms=[TermOut.model_validate(t) for t in terms],
         obligations=[ObligationOut.model_validate(o) for o in obligations],
         clause_count=clause_count,
+        parties=[{"name": p.name, "role_label": p.role_label} for p in parties],
         failure_reason=failure_reason,
     )
 
@@ -509,3 +518,54 @@ def patch_term(
     )
 
     return {"ok": True, "term_id": term.id, "field_value": term.field_value}
+
+
+# ── Self-party confirmation (DEC-030, #155) ──
+
+
+@docs_router.post("/{doc_id}/confirm_self_party", response_model=SelfPartyOut)
+def confirm_self_party(
+    doc_id: int,
+    body: SelfPartyIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """User selects which role_label is 'me' → re-derive direction for all obligations.
+
+    D-02: this is a user-confirm action — direction is set from human choice, not auto.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    obligations = (
+        db.query(Obligation)
+        .filter(Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id)
+        .all()
+    )
+    updated = 0
+    for obl in obligations:
+        if obl.obligor:
+            new_direction = "nghĩa_vụ" if obl.obligor == body.role_label else "quyền_lợi"
+            if obl.direction != new_direction:
+                obl.direction = new_direction
+                updated += 1
+        # obligor is None → direction stays null (D-08)
+
+    db.commit()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="self_party_confirmed",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"role_label": body.role_label, "updated": updated},
+    )
+
+    return {"ok": True, "updated": updated}

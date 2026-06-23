@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_tenant_session
-from app.models.tenant import Clause, Document, Event, Obligation, Term
+from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations
 from modules.extraction import ExtractionUnavailable, get_extraction_provider
@@ -176,6 +176,20 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                     page_num=None,
                 )
             )
+
+        # 8c. Persist parties (DEC-030, #155). Idempotent: delete existing
+        #     per-doc Party rows first, then re-insert from result.parties[].
+        db.query(Party).filter(
+            Party.document_id == doc_id,
+            Party.tenant_id == tenant_id,
+        ).delete()
+        for party_item in result.parties:
+            db.add(Party(
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                name=party_item.name,
+                role_label=party_item.role_label,
+            ))
 
         # 9. Update document.
         doc.doc_type = result.doc_type.value
