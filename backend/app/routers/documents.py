@@ -47,7 +47,7 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
-from app.services import tenant_journey
+from app.services import quota, tenant_journey
 
 # Split routers to match frozen contract #1.
 ingest_router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -262,6 +262,14 @@ def upload_document(
             detail="SME consent for AI extraction not recorded. Log consent first.",
         )
 
+    # Quota gate (D-11 / #63): atomic consume BEFORE persist + extraction (no LLM
+    # call once over quota). The conditional UPDATE is the TOCTOU-safe gate.
+    if not quota.try_consume_quota(master_db, user.tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Quota exceeded. Contact your firm partner to adjust limit.",
+        )
+
     result = _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
     # Journey (#213): first upload moves NEW → EXTRACTING (monotonic no-op after).
     tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
@@ -292,17 +300,25 @@ def upload_bulk(
             detail="SME consent for AI extraction not recorded. Log consent first.",
         )
 
+    # Quota gate per-file (D-11 / #63, PM Q4): a near-limit batch accepts files
+    # until the quota is hit, then marks the rest quota_exceeded — never fails the
+    # whole batch (DEC-012 concierge onboarding). Slot consumed atomically per file.
     results: list[UploadOut] = []
+    accepted = 0
     for file in files:
+        if not quota.try_consume_quota(master_db, user.tenant_id):
+            results.append(UploadOut(doc_id=None, file_name=file.filename or "", status="quota_exceeded"))
+            continue
         results.append(
             _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
         )
+        accepted += 1
 
-    # Journey (#213): first upload moves NEW → EXTRACTING (monotonic no-op after).
-    if results:
+    # Journey (#213): first accepted upload moves NEW → EXTRACTING (no-op after).
+    if accepted:
         tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
 
-    return BulkUploadOut(count=len(results), documents=results)
+    return BulkUploadOut(count=accepted, documents=results)
 
 
 # ── List (documents) ──
