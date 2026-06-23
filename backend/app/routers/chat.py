@@ -5,11 +5,12 @@ POST /chat/query — retrieve-only, tenant-scoped, D-08 / D-06 compliant.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
 from app.models.tenant import ChatQueryLog
 from app.schemas.chat import ChatQueryIn, ChatQueryOut, ChatSessionResetIn, ChatStatsOut
+from app.services import tenant_journey
 from app.services.chat_query import answer_question
 from app.services.chat_session import delete_session
 from sqlalchemy import func
@@ -22,15 +23,22 @@ async def query_chat(
     payload: ChatQueryIn,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """Answer a natural-language question using only extracted tenant data."""
-    return await answer_question(
+    result = await answer_question(
         db,
         user.tenant_id,
         payload.question,
         user_id=user.id,
         session_id=payload.session_id,
     )
+    # Journey (#213): first query after activation graduates ACTIVATED → STEADY
+    # (gated, so it can only promote from ACTIVATED — never skips the spine).
+    tenant_journey.advance_stage(
+        master_db, user.tenant_id, "STEADY", require_current_at_least="ACTIVATED"
+    )
+    return result
 
 
 @router.post("/sessions/reset")

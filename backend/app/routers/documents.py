@@ -29,7 +29,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.database import get_db
+from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
 from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
@@ -47,6 +47,7 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
+from app.services import tenant_journey
 
 # Split routers to match frozen contract #1.
 ingest_router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -252,6 +253,7 @@ def upload_document(
     doc_type: str | None = None,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """Upload a single PDF. Consent gate FIRST; 403 if SME has not consented."""
     if not check_extraction_consent(db, user.tenant_id):
@@ -260,7 +262,10 @@ def upload_document(
             detail="SME consent for AI extraction not recorded. Log consent first.",
         )
 
-    return _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+    result = _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+    # Journey (#213): first upload moves NEW → EXTRACTING (monotonic no-op after).
+    tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
+    return result
 
 
 @ingest_router.post("/bulk", response_model=BulkUploadOut, status_code=status.HTTP_201_CREATED)
@@ -271,6 +276,7 @@ def upload_bulk(
     doc_type: str | None = None,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """Upload up to 20 PDFs in one batch."""
     if len(files) > 20:
@@ -291,6 +297,10 @@ def upload_bulk(
         results.append(
             _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
         )
+
+    # Journey (#213): first upload moves NEW → EXTRACTING (monotonic no-op after).
+    if results:
+        tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
 
     return BulkUploadOut(count=len(results), documents=results)
 
