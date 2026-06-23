@@ -133,6 +133,17 @@ Ngoài ra, bóc MỌI nghĩa vụ có lịch/đợt thành danh sách "obligatio
   giữ dieu_khoan_thanh_toan ở dạng văn bản. KHÔNG bịa lịch (D-06).
 """
 
+# Source-anchor spec (#230 / FR-EX-05): for each extracted field, record WHERE on the
+# document it was read so the review UI can link straight to it (Stage 3 trust gate).
+# Claude's lean schema has no anchor slots → it simply ignores this (same as it ignores
+# clauses/parties/obligation_schedule); Gemini's Full schema fills page_num/ref.
+_ANCHOR_SPEC = """\
+Với MỖI trường bóc được (kể cả type_specific), ghi kèm vị trí trên tài liệu:
+- page_num: số trang (BẮT ĐẦU TỪ 1) nơi giá trị xuất hiện. Nếu không chắc trang nào → null (D-08, KHÔNG đoán).
+- ref: nhãn điều/khoản/mục chứa giá trị, NGUYÊN VĂN — vd "Điều 8", "Khoản 2.3", "Mục IV". null nếu không có.
+Đây chỉ là VỊ TRÍ đọc được — KHÔNG suy diễn, KHÔNG bịa trang/điều khoản không thấy (D-06).
+"""
+
 # Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
 # array of the response schema — no extra API call.
 _CLAUSES_SPEC = """\
@@ -159,6 +170,6 @@ def build_instruction(doc_type: str = "auto") -> str:
         "Đọc ảnh tài liệu hợp đồng bên dưới và bóc tách thông tin theo schema JSON yêu cầu.\n"
         f"{hint}\n"
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
-        f"{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )

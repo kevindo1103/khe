@@ -164,15 +164,46 @@ class ExtractedField(BaseModel):
         return _clamp_confidence(v)
 
 
-class NamedExtractedField(ExtractedField):
+class AnchoredField(ExtractedField):
+    """An ExtractedField that also records WHERE on the source document the value was
+    read — the trust anchor for Stage 3 ref-navigation (FR-EX-05, #230).
+
+    Gemini-only: these slots live on the Full schema, NOT the lean Claude base, to stay
+    within Claude's structured-output grammar budget ("Schema is too complex"). The
+    merged Backend contract (#217) persists `page_num`/`ref`/`bbox` via getattr, so a
+    plain ExtractedField (Claude fallback) degrades gracefully to NULL anchors → the FE
+    shows plain text instead of a dead ref-link.
+
+    READ-ONLY provenance (D-06): page/ref describe where the value sits; they never
+    generate or alter legal content. Both are null when the model can't place the value
+    (D-08 — no fabricated locations)."""
+
+    page_num: Optional[int] = Field(
+        default=None,
+        description="Số trang (BẮT ĐẦU TỪ 1) nơi giá trị xuất hiện. null nếu không xác định được (D-08).",
+    )
+    ref: Optional[str] = Field(
+        default=None,
+        description='Nhãn điều/khoản/mục nơi giá trị xuất hiện, vd "Điều 8", "Khoản 2.3". null nếu không có.',
+    )
+    # `bbox` ([x0,y0,x1,y1] normalized 0..1) DEFERRED (#230): a list[float] on every field
+    # expands Gemini's grammar state budget (the "too many states" failure mode). Populate
+    # only after the page_num/ref grammar impact is measured on a live run. The Backend
+    # column already exists (#217) → adding it later is forward-compatible, no migration.
+
+
+class NamedExtractedField(AnchoredField):
     """An ExtractedField that names its own canonical key (DEC-029).
 
     Type-specific fields are emitted as ONE list of these instead of ~27 fixed object
     properties — a single array is far cheaper in Gemini's grammar state budget than
     dozens of optional bounded objects. `key` must be one of ALL_TYPE_SPECIFIC_FIELDS;
-    unknown keys are dropped on mapping (no fabricated field names)."""
+    unknown keys are dropped on mapping (no fabricated field names).
+
+    Carries source anchors (page_num/ref) like every Gemini-path field (#230)."""
 
     key: str = Field(description="Canonical key của trường, vd 'luong_co_ban'.")
+
 
 
 class TokenUsage(BaseModel):
@@ -373,12 +404,23 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
     (not ~27 object properties) to stay within Gemini's grammar state budget.
     `to_result()` reads the extras via getattr, so both tiers map cleanly."""
 
+    # Source anchors (#230): on the Gemini Full path EVERY universal field is an
+    # AnchoredField (page_num/ref). The base 7 are re-declared here to upgrade their
+    # type from the lean base (ExtractedField) — Claude's base stays anchor-free.
+    doi_tac: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_hieu_luc: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_het_han: AnchoredField = Field(default_factory=AnchoredField)
+    gia_tri_hd: AnchoredField = Field(default_factory=AnchoredField)
+    thoi_han_hd: AnchoredField = Field(default_factory=AnchoredField)
+    dieu_khoan_gia_han: AnchoredField = Field(default_factory=AnchoredField)
+    dieu_khoan_thanh_toan: AnchoredField = Field(default_factory=AnchoredField)
+
     # v2 universal (DEC-029) — Gemini-only (Claude base omits them to stay valid)
-    doc_type_group: ExtractedField = Field(default_factory=ExtractedField)
-    ngay_ky: ExtractedField = Field(default_factory=ExtractedField)
-    tien_dat_coc: ExtractedField = Field(default_factory=ExtractedField)
-    thoi_han_bao_hanh: ExtractedField = Field(default_factory=ExtractedField)
-    thoi_han_thong_bao: ExtractedField = Field(default_factory=ExtractedField)
+    doc_type_group: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_ky: AnchoredField = Field(default_factory=AnchoredField)
+    tien_dat_coc: AnchoredField = Field(default_factory=AnchoredField)
+    thoi_han_bao_hanh: AnchoredField = Field(default_factory=AnchoredField)
+    thoi_han_thong_bao: AnchoredField = Field(default_factory=AnchoredField)
 
     type_specific: list[NamedExtractedField] = Field(
         default_factory=list,
@@ -399,13 +441,16 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
     )
 
     def as_field_map(self) -> dict[str, ExtractedField]:
+        # Universal fields are AnchoredField on this path → page_num/ref pass through
+        # unchanged (pydantic keeps the subclass instance; ExtractionResult persists it).
         fields = {name: getattr(self, name) for name in CANONICAL_FIELDS}
         # Fold type-specific entries in by key; drop unknown keys (no fabricated fields).
         valid = set(ALL_TYPE_SPECIFIC_FIELDS)
         for nf in self.type_specific:
             if nf.key in valid:
-                fields[nf.key] = ExtractedField(
-                    value=nf.value, confidence=nf.confidence, needs_review=nf.needs_review
+                fields[nf.key] = AnchoredField(
+                    value=nf.value, confidence=nf.confidence, needs_review=nf.needs_review,
+                    page_num=nf.page_num, ref=nf.ref,
                 )
         return fields
 
