@@ -25,6 +25,7 @@ class ObligationOut(BaseModel):
     trigger_delay_days: int | None = None
     trigger_obligation_id: int | None = None
     amount_raw: str | None = None
+    snoozed_until: datetime | None = None   # #214 — reminder suppressed until this time
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -38,6 +39,11 @@ class ObligationListOut(BaseModel):
 
 class ObligationPatchIn(BaseModel):
     status: str
+
+
+class SnoozeOut(BaseModel):
+    ok: bool = True
+    snoozed_until: datetime
 
 
 class ObligationPatchOut(BaseModel):

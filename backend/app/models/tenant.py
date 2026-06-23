@@ -80,6 +80,10 @@ class Obligation(TenantBase):
     trigger_delay_days = Column(Integer, nullable=True)  # e.g. 30 for "30 ngày sau nghiệm thu"
     trigger_obligation_id = Column(Integer, nullable=True)  # self-ref to obligations.id
     amount_raw = Column(Text, nullable=True)             # raw string, not parsed
+    # Snooze (#214): suppress this obligation's reminder until the given time;
+    # NULL = not snoozed. Auto-expires (scheduler resumes once now() passes it) —
+    # snooze never mutates status/due_date (D-07: obligation truth unchanged).
+    snoozed_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

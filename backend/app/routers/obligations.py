@@ -21,9 +21,13 @@ from app.schemas.obligations import (
     ObligationOut,
     ObligationPatchIn,
     ObligationPatchOut,
+    SnoozeOut,
 )
 
 router = APIRouter(prefix="/obligations", tags=["obligations"])
+
+# Snooze duration (#214) — v1 is always 3 days, no custom duration.
+SNOOZE_DAYS = 3
 
 
 def _log_event(
@@ -134,3 +138,39 @@ def patch_obligation(
     db.refresh(ob)
 
     return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob), activated_count=activated_count)
+
+
+@router.post("/{obligation_id}/snooze", response_model=SnoozeOut)
+def snooze_obligation(
+    obligation_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Snooze this obligation's reminder for 3 days ("Nhắc lại sau 3 ngày", #214).
+
+    Suppresses only the reminder — the obligation itself (status, due_date) is
+    untouched and still visible (D-07). Auto-resumes once snoozed_until passes.
+    """
+    ob = (
+        db.query(Obligation)
+        .filter(Obligation.id == obligation_id, Obligation.tenant_id == user.tenant_id)
+        .first()
+    )
+    if ob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obligation not found")
+
+    snoozed_until = datetime.utcnow() + timedelta(days=SNOOZE_DAYS)
+    ob.snoozed_until = snoozed_until
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="reminder_snoozed",
+        entity_type="obligation",
+        entity_id=ob.id,
+        actor=user.username,
+        payload={"obligation_id": ob.id, "snoozed_until": snoozed_until.isoformat()},
+    )
+
+    db.commit()
+    return SnoozeOut(ok=True, snoozed_until=snoozed_until)

@@ -346,11 +346,16 @@ def compute_due_window(
         .all()
     )
 
+    now = datetime.utcnow()
     result: list[Obligation] = []
     for ob in pending:
         if ob.due_date is None:
             # open_ended_review obligations are never due-window reminders;
             # they remain pending until SME action.
+            continue
+        # Snooze (#214): suppress while snoozed_until is in the future. Auto-resumes
+        # once it passes (no cleanup) — snooze never changes status/due_date (D-07).
+        if ob.snoozed_until is not None and ob.snoozed_until > now:
             continue
         try:
             ob_date = date.fromisoformat(ob.due_date)
