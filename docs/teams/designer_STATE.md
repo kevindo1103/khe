@@ -33,6 +33,17 @@ Semantic color roles locked:
 - `info` — neutral notices, "đang xử lý" processing state
 - `neutral` ramp — text, borders, surfaces (mobile-first contrast)
 
+## Design System v0.2 — minimalist revamp (Atlassian/Stripe-grade) — branch `claude/design-system-revamp-minimal`
+**`mockup_design_system_v0.2.jsx` supersedes v0.1.** Same API surface (export names +
+token access keys) → other mockups upgrade by changing the import path only.
+Upgrades: 11-step neutral ramp (slate), one restrained accent (khế-emerald `#0F7A56`),
+soft layered elevation `e1/e2/e3` (not one flat shadow), **focus rings** on all
+interactive elements (WCAG 2.4.7) + AA contrast text roles, type scale with negative
+tracking on display sizes, **motion tokens** (duration + standard easing). New components:
+Button `subtle` variant + `iconOnly`, Badge `dot`, **Skeleton**. Additive tokens:
+`color.neutral[*]`, `color.ring`, `elevation.*`, `motion.*` (kept `shadow.*` alias for
+back-compat). v0.1 marked SUPERSEDED.
+
 ## Component library (Phase 1 — 8 components, done)
 Built in `mockup_design_system_v0.1.jsx`:
 1. **Button** — variants: primary / secondary / ghost / danger; sizes sm/md/lg; loading + disabled.
