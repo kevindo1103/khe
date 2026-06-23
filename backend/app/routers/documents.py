@@ -96,6 +96,29 @@ def _log_event(
     db.commit()
 
 
+def _latest_event_payload(
+    db: Session, tenant_id: str, doc_id: int, event_type: str
+) -> dict | None:
+    """Parsed payload of the most recent Event of `event_type` for a document, or None."""
+    ev = (
+        db.query(Event)
+        .filter(
+            Event.tenant_id == tenant_id,
+            Event.entity_type == "document",
+            Event.entity_id == doc_id,
+            Event.event_type == event_type,
+        )
+        .order_by(Event.created_at.desc(), Event.id.desc())
+        .first()
+    )
+    if ev and ev.payload:
+        try:
+            return json.loads(ev.payload)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def _enqueue_extraction(
     background_tasks: BackgroundTasks,
     doc_id: int,
@@ -474,22 +497,14 @@ def get_document(
     # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
     failure_reason: str | None = None
     if doc.status == "failed":
-        latest_fail = (
-            db.query(Event)
-            .filter(
-                Event.tenant_id == user.tenant_id,
-                Event.entity_type == "document",
-                Event.entity_id == doc.id,
-                Event.event_type == "extraction_failed",
-            )
-            .order_by(Event.created_at.desc(), Event.id.desc())
-            .first()
-        )
-        if latest_fail and latest_fail.payload:
-            try:
-                failure_reason = json.loads(latest_fail.payload).get("reason")
-            except (ValueError, TypeError):
-                failure_reason = None
+        fail_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_failed")
+        failure_reason = fail_payload.get("reason") if fail_payload else None
+
+    # Last extraction provider/model from the extraction_performed Event (#233) —
+    # lets the smoke gate tell gemini_flash (anchors required) from claude fallback.
+    extract_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_performed")
+    provider = extract_payload.get("provider") if extract_payload else None
+    model = extract_payload.get("model") if extract_payload else None
 
     return DocumentDetailOut(
         id=doc.id,
@@ -503,6 +518,8 @@ def get_document(
         clause_count=clause_count,
         parties=[{"name": p.name, "role_label": p.role_label} for p in parties],
         failure_reason=failure_reason,
+        provider=provider,
+        model=model,
     )
 
 
