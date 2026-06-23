@@ -25,6 +25,7 @@ export interface DocumentListItem {
   needs_review: boolean;
   term_count: number;
   obligation_count: number;
+  clause_count: number;
   created_at: string | null;
 }
 
