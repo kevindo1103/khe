@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Login from './pages/admin/Login';
 import AdminShell from './pages/admin/AdminShell';
+import Home from './pages/admin/Home';
 import Upload from './pages/admin/Upload';
 import DocumentList from './pages/admin/DocumentList';
 import DocumentDetail from './pages/admin/DocumentDetail';
@@ -37,7 +38,7 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Upload />} />
+        <Route index element={<Home />} />
         <Route path="upload" element={<Upload />} />
         <Route path="documents" element={<DocumentList />} />
         <Route path="documents/:id" element={<DocumentDetail />} />
