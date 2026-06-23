@@ -105,6 +105,43 @@ def _enqueue_extraction(
     background_tasks.add_task(run_extraction, doc_id, tenant_id, doc_type)
 
 
+_UPLOAD_CHUNK_BYTES = 64 * 1024
+
+
+def _stream_to_disk_capped(file: UploadFile, dest: Path, max_bytes: int) -> int:
+    """Stream the upload to disk in chunks; reject with 413 if cap exceeded (#56).
+
+    Avoids `file.file.read()` which loads the whole upload into memory. On
+    overrun the partial file is deleted before raising so the storage dir stays
+    clean. Returns the bytes written.
+    """
+    written = 0
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = file.file.read(_UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    out.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"File too large. Maximum {max_bytes // (1024 * 1024)}MB.",
+                    )
+                out.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save uploaded file.",
+        ) from exc
+    return written
+
+
 def _persist_upload(
     db: Session,
     tenant_id: str,
@@ -113,11 +150,20 @@ def _persist_upload(
     doc_type: str | None,
     background_tasks: BackgroundTasks,
 ) -> UploadOut:
-    """Shared upload logic: write temp file, then commit DB row atomically.
+    """Shared upload logic — atomic Document insert + audit Event (#56).
 
-    Avoids orphan Document rows if file I/O fails by writing the file before
-    committing the Document row. If DB commit fails, the temporary file is
-    removed.
+    Steps:
+      1. PDF magic-byte check (422 on miss).
+      2. Stream the upload to a temp file with a hard byte cap (413 on overrun)
+         instead of loading the whole body into memory.
+      3. INSERT the Document and flush() to get its autoincrement id — no commit
+         yet, so a later failure rolls back the row.
+      4. Rename the temp file to its final ``{id}_{name}`` path.
+      5. Update ``doc.file_path`` AND add the ``document_uploaded`` Event in one
+         transaction → single commit. If anything in (3–5) fails the row is
+         rolled back and the on-disk file is cleaned up; no orphan + no missing
+         audit row.
+      6. Enqueue the extraction worker as a BackgroundTask.
     """
     # 1. PDF validation
     if not _is_pdf(file):
@@ -133,70 +179,61 @@ def _persist_upload(
     temp_disk_name = f"temp_{temp_id}_{safe_name}"
     temp_disk_path = tenant_dir / temp_disk_name
 
-    try:
-        with open(temp_disk_path, "wb") as out:
-            out.write(file.file.read())
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save uploaded file.",
-        ) from e
+    _stream_to_disk_capped(file, temp_disk_path, settings.MAX_UPLOAD_MB * 1024 * 1024)
 
-    # 3. Persist Document row
-    rel_path = str(Path(tenant_id) / temp_disk_name)
+    # 3. INSERT Document + flush() to get the autoincrement id (no commit yet)
     doc = Document(
         tenant_id=tenant_id,
         file_name=file.filename or "unnamed.pdf",
-        file_path=rel_path,
+        file_path="",  # placeholder; set after the rename
         doc_type=doc_type,
         status="processing",
     )
     db.add(doc)
     try:
-        db.commit()
-        db.refresh(doc)
+        db.flush()
     except Exception:
-        # Rollback DB and delete temp file to avoid orphan storage
         db.rollback()
-        try:
-            temp_disk_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        temp_disk_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to persist document metadata.",
         )
 
-    # 4. Rename to final path using doc_id
+    # 4. Rename to final path using the now-known doc.id
     final_disk_name = f"{doc.id}_{safe_name}"
     final_disk_path = tenant_dir / final_disk_name
     try:
         temp_disk_path.rename(final_disk_path)
     except Exception:
-        # Clean up: delete DB row and temp file
-        db.delete(doc)
-        db.commit()
-        try:
-            temp_disk_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        db.rollback()
+        temp_disk_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to finalise uploaded file.",
         )
 
-    doc.file_path = str(Path(tenant_id) / final_disk_name)
-    db.commit()
-
-    # 5. Log upload event
-    _log_event(
-        db,
-        tenant_id,
-        event_type="document_uploaded",
-        entity_type="document",
-        entity_id=doc.id,
-        actor=username,
-    )
+    # 5. Atomic commit: final file_path + audit Event in one transaction.
+    try:
+        doc.file_path = str(Path(tenant_id) / final_disk_name)
+        db.add(
+            Event(
+                tenant_id=tenant_id,
+                event_type="document_uploaded",
+                entity_type="document",
+                entity_id=doc.id,
+                actor=username,
+            )
+        )
+        db.commit()
+        db.refresh(doc)
+    except Exception:
+        db.rollback()
+        final_disk_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to commit document.",
+        )
 
     # 6. Enqueue extraction worker (PR-B)
     _enqueue_extraction(background_tasks, doc.id, tenant_id, doc_type)
