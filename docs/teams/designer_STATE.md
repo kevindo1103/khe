@@ -106,7 +106,12 @@ Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey
   - [x] Stage 6 `mockup_journey_stage6_chat_v0.1.jsx` — aggregate≠retrieval split; cold-start nudge (no D-08 chips); D-08 only on real no-match
   - [x] Stage 3 `mockup_journey_stage3_review_v0.1.jsx` — side-by-side (immutable original D-06 | extracted fields), confidence + ref-link + edit-in-place "Bạn đã cập nhật" (D-07), self-party selector, **confirm readback→preview→confirm (D-02)** gating reminder; low-confidence needs_review flag
   - [x] Stage 7 `mockup_journey_stage7_obligations_v0.1.jsx` — 3 tabs (Nghĩa vụ/Quyền lợi/Cần xác nhận) with **per-tab 4-state empties** (cold_start/all_clear branch + quyền_lợi/cần-xác-nhận honest empties), digest (FR-RM-04), Cần-xác-nhận CTA → Stage 3; row spec follows obligation v0.2
-- [ ] **Phase C** — Stage 1/2/4/5/8 (upload, processing narration, AHA obligation card, Telegram reminder, steady-state dashboard).
+- [x] **Phase C** — Stage 1/2/4/5/8 (ALL #198 SME stages now mocked):
+  - Stage 1 `mockup_journey_stage1_upload_v0.1.jsx` — dropzone (idle/dragging/ack) + 📷 chụp ảnh + ~30s expectation; PartialUpload failure path
+  - Stage 2 `mockup_journey_stage2_processing_v0.1.jsx` — transparent narration + progressive field reveal (Skeleton→value), low-conf "sẽ nhờ bạn xác nhận"; ExtractionFailure path. PATTERN (SPEC-WATCH FR-EX)
+  - Stage 4 `mockup_journey_stage4_obligation_v0.1.jsx` — AHA obligation card (GÌ·KHI·NGUỒN·HƯỚNG·LẶP humanised) + first-time coaching + Telegram bridge (DEC-006); ACTIVATED ≥1 channel, ReminderNudge if skip
+  - Stage 5 `mockup_journey_stage5_reminder_v0.1.jsx` — Telegram message template (source + Đã xử lý/Nhắc lại sau + deep-link) + landing
+  - Stage 8 `mockup_journey_stage8_dashboard_v0.1.jsx` — "Tổng quan" answers "cần lo gì?" — legitimate reassurance only (all-clear vs has-work) + ScopeCard (no overpromise)
 - Watch: progressive-extraction (Stage 2) → FR-EX; chat aggregate/all-clear (Stage 6) → FR-CQ → DOCS_INBOX when those land.
 
 ### QC #198 packet review — conditional GO, gaps addressed (2026-06-23)
