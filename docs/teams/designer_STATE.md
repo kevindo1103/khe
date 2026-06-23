@@ -113,6 +113,7 @@ Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey
   - Stage 5 `mockup_journey_stage5_reminder_v0.1.jsx` — Telegram message template (source + Đã xử lý/Nhắc lại sau + deep-link) + landing
   - Stage 8 `mockup_journey_stage8_dashboard_v0.1.jsx` — "Tổng quan" answers "cần lo gì?" — legitimate reassurance only (all-clear vs has-work) + ScopeCard (no overpromise)
 - Watch: progressive-extraction (Stage 2) → FR-EX; chat aggregate/all-clear (Stage 6) → FR-CQ → DOCS_INBOX when those land.
+- **#199 Stage 6 aggregate contract LOCKED (2026-06-23)** — formalized prose → structured shape; backend adds `aggregate_obligations` tool. NO amount sum v1 (D-06); axes direction/status/obligation_type/series; 3 zero-states (cold_start `tenant_empty` / aggregate-0 / retrieval-D-08). Folded into `mockup_journey_stage6_chat_v0.1.jsx` header. Backend unblocked.
 
 ### QC #198 packet review — conditional GO, gaps addressed (2026-06-23)
 - **Gap B (drift enforcement):** `JourneyEmptyState` now CLOSED contract — `EMPTY_STATES` enum + dev-warn on unknown + render-null (can't silently regress to false reassurance). Recommend lint: block literal "Khế sẽ nhắc" outside primitive.
@@ -129,6 +130,14 @@ SME owner mobile-first). Reason: group theo category + scale khi thêm feature.
 - Giữ nav-lock first-session-only (clear ở ACTIVATED) — supersedes `LockedNav` layout in journey primitives (lock semantics identical).
 - Sections: Theo dõi (Tổng quan/Nghĩa vụ) · Tài liệu (Kho/Tải lên) · Trợ lý (Hỏi-đáp) · footer Cài đặt+account. Bottom-tab = 5 primary, center = upload action.
 - Firm section sau này drop-in được mà không đụng phần còn lại.
+- **MERGED PR #204 (`10287b49` → staging)** sau QC holistic. Review-5 fixed inline trước merge: (#1) nav items = `<button>`+focus ring+aria, (#2) `AppMobileHeader` cho Settings/đăng xuất trên mobile, (#3) first-session unlock `upload` (onboarding action) + home, (#4) badge mobile unify warning-soft = `Badge due_soon`, (#5) `LockedNav` deprecation note + follow-up.
+
+## A11y handoff contract (#206) — DONE on Design System v0.2 — branch `claude/sweet-thompson-jixt9y`
+QC holistic của #200 + #204 surfaced **1 systemic a11y pattern** (interactive `<div>`/`<span>` thay vì `<button>`/`<a>`; thiếu `aria-live`). Gốc là pattern → fix ở contract level, KHÔNG sửa rải rác.
+- `mockup_design_system_v0.2.jsx` §2b **a11y-correct primitives** (exported): `NavItem` (auto picks `<a>`/`<button>`; locked → `<button disabled>`), `Dropzone` (role+tabIndex+Enter/Space+drag+aria), `IconButton` (mandatory `label`→aria-label, dev-warn nếu thiếu), `LiveRegion` (aria-live polite), `VisuallyHidden`.
+- Header doc: **A11Y HANDOFF CONTRACT** block — 4 rules (semantic elements / keyboard / live regions / icon semantics), BINDING on Frontend khi build production components.
+- Showcase: "A11y primitives (#206)" section demos cả 5.
+- **Downstream (follow-up, không block):** #200 stages (`LockedNav`, Stage 1 dropzone, Stage 2/8 aria-live) + nav re-import từ corrected primitives khi journey mockups adopt. Gate: trước Frontend nav/journey production build.
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant

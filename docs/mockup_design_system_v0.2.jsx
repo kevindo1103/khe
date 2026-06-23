@@ -26,6 +26,8 @@
  *   the import path: "./mockup_design_system_v0.1.jsx" → "...v0.2.jsx".
  *   New, additive: t.color.neutral[*], t.color.ring, t.elevation.*, t.motion.*,
  *   Button variant "subtle", Badge `dot`, Skeleton, focusRing helper.
+ *   v0.2.1 (#206): a11y-correct primitives — NavItem, Dropzone, IconButton,
+ *   LiveRegion, VisuallyHidden (§2b). Use these for ALL nav/actions/drop targets.
  *
  * ACCESSIBILITY — contrast VERIFIED (WCAG 2.1, measured not asserted):
  *   ink 15.0:1 · inkBody 10.8:1 · inkMuted 4.78:1 · primary 5.33:1 (white on
@@ -40,6 +42,24 @@
  *   ⚠️ Vietnamese diacritics (ấ/ề/ỗ tone marks) need real-device QA on the PWA
  *      before prod — small Inter weights can look thin at low DPI. Mitigation
  *      here: small labels use weight 500+, body min 13px. Frontend owns device QA.
+ *
+ * A11Y HANDOFF CONTRACT (#206 — QC holistic of #200 + #204; BINDING on Frontend)
+ *   The "focus ring on every interactive element" claim only holds if the element
+ *   IS interactive. A `<div onClick>`/`<span onClick>` gets no focus ring, no
+ *   keyboard activation, no role — it silently breaks WCAG 2.1.1 (Keyboard) and
+ *   2.4.7 (Focus Visible). Contract for mockups AND production components:
+ *     1. SEMANTIC ELEMENTS — clickable = <button> (action) or <a> (navigation),
+ *        NEVER <div>/<span>. Locked/disabled = <button disabled> (not focusable),
+ *        NOT a styled <div>. → use `NavItem` (§2b) which picks the right element.
+ *     2. KEYBOARD — any custom widget needs tabIndex={0} + onKeyDown (Enter/Space)
+ *        + role. → use `Dropzone` (§2b) for file targets (don't hand-roll a div).
+ *     3. LIVE REGIONS — text that changes without a navigation (progress narration,
+ *        reassurance headline flipping all-clear↔has-work) must be in `LiveRegion`
+ *        (aria-live="polite") so screen readers announce it.
+ *     4. ICON SEMANTICS — unicode glyph icons (◎⏰▤✦＋) are decorative: aria-hidden
+ *        + a visible/aria text label. Icon-only actions → `IconButton` (mandatory
+ *        `label` → aria-label). Never ship a glyph as the only accessible name.
+ *   Out of scope here (tracked elsewhere): full WCAG audit, VN-diacritics device QA.
  *
  * SCOPE & SPEC-IMPACT: this is a VISUAL foundation refresh (tokens + generic
  *   components). It does NOT change BRD/SRS → no DOCS_INBOX for v0.2 itself.
@@ -461,6 +481,164 @@ export function Skeleton({ w = "100%", h = 12, style }) {
 }
 
 /* ===========================================================================
+ * 2b. A11Y-CORRECT PRIMITIVES  (issue #206 handoff contract)
+ * ---------------------------------------------------------------------------
+ * Interactive things MUST be real interactive elements. Build nav/actions with
+ * these so mockups (and the production lib) inherit correct semantics instead
+ * of re-implementing `<div onClick>` (keyboard-dead, no focus ring, no role).
+ * Rules enforced here: nav → <a>, action → <button>, locked → <button disabled>,
+ * icon glyphs → aria-hidden + visible/aria text label, status text → LiveRegion.
+ * ========================================================================= */
+
+/* VisuallyHidden — text present for screen readers, removed from visual flow. */
+export function VisuallyHidden({ children, as: As = "span" }) {
+  return (
+    <As style={{
+      position: "absolute", width: 1, height: 1, padding: 0, margin: -1,
+      overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0,
+    }}>{children}</As>
+  );
+}
+
+/* LiveRegion — announces dynamic text (progress narration, reassurance change).
+ * Stage 2 EXTRACTING reveal + Stage 8 reassurance headline MUST wrap in this so
+ * screen readers hear the change (the systemic `aria-live` gap from #206). */
+export function LiveRegion({ children, assertive = false, atomic = true, style }) {
+  return (
+    <div
+      role="status"
+      aria-live={assertive ? "assertive" : "polite"}
+      aria-atomic={atomic}
+      style={{ fontFamily: t.font.family, ...style }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* IconButton — icon-only action with a MANDATORY label (→ aria-label). Guards the
+ * "unicode glyph with no accessible name" gap: ◎⏰▤✦＋ are decorative alone. */
+export function IconButton({ icon, label, onClick, disabled = false, size = 44, style }) {
+  const { focus, bind } = useFocusRing();
+  const [hover, setHover] = useState(false);
+  if (!label) console.warn("IconButton: `label` is required (becomes aria-label) — icon glyph alone is not accessible.");
+  return (
+    <button
+      {...bind}
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      style={{
+        width: size, height: size, display: "inline-flex", alignItems: "center", justifyContent: "center",
+        border: "none", borderRadius: t.radius.md, background: hover && !disabled ? t.color.surfaceSunken : "transparent",
+        color: t.color.inkBody, fontSize: 16, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
+        transition: `background ${t.motion.fast} ${t.motion.ease}, box-shadow ${t.motion.fast} ${t.motion.ease}`,
+        ...(focus ? ringStyle : null), ...style,
+      }}
+    >
+      <span aria-hidden="true">{icon}</span>
+    </button>
+  );
+}
+
+/* NavItem — ONE primitive for every nav destination / nav action. Picks the
+ * correct element automatically:
+ *   • locked     → <button disabled>  (not focusable — correct for a dead item)
+ *   • href       → <a href>           (navigation = link)
+ *   • otherwise  → <button>           (in-app action)
+ * Icon is aria-hidden (decorative); the visible label carries the accessible
+ * name. `active` → aria-current="page". Replaces every `<div>`/`<span>` nav row. */
+export function NavItem({
+  icon, label, active = false, locked = false, lockedHint = "Chưa mở khoá",
+  badge, href, onClick, orientation = "vertical", style,
+}) {
+  const { focus, bind } = useFocusRing();
+  const [hover, setHover] = useState(false);
+  const isLink = !locked && !!href;
+  const El = isLink ? "a" : "button";
+  const horizontal = orientation === "horizontal";
+
+  const elProps = locked
+    ? { type: "button", disabled: true, "aria-disabled": true, title: lockedHint }
+    : isLink
+      ? { href, onClick }
+      : { type: "button", onClick };
+
+  return (
+    <El
+      {...bind}
+      {...elProps}
+      aria-current={active ? "page" : undefined}
+      aria-label={locked ? `${label} (${lockedHint})` : undefined}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        position: "relative", display: "flex", alignItems: "center", gap: t.space[2],
+        flexDirection: horizontal ? "column" : "row", justifyContent: horizontal ? "center" : "flex-start",
+        width: horizontal ? undefined : "100%", textAlign: "left", textDecoration: "none",
+        padding: horizontal ? `${t.space[2]}px ${t.space[3]}px` : `${t.space[2]}px`,
+        border: "none", borderRadius: t.radius.md, font: "inherit",
+        fontSize: horizontal ? t.font.size.sm : t.font.size.base,
+        fontWeight: active ? t.font.weight.semibold : t.font.weight.medium,
+        background: active ? t.color.primarySoft : hover && !locked ? t.color.surfaceSunken : "transparent",
+        color: locked ? t.color.inkSubtle : active ? t.color.primary : t.color.inkBody,
+        opacity: locked ? 0.5 : 1, cursor: locked ? "not-allowed" : "pointer",
+        transition: `background ${t.motion.fast} ${t.motion.ease}, box-shadow ${t.motion.fast} ${t.motion.ease}`,
+        ...(focus ? ringStyle : null), ...style,
+      }}
+    >
+      {active && !horizontal && <span aria-hidden="true" style={{ position: "absolute", left: -t.space[2], top: 6, bottom: 6, width: 3, borderRadius: t.radius.pill, background: t.color.primary }} />}
+      <span aria-hidden="true" style={{ width: horizontal ? "auto" : 20, textAlign: "center", fontSize: horizontal ? 18 : 15 }}>{icon}</span>
+      <span style={{ flex: horizontal ? undefined : 1 }}>{label}</span>
+      {locked && <span aria-hidden="true" style={{ fontSize: 10 }}>🔒</span>}
+      {!locked && badge != null && <Badge kind="due_soon">{badge}</Badge>}
+    </El>
+  );
+}
+
+/* Dropzone — file drop target that is ALSO keyboard-operable. role="button" +
+ * tabIndex 0 + Enter/Space activation + aria-label (the Stage 1 upload gap from
+ * #206 — a bare `<div>` dropzone can't be tabbed to or triggered by keyboard). */
+export function Dropzone({
+  label = "Kéo thả tệp vào đây", hint, icon = "↑", onActivate, onFiles,
+  disabled = false, dragging = false, style,
+}) {
+  const { focus, bind } = useFocusRing();
+  const [over, setOver] = useState(false);
+  const active = over || dragging;
+  const fire = () => { if (!disabled && onActivate) onActivate(); };
+  return (
+    <div
+      {...bind}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-label={label}
+      aria-disabled={disabled || undefined}
+      onClick={fire}
+      onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); fire(); } }}
+      onDragOver={(e) => { e.preventDefault(); if (!disabled) setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); if (!disabled && onFiles) onFiles(e.dataTransfer?.files); }}
+      style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: t.space[2],
+        padding: `${t.space[7]}px ${t.space[5]}px`, textAlign: "center", fontFamily: t.font.family,
+        border: `2px dashed ${active ? t.color.primary : t.color.borderStrong}`, borderRadius: t.radius.lg,
+        background: active ? t.color.primarySoft : t.color.surface,
+        color: t.color.inkBody, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
+        transition: `border-color ${t.motion.fast} ${t.motion.ease}, background ${t.motion.fast} ${t.motion.ease}, box-shadow ${t.motion.fast} ${t.motion.ease}`,
+        ...(focus ? ringStyle : null), ...style,
+      }}
+    >
+      <span aria-hidden="true" style={{ fontSize: 28, color: active ? t.color.primary : t.color.inkMuted }}>{icon}</span>
+      <span style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.medium }}>{label}</span>
+      {hint && <span style={{ fontSize: t.font.size.xs, color: t.color.inkMuted }}>{hint}</span>}
+    </div>
+  );
+}
+
+/* ===========================================================================
  * 3. SHOWCASE
  * ========================================================================= */
 function Section({ title, note, children }) {
@@ -645,6 +823,29 @@ export default function DesignSystemShowcaseV2() {
         </div>
         <div style={{ width: 280, background: t.color.surface, borderRadius: t.radius.lg, border: `1px solid ${t.color.border}`, padding: t.space[5], display: "flex", flexDirection: "column", gap: t.space[3] }}>
           <Skeleton w="60%" h={14} /><Skeleton /><Skeleton w="80%" /><Skeleton w="40%" />
+        </div>
+      </Section>
+
+      {/* A11Y PRIMITIVES (#206) */}
+      <Section title="A11y primitives (#206)" note="Semantic-correct building blocks. NavItem = <a>/<button> (locked → disabled), Dropzone = role+keyboard, IconButton = aria-label bắt buộc, LiveRegion = aria-live. Tab phím qua tất cả để thấy focus ring — KHÔNG dùng <div onClick>.">
+        <div style={{ width: 240, background: t.color.surface, borderRadius: t.radius.lg, border: `1px solid ${t.color.border}`, padding: t.space[3], display: "flex", flexDirection: "column", gap: 2 }}>
+          <NavItem icon="◎" label="Tổng quan" href="#" active />
+          <NavItem icon="⏰" label="Nghĩa vụ" href="#" badge={2} />
+          <NavItem icon="✦" label="Hỏi-đáp" href="#" />
+          <NavItem icon="▤" label="Kho tài liệu" locked lockedHint="Mở khoá sau khi bật nhắc" />
+        </div>
+        <div style={{ width: 300 }}>
+          <Dropzone label="Kéo thả hợp đồng vào đây" hint="hoặc bấm / Enter để chọn tệp · PDF, ảnh" />
+        </div>
+        <div style={{ width: 240, background: t.color.surface, borderRadius: t.radius.lg, border: `1px solid ${t.color.border}`, padding: t.space[4], display: "flex", flexDirection: "column", gap: t.space[3] }}>
+          <div style={{ display: "flex", gap: t.space[1] }}>
+            <IconButton icon="⚙" label="Cài đặt" />
+            <IconButton icon="✦" label="Trợ lý" />
+            <IconButton icon="↑" label="Tải lên" />
+          </div>
+          <LiveRegion style={{ fontSize: t.font.size.sm, color: t.color.inkBody }}>
+            Đang đọc hợp đồng… đã lấy 3/7 trường.
+          </LiveRegion>
         </div>
       </Section>
     </div>
