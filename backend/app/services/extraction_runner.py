@@ -18,6 +18,7 @@ from app.db.database import get_tenant_session
 from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations
+from app.services import tenant_journey
 from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
@@ -217,6 +218,17 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # Single commit: DELETE + INSERTs + UPDATE + audit Event.
         db.commit()
+
+        # Journey (#213): extraction complete. Any flagged or sub-80%-confidence
+        # field routes the tenant to NEEDS_REVIEW (human confirm, D-02); otherwise
+        # CONFIRMED. Monotonic forward-only — a later doc never drags a tenant back.
+        needs_review = any(
+            f is not None and (f.needs_review or (f.confidence is not None and f.confidence < 0.80))
+            for f in result.fields.values()
+        )
+        tenant_journey.advance_stage_standalone(
+            tenant_id, "NEEDS_REVIEW" if needs_review else "CONFIRMED"
+        )
 
         # Derive obligations from the freshly extracted terms (chain-aware).
         derive_obligations(db, tenant_id, doc_id)

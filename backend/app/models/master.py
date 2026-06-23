@@ -27,6 +27,11 @@ class Tenant(MasterBase):
     db_path = Column(String, nullable=False)           # relative: "tenants/sme-abc.db"
     plan = Column(String, default="starter")           # "starter" | "pro" | "enterprise"
     is_active = Column(Boolean, default=True)
+    # Onboarding journey state machine (#213) — monotonic forward-only:
+    # NEW → EXTRACTING → NEEDS_REVIEW → CONFIRMED → ACTIVATED → STEADY.
+    journey_stage = Column(String, nullable=False, server_default="NEW")
+    # First-session nav-lock; cleared atomically when the stage reaches ACTIVATED.
+    is_first_session = Column(Boolean, nullable=False, server_default="1")
     created_at = Column(DateTime, server_default=func.now())
 
     users = relationship("TenantUser", back_populates="tenant", cascade="all, delete-orphan")
