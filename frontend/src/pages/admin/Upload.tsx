@@ -13,9 +13,22 @@ export default function Upload() {
   const [results, setResults] = useState<UploadOut[] | null>(null);
   const [error, setError] = useState<string>('');
   const [isConsentError, setIsConsentError] = useState(false);
+  const [isQuotaError, setIsQuotaError] = useState(false);
+  const [partialNote, setPartialNote] = useState<string>('');
   const [toastMsg, setToastMsg] = useState<string>('');
   const singleInputRef = useRef<HTMLInputElement>(null);
   const bulkInputRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = () =>
+    (tab === 'single' ? singleInputRef.current : bulkInputRef.current)?.click();
+
+  // a11y (#206): the dropzone is a custom control → keyboard-operable (Enter/Space)
+  const handleDropzoneKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openPicker();
+    }
+  };
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>, multiple: boolean) => {
     const selected = Array.from(e.target.files || []);
@@ -48,9 +61,12 @@ export default function Upload() {
 
   const upload = async () => {
     if (files.length === 0) return;
+    const submitted = files.length;
     setUploading(true);
     setError('');
     setIsConsentError(false);
+    setIsQuotaError(false);
+    setPartialNote('');
     setResults(null);
 
     try {
@@ -66,6 +82,10 @@ export default function Upload() {
         const res = await apiFetchMultipart<BulkUploadOut>('/ingest/bulk', fd);
         setResults(res.documents);
         setToastMsg(`Đã tải ${res.count} tài liệu ✓`);
+        // PartialUpload (#227 note 3): some files didn't make it — say so, never a stuck state
+        if (res.count < submitted) {
+          setPartialNote(`${submitted - res.count}/${submitted} file không tải được (không hợp lệ hoặc trùng). ${res.count} file đã tải.`);
+        }
       }
       setFiles([]);
     } catch (err) {
@@ -73,6 +93,10 @@ export default function Upload() {
       if (apiErr.status === 403) {
         setError('Chưa ghi nhận đồng ý trích xuất AI. Vui lòng liên hệ đại lý/luật sư để kích hoạt.');
         setIsConsentError(true);
+      } else if (apiErr.status === 429) {
+        // D-11 quota guard — no extraction happened; tell the user plainly
+        setError('Đã đạt giới hạn số tài liệu trong tháng. Liên hệ đại lý/luật sư để nâng hạn mức.');
+        setIsQuotaError(true);
       } else if (apiErr.status === 422) {
         setError('File không hợp lệ. Chỉ chấp nhận PDF.');
       } else {
@@ -88,6 +112,8 @@ export default function Upload() {
     setResults(null);
     setError('');
     setIsConsentError(false);
+    setIsQuotaError(false);
+    setPartialNote('');
     if (singleInputRef.current) singleInputRef.current.value = '';
     if (bulkInputRef.current) bulkInputRef.current.value = '';
   };
@@ -119,10 +145,14 @@ export default function Upload() {
       <Card>
         {/* Drop zone */}
         <div
-          className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
+          role="button"
+          tabIndex={0}
+          aria-label={tab === 'single' ? 'Tải lên file PDF' : 'Tải lên tối đa 20 file PDF'}
+          className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors focus-visible:shadow-ring focus-visible:outline-none"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => handleDrop(e, tab === 'bulk')}
-          onClick={() => (tab === 'single' ? singleInputRef.current?.click() : bulkInputRef.current?.click())}
+          onClick={openPicker}
+          onKeyDown={handleDropzoneKey}
           data-testid="upload-dropzone"
         >
           <div className="text-3xl mb-2">📁</div>
@@ -178,8 +208,20 @@ export default function Upload() {
 
         {/* Error */}
         {error && (
-          <div className="mt-4" data-testid={isConsentError ? 'upload-consent-required' : undefined}>
+          <div
+            className="mt-4"
+            data-testid={
+              isConsentError ? 'upload-consent-required' : isQuotaError ? 'upload-quota-exceeded' : undefined
+            }
+          >
             <Toast kind="error">{error}</Toast>
+          </div>
+        )}
+
+        {/* Partial upload (some files didn't make it) — no stuck state */}
+        {partialNote && (
+          <div className="mt-4" data-testid="upload-partial">
+            <Toast kind="error">{partialNote}</Toast>
           </div>
         )}
 
