@@ -104,8 +104,8 @@ Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey
 - [ ] **Phase B** — Stage 0/3/6/7 screen mockups (priority):
   - [x] Stage 0 `mockup_journey_stage0_onboarding_v0.1.jsx` — concierge (NEEDS_REVIEW pre-filled, D-02 Opt B) + self-serve (1 CTA, locked nav)
   - [x] Stage 6 `mockup_journey_stage6_chat_v0.1.jsx` — aggregate≠retrieval split; cold-start nudge (no D-08 chips); D-08 only on real no-match
-  - [ ] Stage 3 — document review (trust point): revamp of `mockup_admin_document_detail` to v0.2 + side-by-side + self-party + confirm readback (D-02)
-  - [ ] Stage 7 — 3-tab obligations: revamp `mockup_admin_obligation_v0.2` to journey primitives (4-state empties per tab)
+  - [x] Stage 3 `mockup_journey_stage3_review_v0.1.jsx` — side-by-side (immutable original D-06 | extracted fields), confidence + ref-link + edit-in-place "Bạn đã cập nhật" (D-07), self-party selector, **confirm readback→preview→confirm (D-02)** gating reminder; low-confidence needs_review flag
+  - [x] Stage 7 `mockup_journey_stage7_obligations_v0.1.jsx` — 3 tabs (Nghĩa vụ/Quyền lợi/Cần xác nhận) with **per-tab 4-state empties** (cold_start/all_clear branch + quyền_lợi/cần-xác-nhận honest empties), digest (FR-RM-04), Cần-xác-nhận CTA → Stage 3; row spec follows obligation v0.2
 - [ ] **Phase C** — Stage 1/2/4/5/8 (upload, processing narration, AHA obligation card, Telegram reminder, steady-state dashboard).
 - Watch: progressive-extraction (Stage 2) → FR-EX; chat aggregate/all-clear (Stage 6) → FR-CQ → DOCS_INBOX when those land.
 
