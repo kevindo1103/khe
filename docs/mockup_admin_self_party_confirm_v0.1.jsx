@@ -15,7 +15,7 @@
  * Two surfaces shown: (A) the modal, (B) the Settings legal-name field.
  */
 import React, { useState } from "react";
-import { tokens as t, Button, Card, Modal, Toast, Input, Badge } from "./mockup_design_system_v0.1.jsx";
+import { tokens as t, Button, Card, Modal, Toast, Input, Badge } from "./mockup_design_system_v0.2.jsx";
 
 const PARTIES = [
   { name: "Công ty CP ABC", role_label: "Bên A" },
