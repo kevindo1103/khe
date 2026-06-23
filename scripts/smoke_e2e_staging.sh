@@ -168,6 +168,22 @@ if [ -n "$DOC_ID" ]; then
       PROVIDER=$(echo "$DOC_RESP" | jq -r '.provider // "n/a"')
       printf "  provider=%s cost_vnd=%s obligations=%s clauses=%s parties=%s\n" \
         "$PROVIDER" "$COST" "$OBL_COUNT" "$CLAUSE_COUNT" "$PARTY_COUNT"
+
+      # Source anchors (#230 / FR-EX-05): assert at least one term has page_num.
+      # Gemini-only — Claude fallback leaves anchors null (graceful degrade, not a fail).
+      TERM_COUNT=$(echo "$DOC_RESP" | jq '[.terms // [] | length] | .[0]')
+      ANCHORED=$(echo "$DOC_RESP" | jq '[.terms // [] | map(select(.page_num != null)) | length] | .[0]')
+      REFFED=$(echo "$DOC_RESP" | jq '[.terms // [] | map(select(.ref != null)) | length] | .[0]')
+      printf "  terms=%s anchored(page_num)=%s with_ref=%s\n" "$TERM_COUNT" "$ANCHORED" "$REFFED"
+      if [ "$PROVIDER" = "gemini_flash" ]; then
+        if [ "${ANCHORED:-0}" -gt 0 ] 2>/dev/null; then
+          ok "#230 anchors populate ($ANCHORED/$TERM_COUNT terms have page_num)"
+        else
+          die "#230 anchors EMPTY on gemini_flash — grammar 'too many states' or dropped? Check raw terms[]"
+        fi
+      else
+        printf "  ℹ provider=%s (not gemini_flash) — anchors expected null (Claude fallback)\n" "$PROVIDER"
+      fi
       break
     elif [ "$DOC_STATUS" = "failed" ] || [ "$DOC_STATUS" = "error" ]; then
       die "Extraction failed"
