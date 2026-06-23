@@ -26,6 +26,34 @@
  *   the import path: "./mockup_design_system_v0.1.jsx" → "...v0.2.jsx".
  *   New, additive: t.color.neutral[*], t.color.ring, t.elevation.*, t.motion.*,
  *   Button variant "subtle", Badge `dot`, Skeleton, focusRing helper.
+ *
+ * ACCESSIBILITY — contrast VERIFIED (WCAG 2.1, measured not asserted):
+ *   ink 15.0:1 · inkBody 10.8:1 · inkMuted 4.78:1 · primary 5.33:1 (white on
+ *   primary 5.33:1) — all PASS AA normal on white. Semantic-on-tint: success
+ *   4.51 · danger 5.70 · info 5.26 · warning 4.85 (was 4.34 FAIL → darkened to
+ *   #8A6300). ALL PASS AA.
+ *   ⚠️ `inkSubtle` (#94A3B8, 2.56:1) is BELOW AA by design — reserved ONLY for
+ *      WCAG-exempt text (disabled controls, decorative, placeholder). Any
+ *      meaningful text (hints, labels, timestamps) MUST use `inkMuted` (4.78:1).
+ *   Touch targets: md/lg = 44/48px (≥44 touch min). `sm` (32px) is for dense
+ *   DESKTOP/pointer surfaces only — do NOT use as a primary touch action.
+ *   ⚠️ Vietnamese diacritics (ấ/ề/ỗ tone marks) need real-device QA on the PWA
+ *      before prod — small Inter weights can look thin at low DPI. Mitigation
+ *      here: small labels use weight 500+, body min 13px. Frontend owns device QA.
+ *
+ * SCOPE & SPEC-IMPACT: this is a VISUAL foundation refresh (tokens + generic
+ *   components). It does NOT change BRD/SRS → no DOCS_INBOX for v0.2 itself.
+ *   The activation-flow / journey primitives (ProgressBar, Stepper, Achievement
+ *   card, locked-nav state, progressive-extraction PATTERN, 4-state EmptyState)
+ *   belong to issue #198 and will be built ON this system once #198 is ratified;
+ *   DOCS_INBOX will be filed then if they touch FR-CQ/FR-EX/FR-RM.
+ *   This file is NOT a "complete" component library — it is the base layer.
+ *
+ * VERSIONING: v0.1 is FROZEN (no fixes — bugs fixed forward in v0.2). Migration
+ *   to v0.2 is MANDATORY for all mockups; v0.1 imports removed once all screens
+ *   migrate. Dark mode is out of MVP scope — the neutral-ramp + semantic token
+ *   structure is theme-ready, but dark elevation tokens are deferred until a
+ *   dark theme is actually scoped (Phase 2/3).
  */
 
 import React, { useState } from "react";
@@ -64,7 +92,7 @@ export const tokens = {
 
     /* --- semantic: muted, not loud (700-level fg on tinted bg) --- */
     success: "#15803D", success_soft: "#E9F6EE", successBorder: "#BBE3C7",
-    warning: "#9A6700", warning_soft: "#FBF1DD", warningBorder: "#ECD7A6",
+    warning: "#8A6300", warning_soft: "#FBF1DD", warningBorder: "#ECD7A6", // 4.85:1 on tint (AA)
     danger:  "#B42318", danger_soft:  "#FCEBEA", dangerBorder:  "#F2C5C1",
     info:    "#175CD3", info_soft:    "#E9F1FD", infoBorder:    "#C2D7F5",
 
@@ -148,7 +176,7 @@ export function Button({
 
   const sizes = {
     sm: { height: 32, padding: iconOnly ? 0 : `0 ${t.space[3]}px`, width: iconOnly ? 32 : undefined, fontSize: t.font.size.sm },
-    md: { height: 40, padding: iconOnly ? 0 : `0 ${t.space[4]}px`, width: iconOnly ? 40 : undefined, fontSize: t.font.size.base },
+    md: { height: 44, padding: iconOnly ? 0 : `0 ${t.space[4]}px`, width: iconOnly ? 44 : undefined, fontSize: t.font.size.base }, // 44 = touch min
     lg: { height: 48, padding: iconOnly ? 0 : `0 ${t.space[5]}px`, width: iconOnly ? 48 : undefined, fontSize: t.font.size.md },
   };
   const variants = {
@@ -215,7 +243,7 @@ export function Input({
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         style={{
           display: "flex", alignItems: "center", gap: t.space[2],
-          height: 40, padding: `0 ${t.space[3]}px`, background: t.color.surface,
+          height: 44, padding: `0 ${t.space[3]}px`, background: t.color.surface,
           border: `1px solid ${borderColor}`, borderRadius: t.radius.md,
           transition: `border-color ${t.motion.fast} ${t.motion.ease}, box-shadow ${t.motion.fast} ${t.motion.ease}`,
           ...(focus ? ringStyle : null),
@@ -243,7 +271,8 @@ export function Input({
       {error ? (
         <span style={{ display: "block", fontSize: t.font.size.xs, color: t.color.danger, marginTop: t.space[1] }}>{error}</span>
       ) : hint ? (
-        <span style={{ display: "block", fontSize: t.font.size.xs, color: t.color.inkSubtle, marginTop: t.space[1] }}>{hint}</span>
+        // hint is meaningful text → inkMuted (AA), not inkSubtle (below-AA, exempt-only)
+        <span style={{ display: "block", fontSize: t.font.size.xs, color: t.color.inkMuted, marginTop: t.space[1] }}>{hint}</span>
       ) : null}
     </label>
   );
