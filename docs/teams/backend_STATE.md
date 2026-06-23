@@ -5,7 +5,14 @@
 > firm_portal, auth, audit), alembic, scheduler. Multi-tenant: `master.db` + per-tenant.
 > Lead branch: `claude/feat-backend-scaffold-nm2942`.
 
-_Last updated: 2026-06-20 (#163 PR #173 merged+closed; #164 PR #169 merged; optional gate cleared — 12 PRs ready for staging→main)_
+_Last updated: 2026-06-23 (reliability/scaling sweep merged: #183/#184/#185 + #172/#177; tenant_008 head; 13 issues closed; 19 PRs on staging)_
+
+> **2026-06-23 sweep (lead-implemented — Windsurf unavailable 3 days, PM approved).**
+> Merged to staging: **#177** (#146 chat sources), **#172** (#155/#176 self-party + GET legal_name, lead takeover/rebase), **#188** (#184 LRU engine cache), **#189** (#185 scheduler benchmark + `/health/scheduler`), **#190** (#183 reminder retry-tick).
+> Migration head: **`tenant_008_parties_doc_role`**.
+> Issues closed: #23, #53, #62, #74, #96, #137, #155, #163, #164, #176, #183, #184. (#185 open pending staging benchmark measurement; #146 FE work remains.)
+> Decision-review (#179–182): backend commented, PM to ratify; #180b (full outbox) + #181 (Postgres) deferred pre-scale.
+> **Next:** staging→main batch promote (19 PRs, forward-merge `pr-quality-gate.yml` first); #97 re-trigger 5 stuck docs (needs Infra env verify); post `/health/scheduler` baseline to #181 after deploy.
 
 ---
 
