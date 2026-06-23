@@ -3,6 +3,7 @@ import { Button, Input } from '../../components';
 import { apiFetch } from '../../lib/api';
 import type { ChatMessage, ChatQueryOut, ChatSource } from '../../types/chat';
 import type { ApiError } from '../../lib/api';
+import { OBLIGATION_TYPE_LABELS, labelFor } from '../../lib/labels';
 
 const D08_MAIN = 'Không tìm thấy thông tin này trong hồ sơ của bạn.';
 const D08_SUB =
@@ -12,14 +13,34 @@ const SUGGESTION_CHIPS = [
   'Cái gì sắp hết hạn?',
   'Tìm HĐ với Hải Đăng',
   'HĐ thuê MB còn hạn bao lâu?',
+  'Còn mấy đợt thanh toán?',
+  'Việc gì đang chờ sự kiện?',
 ];
 
 function SourceChip({ source }: { source: ChatSource }) {
+  const isObligation = source.type === 'obligation';
   return (
-    <span className="inline-flex items-center gap-1 bg-primary-soft text-primary border border-primary/20 rounded-full px-2.5 py-0.5 text-2xs font-medium">
-      📄 {source.file_name}
-      {source.clause_num ? ` · ${source.clause_num}` : ''}
-    </span>
+    <div className="flex flex-wrap gap-1.5 items-center">
+      <span className="inline-flex items-center gap-1 bg-primary-soft text-primary border border-primary/20 rounded-full px-2.5 py-0.5 text-2xs font-medium">
+        📄 {source.file_name}
+        {source.clause_num ? ` · ${source.clause_num}` : ''}
+      </span>
+      {isObligation && source.obligation_type && (
+        <span className="inline-flex items-center bg-ink-muted/10 text-ink-muted border border-border rounded-full px-2 py-0.5 text-2xs font-medium">
+          {labelFor(OBLIGATION_TYPE_LABELS, source.obligation_type)}
+        </span>
+      )}
+      {isObligation && source.milestone_total && source.milestone_total > 1 && source.milestone_index != null && (
+        <span className="inline-flex items-center bg-info-soft text-info border border-info/20 rounded-full px-2 py-0.5 text-2xs font-medium">
+          Đợt {source.milestone_index}/{source.milestone_total}
+        </span>
+      )}
+      {isObligation && source.status === 'waiting_trigger' && source.trigger_condition && (
+        <span className="inline-flex items-center bg-warning-soft text-warning border border-warning/20 rounded-full px-2 py-0.5 text-2xs font-medium">
+          ⏳ Chờ: {source.trigger_condition}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -66,6 +87,12 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             : 'bg-surface border border-border text-ink'
         }`}
       >
+        {source?.direction === 'nghĩa_vụ' && (
+          <span className="font-semibold text-primary">Bạn cần </span>
+        )}
+        {source?.direction === 'quyền_lợi' && (
+          <span className="font-semibold text-primary">Đối tác cần </span>
+        )}
         {text}
       </div>
       {source && <SourceChip source={source} />}
