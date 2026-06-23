@@ -6,8 +6,9 @@ loop over the master Tenant table and dispatches reminders per tenant.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
-from typing import Any
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -20,9 +21,27 @@ from app.services.obligation_expander import expand_recurring_obligations
 
 logger = logging.getLogger(__name__)
 
+_ICT = ZoneInfo("Asia/Ho_Chi_Minh")
+
+# One-time scheduler benchmark (#185). /health/scheduler reports how long a
+# multi-tenant tick takes and how many tenants it loops — to measure distance
+# to the #181 scaling thresholds. Process-local; resets on restart.
+_scheduler_metrics: dict[str, object] = {
+    "active_tenants": None,
+    "last_reminder_tick_ms": None,
+    "last_expand_tick_ms": None,
+    "last_run_at": None,
+}
+
+
+def get_scheduler_metrics() -> dict:
+    """Return a snapshot of the latest scheduler tick metrics (#185)."""
+    return dict(_scheduler_metrics)
+
 
 async def run_daily_reminder_job() -> None:
     """Daily job: for each tenant, send reminders and flip overdue status."""
+    start = time.monotonic()
     db: Session = MasterSessionLocal()
     try:
         tenants = db.query(Tenant).all()
@@ -41,9 +60,16 @@ async def run_daily_reminder_job() -> None:
         finally:
             tenant_db.close()
 
+    elapsed_ms = round((time.monotonic() - start) * 1000, 1)
+    _scheduler_metrics["active_tenants"] = len(tenants)
+    _scheduler_metrics["last_reminder_tick_ms"] = elapsed_ms
+    _scheduler_metrics["last_run_at"] = datetime.now(_ICT).isoformat()
+    logger.info("daily_reminder_job tick: tenants=%d duration_ms=%s", len(tenants), elapsed_ms)
+
 
 async def run_expand_all_tenants() -> None:
     """Weekly job: for each tenant, expand T2 recurring obligations."""
+    start = time.monotonic()
     db: Session = MasterSessionLocal()
     try:
         tenants = db.query(Tenant).all()
@@ -58,6 +84,12 @@ async def run_expand_all_tenants() -> None:
             logger.exception("Obligation expander job failed for tenant %s: %s", tenant.id, exc)
         finally:
             tenant_db.close()
+
+    elapsed_ms = round((time.monotonic() - start) * 1000, 1)
+    _scheduler_metrics["active_tenants"] = len(tenants)
+    _scheduler_metrics["last_expand_tick_ms"] = elapsed_ms
+    _scheduler_metrics["last_run_at"] = datetime.now(_ICT).isoformat()
+    logger.info("obligation_expander tick: tenants=%d duration_ms=%s", len(tenants), elapsed_ms)
 
 
 def create_scheduler() -> AsyncIOScheduler:
