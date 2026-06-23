@@ -108,6 +108,7 @@ export default function DocumentList() {
                 { key: 'status', label: 'Trạng thái' },
                 { key: 'term_count', label: 'Thuộc tính' },
                 { key: 'obligation_count', label: 'Nghĩa vụ' },
+                { key: 'clause_count', label: 'Điều khoản' },
                 { key: 'created_at', label: 'Ngày tạo' },
               ]}
               rows={data?.items || []}
