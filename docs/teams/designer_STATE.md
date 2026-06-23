@@ -94,7 +94,16 @@ Driven by BA contract logic (DEC-019..022) + DEC-030 self-party direction. Desig
 - "Cần xác nhận" tab + self-party modal depend on backend **#155** (parties[] persist + confirm_self_party) and **#156** type sync (ObligationOut +9 fields). Mockups assume the #157/#155 field shape (direction, obligation_type, milestone_series_id, milestone_index/total, obligor, trigger_condition, amount_raw, status incl. waiting_trigger).
 - 2 PM/Backend ambiguities (per DOCS_INBOX): chat returns direction+series in sources? · parties persist = table vs JSON. Mockups don't depend on the resolution.
 
-## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
+## #198 SME journey redesign (8-stage) — branch `claude/design-ux-journey-198`
+Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey deferred; SME-only). Build phased on Design System **v0.2** (#197 merged `9b4877f`).
+- [x] **Phase A** — `mockup_journey_primitives_v0.1.jsx`: journey-layer primitives:
+  - `tenant_journey_stage` state machine (NEW→EXTRACTING→NEEDS_REVIEW→CONFIRMED→ACTIVATED→STEADY, monotonic; home = f(stage))
+  - **`JourneyEmptyState` 4-state matrix** (cold_start / processing / all_clear / no_match) — fixes the #198 false-reassurance anti-pattern; cold-start ≠ all-clear wording
+  - `SetupProgress` stepper, `ReminderNudge` (ACTIVATED gate ≥1 channel, no hard-block), `LockedNav` (first-session only), `ScopeCard` (per-contract + hint loop, no "đã được bảo vệ"), `ConciergeWelcome` (D-02 Option B pre-fill→user self-confirm)
+  - tagged `// PHASE-2-IA-DEBT` (entity vs job-shaped nav)
+- [ ] **Phase B** — Stage 0/3/6/7 screen mockups (priority: onboarding, doc-review trust point, chat aggregate vs retrieval, 3-tab obligations).
+- [ ] **Phase C** — Stage 1/2/4/5/8 (upload, processing narration, AHA obligation card, Telegram reminder, steady-state dashboard).
+- Watch: progressive-extraction (Stage 2) → FR-EX; chat aggregate/all-clear (Stage 6) → FR-CQ → DOCS_INBOX when those land.
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
   Phase 2 detail design, flag via DOCS_INBOX (do not self-resolve).
