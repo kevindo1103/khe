@@ -5,6 +5,7 @@ import { apiFetch } from '../../lib/api';
 import type { ObligationListOut, ObligationOut, ObligationPatchOut, ObligationStatus } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import type { BadgeKind } from '../../components/Badge';
+import { OBLIGATION_TYPE_LABELS, labelFor } from '../../lib/labels';
 
 type DirectionTab = 'nghĩa_vụ' | 'quyền_lợi' | null;
 type BucketKey = 'overdue' | 'due_soon' | 'upcoming' | 'waiting' | 'open_ended';
@@ -234,7 +235,7 @@ export default function Obligations() {
             {ob.description}
           </div>
           <div className="text-xs text-ink-muted mt-1 flex gap-2 flex-wrap items-center">
-            <Badge kind="neutral" className="text-2xs">{ob.obligation_type}</Badge>
+            <Badge kind="neutral" className="text-2xs">{labelFor(OBLIGATION_TYPE_LABELS, ob.obligation_type)}</Badge>
             <span>
               📄{' '}
               <Link
@@ -301,7 +302,7 @@ export default function Obligations() {
     const doneCount = sorted.filter((o) => o.status === 'done').length;
     const total = sorted.length;
     const isCollapsed = collapsedSeries.has(seriesId);
-    const label = `${first.obligation_type}${first.source_doc_chain ? ` (${first.source_doc_chain})` : ''}`;
+    const label = `${labelFor(OBLIGATION_TYPE_LABELS, first.obligation_type)}${first.source_doc_chain ? ` (${first.source_doc_chain})` : ''}`;
     return (
       <Card key={seriesId} className="mb-4">
         <button
