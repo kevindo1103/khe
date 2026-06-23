@@ -33,6 +33,26 @@ Semantic color roles locked:
 - `info` — neutral notices, "đang xử lý" processing state
 - `neutral` ramp — text, borders, surfaces (mobile-first contrast)
 
+## Design System v0.2 — minimalist revamp (Atlassian/Stripe-grade) — branch `claude/design-system-revamp-minimal`
+**`mockup_design_system_v0.2.jsx` supersedes v0.1.** Same API surface (export names +
+token access keys) → other mockups upgrade by changing the import path only.
+Upgrades: 11-step neutral ramp (slate), one restrained accent (khế-emerald `#0F7A56`),
+soft layered elevation `e1/e2/e3` (not one flat shadow), **focus rings** on all
+interactive elements (WCAG 2.4.7) + AA contrast text roles, type scale with negative
+tracking on display sizes, **motion tokens** (duration + standard easing). New components:
+Button `subtle` variant + `iconOnly`, Badge `dot`, **Skeleton**. Additive tokens:
+`color.neutral[*]`, `color.ring`, `elevation.*`, `motion.*` (kept `shadow.*` alias for
+back-compat). v0.1 marked SUPERSEDED.
+
+### QC review of PR #197 — addressed (2026-06-23)
+- **Contrast measured (not asserted):** ink 15.0 · inkBody 10.8 · inkMuted 4.78 · primary 5.33 · semantic-on-tint all AA. Fixed: `warning #9A6700→#8A6300` (was 4.34 FAIL → 4.85 PASS). `inkSubtle` (2.56) reclassified WCAG-exempt-only; Input hint rerouted to `inkMuted`.
+- **Touch target:** md/lg bumped to 44/48px (44 = touch min). `sm` 32px = desktop-dense only (documented).
+- **v0.1 freeze policy:** FROZEN (fix-forward), migration mandatory — documented in v0.1 + v0.2 headers.
+- **Accent rule:** single brand accent (primary); semantic = functional state only, not decorative — documented.
+- **Dark mode:** out of MVP; token structure theme-ready, dark elevation deferred — documented.
+- **VN diacritics:** small labels weight 500+, body min 13px; real-device PWA QA = Frontend pre-prod item (flagged).
+- **"No spec impact" clarified (NOT retracted for v0.2):** v0.2 = visual foundation, no BRD/SRS change. Activation-flow primitives (ProgressBar/Stepper/Achievement/locked-nav/progressive-extraction/4-state EmptyState) = **#198 scope**, built on v0.2 after ratify; DOCS_INBOX filed then if they touch FR-CQ/FR-EX/FR-RM. v0.2 is the base layer, not a "complete" library.
+
 ## Component library (Phase 1 — 8 components, done)
 Built in `mockup_design_system_v0.1.jsx`:
 1. **Button** — variants: primary / secondary / ghost / danger; sizes sm/md/lg; loading + disabled.
