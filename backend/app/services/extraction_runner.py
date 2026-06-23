@@ -153,6 +153,10 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         for field_name, field in result.fields.items():
             if field is None:
                 continue
+            # Source anchor (#217): forward-compatible — persisted only when the
+            # VisionExtractionProvider supplies it (getattr → None until KHE_AI
+            # populates ExtractedField.{ref,page_num,bbox}). bbox stored as JSON.
+            _bbox = getattr(field, "bbox", None)
             term = Term(
                 tenant_id=tenant_id,
                 document_id=doc_id,
@@ -160,6 +164,9 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 field_value=field.value,
                 confidence=field.confidence,
                 needs_review=field.needs_review,
+                ref=getattr(field, "ref", None),
+                page_num=getattr(field, "page_num", None),
+                bbox=json.dumps(_bbox) if _bbox else None,
             )
             db.add(term)
 

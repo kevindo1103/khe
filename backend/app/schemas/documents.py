@@ -1,8 +1,9 @@
 """Schemas for Document, Term, and ingest endpoints (#25)."""
+import json
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 # ── Terms ──
@@ -13,7 +14,23 @@ class TermOut(BaseModel):
     field_value: str | None = None
     confidence: float | None = None
     needs_review: bool = False
+    # Stage 3 review ref-link trust gate (#217, FR-EX-05). All optional → FE
+    # graceful-degrades to plain text when absent (no dead link).
+    ref: str | None = None             # display label, e.g. "Điều 8" / "tr.1 §A"
+    page_num: int | None = None        # 1-based page for scroll-to
+    bbox: list[float] | None = None    # [x0,y0,x1,y1] normalized 0..1 for highlight
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("bbox", mode="before")
+    @classmethod
+    def _parse_bbox(cls, v: Any) -> Any:
+        """bbox is stored as a JSON TEXT column — deserialize on read."""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
 
 
 class TermPatchIn(BaseModel):

@@ -45,6 +45,12 @@ class Term(TenantBase):
     is_superseded = Column(Boolean, default=False)
     overrides_term_id = Column(Integer, ForeignKey("terms.id"), nullable=True)
     inherited_from_doc_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    # ── tenant_011: Stage 3 review ref-link trust gate (#217, FR-EX-05) ──
+    # Per-field source anchor. NULL → FE renders plain text (graceful degrade,
+    # no dead link). Populated by the VisionExtractionProvider (KHE_AI scope).
+    ref = Column(Text, nullable=True)                  # display label, e.g. "Điều 8" / "tr.1 §A"
+    page_num = Column(Integer, nullable=True)          # 1-based page for scroll-to
+    bbox = Column(Text, nullable=True)                 # JSON [x0,y0,x1,y1] normalized 0..1
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
