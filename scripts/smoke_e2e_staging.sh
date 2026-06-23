@@ -163,28 +163,37 @@ if [ -n "$DOC_ID" ]; then
     if [ "$DOC_STATUS" = "extracted" ]; then
       ok "Extraction completed (status=extracted)"
 
-      # DocumentDetailOut fields: obligations[] · clause_count (int) · parties[] · terms[].
+      # DocumentDetailOut fields: obligations[] · clause_count (int) · parties[] · terms[]
+      # · provider (#233/#235 — last extraction provider).
       OBL_COUNT=$(echo "$DOC_RESP" | jq '[.obligations // [] | length] | .[0]')
       CLAUSE_COUNT=$(echo "$DOC_RESP" | jq -r '.clause_count // 0')
       PARTY_COUNT=$(echo "$DOC_RESP" | jq '[.parties // [] | length] | .[0]')
-      printf "  obligations=%s clause_count=%s parties=%s\n" \
-        "$OBL_COUNT" "$CLAUSE_COUNT" "$PARTY_COUNT"
+      PROVIDER=$(echo "$DOC_RESP" | jq -r '.provider // "unknown"')
+      printf "  provider=%s obligations=%s clause_count=%s parties=%s\n" \
+        "$PROVIDER" "$OBL_COUNT" "$CLAUSE_COUNT" "$PARTY_COUNT"
 
       # ── #230 / FR-EX-05 anchor gate ──
-      # NOTE: DocumentDetailOut does NOT expose `provider`, so the script can't tell
-      # Gemini (anchors expected) from a Claude fallback (anchors null, graceful). The
-      # hard assertion therefore runs ONLY when a real KHE_TEST_FILE was supplied — the
-      # 67-byte synthetic PNG yields no extractable terms and would false-fail.
+      # provider is now on DocumentDetailOut (#233/#235), so the gate is machine-clean:
+      #   gemini_flash → anchors REQUIRED (null = grammar 'too many states' / drop = FAIL)
+      #   claude_*     → anchors null is correct (lean fallback schema is anchor-free)
+      # Still skipped on the synthetic PNG (no extractable terms → would false-fail).
       TERM_COUNT=$(echo "$DOC_RESP" | jq '[.terms // [] | length] | .[0]')
       ANCHORED=$(echo "$DOC_RESP" | jq '[.terms // [] | map(select(.page_num != null)) | length] | .[0]')
       REFFED=$(echo "$DOC_RESP" | jq '[.terms // [] | map(select(.ref != null)) | length] | .[0]')
       printf "  terms=%s anchored(page_num)=%s with_ref=%s\n" "$TERM_COUNT" "$ANCHORED" "$REFFED"
       if [ "${CREATED_TEST_FILE:-}" = "1" ]; then
         printf "  ℹ synthetic PNG used — anchor gate SKIPPED. Set KHE_TEST_FILE to a real contract to gate #230.\n"
-      elif [ "${ANCHORED:-0}" -gt 0 ] 2>/dev/null; then
-        ok "#230 anchors populate ($ANCHORED/$TERM_COUNT terms have page_num)"
+      elif [ "$PROVIDER" = "gemini_flash" ]; then
+        if [ "${ANCHORED:-0}" -gt 0 ] 2>/dev/null; then
+          ok "#230 anchors populate ($ANCHORED/$TERM_COUNT terms have page_num, provider=gemini_flash)"
+        else
+          die "#230 anchors EMPTY on gemini_flash — grammar 'too many states' / silent drop. Fallback: narrow anchor scope to the 4 benchmark fields, re-run."
+        fi
+      elif printf '%s' "$PROVIDER" | grep -q '^claude'; then
+        printf "  ℹ provider=%s (Claude fallback) — null anchors expected (lean schema). anchored=%s.\n" "$PROVIDER" "$ANCHORED"
+        ok "#230 not gated (Claude fallback path, graceful-null by design)"
       else
-        die "#230 anchors EMPTY — if extraction ran on gemini_flash this is a grammar 'too many states' / silent-drop failure; if a Claude fallback fired, anchors are expected null (confirm provider via audit/Event)."
+        printf "  ⚠ provider=%s — cannot gate #230 (expected gemini_flash or claude_*). anchored=%s.\n" "$PROVIDER" "$ANCHORED"
       fi
       break
     elif [ "$DOC_STATUS" = "failed" ]; then
