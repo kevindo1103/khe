@@ -112,6 +112,8 @@ export default function DocumentList() {
                 { key: 'created_at', label: 'Ngày tạo' },
               ]}
               rows={data?.items || []}
+              rowTestId={(row) => `doc-row-${row.status}`}
+              rowDataAttrs={(row) => ({ 'data-status': row.status })}
               renderCell={(key, row) => {
                 if (key === 'file_name') {
                   return (
@@ -135,7 +137,7 @@ export default function DocumentList() {
                     needs_review: '⚠ Cần kiểm tra',
                   };
                   return (
-                    <Badge kind={badgeMap[row.status] || 'neutral'}>
+                    <Badge kind={badgeMap[row.status] || 'neutral'} testId={`doc-status-${row.id}`}>
                       {labelMap[row.status] || row.status}
                     </Badge>
                   );

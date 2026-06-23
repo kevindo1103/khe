@@ -10,6 +10,8 @@ interface TableProps<T> {
   rows: T[];
   renderCell?: (key: string, row: T) => ReactNode;
   className?: string;
+  rowTestId?: (row: T) => string;
+  rowDataAttrs?: (row: T) => Record<string, string>;
 }
 
 export function Table<T extends object>({
@@ -17,6 +19,8 @@ export function Table<T extends object>({
   rows,
   renderCell,
   className = '',
+  rowTestId,
+  rowDataAttrs,
 }: TableProps<T>) {
   return (
     <div className={`overflow-x-auto ${className}`}>
@@ -35,7 +39,12 @@ export function Table<T extends object>({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-b border-border">
+            <tr
+              key={i}
+              className="border-b border-border"
+              data-testid={rowTestId ? rowTestId(row) : undefined}
+              {...(rowDataAttrs ? rowDataAttrs(row) : {})}
+            >
               {columns.map((c) => (
                 <td
                   key={String(c.key)}
