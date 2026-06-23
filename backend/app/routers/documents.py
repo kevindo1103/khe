@@ -569,3 +569,62 @@ def confirm_self_party(
     )
 
     return {"ok": True, "updated": updated}
+
+
+# ── Re-extract (admin-only, #97) ──
+
+
+@docs_router.post("/{doc_id}/re-extract", status_code=status.HTTP_202_ACCEPTED)
+def re_extract_document(
+    doc_id: int,
+    background_tasks: BackgroundTasks,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-trigger extraction on a document — admin only.
+
+    Used to unstick docs whose extraction crashed mid-flight (status='processing'
+    after a worker restart) or to pull in a schema upgrade (e.g. #162 added
+    `obligation_schedule`). The extraction runner is idempotent: it replaces
+    Terms / Clauses / Parties / schedule-derived Obligations for this doc in
+    a single transaction.
+
+    CAUTION: chain-resolved Obligations (with non-null source_doc_chain) survive
+    re-extraction; if the underlying terms changed materially, run obligation
+    derivation afterwards — out of scope here.
+
+    D-02: user-triggered action; audit Event logged.
+    """
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    if not check_extraction_consent(db, user.tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SME consent for AI extraction not recorded. Log consent first.",
+        )
+
+    previous_status = doc.status
+    doc.status = "processing"
+    db.commit()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="extraction_retriggered",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"previous_status": previous_status},
+    )
+
+    _enqueue_extraction(background_tasks, doc_id, user.tenant_id, doc.doc_type)
+    return {"ok": True, "doc_id": doc_id, "status": "processing"}
