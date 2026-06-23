@@ -4,6 +4,7 @@ import { Button, Card, Badge, JourneyEmptyState } from '../../components';
 import { apiFetch } from '../../lib/api';
 import { useJourneyStage } from '../../hooks/useJourneyStage';
 import type { ObligationListOut, ObligationOut } from '../../types/obligations';
+import type { DocumentListOut, DocumentListItem } from '../../types/documents';
 
 // ── helpers ──
 
@@ -173,13 +174,21 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
 // ── routed home ──
 
 export default function Home() {
-  const { stage, docs, loading, error } = useJourneyStage();
+  const { stage, loading, error } = useJourneyStage();
+  const [docs, setDocs] = useState<DocumentListItem[] | null>(null);
   const navigate = useNavigate();
 
   const goUpload = useCallback(() => navigate('/admin/upload'), [navigate]);
   const goDocuments = useCallback(() => navigate('/admin/documents'), [navigate]);
 
-  if (loading) {
+  // doc list powers the counts shown in several stage views (server owns the stage)
+  useEffect(() => {
+    apiFetch<DocumentListOut>('/documents/?page=1&page_size=100')
+      .then((res) => setDocs(res.items))
+      .catch(() => setDocs([]));
+  }, []);
+
+  if (loading || docs === null) {
     return <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>;
   }
   if (error) {
