@@ -4,6 +4,9 @@
 
 export interface ChatQueryIn {
   question: string;
+  // DEC-031 v2 (#201): per-device/tab UUID from FE localStorage. Optional —
+  // absent → stateless (cold) chat, fully backward compatible.
+  session_id?: string;
 }
 
 export interface ChatSource {
@@ -31,6 +34,19 @@ export interface ChatQueryOut {
   answer: string;
   found: boolean;
   sources: ChatSource[];
+  // DEC-031 v2 (#201): ID-only working-set chip label ("HĐ #12" / "3 tài liệu");
+  // null when cold (0 docs) or working set over-cap. Plus the echoed session_id.
+  context_label: string | null;
+  session_id: string | null;
+}
+
+export interface ChatSessionResetIn {
+  session_id: string;
+}
+
+export interface ChatSessionResetOut {
+  ok: boolean;
+  deleted: number;
 }
 
 export interface ChatMessage {
@@ -40,4 +56,7 @@ export interface ChatMessage {
   notFound?: boolean;
   isError?: boolean;
   loading?: boolean;
+  // Over-cap signal: backend surfaces a `truncation_hint` source carrying VN
+  // text ("Tổng số: N kết quả, hiển thị 10 mới nhất."). NOT a D-08 string.
+  truncationHint?: string | null;
 }
