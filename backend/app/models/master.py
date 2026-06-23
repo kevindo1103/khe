@@ -6,6 +6,7 @@ Stored in master.db (never in per-tenant DBs).
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -32,6 +33,11 @@ class Tenant(MasterBase):
     journey_stage = Column(String, nullable=False, server_default="NEW")
     # First-session nav-lock; cleared atomically when the stage reaches ACTIVATED.
     is_first_session = Column(Boolean, nullable=False, server_default="1")
+    # Ingest quota (FR-TN-01 / D-11, #63) — prevents vision-extraction cost
+    # runaway. doc_quota firm-configurable per SME; counter resets calendar 1st.
+    doc_quota = Column(Integer, nullable=False, server_default="500")
+    docs_used_month = Column(Integer, nullable=False, server_default="0")
+    quota_reset_at = Column(Date, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     users = relationship("TenantUser", back_populates="tenant", cascade="all, delete-orphan")

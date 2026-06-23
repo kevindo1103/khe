@@ -63,7 +63,7 @@ class DocumentDetailOut(BaseModel):
 # ── Ingest ──
 
 class UploadOut(BaseModel):
-    doc_id: int
+    doc_id: int | None = None      # None when status="quota_exceeded" (#63 bulk)
     file_name: str
     status: str
 

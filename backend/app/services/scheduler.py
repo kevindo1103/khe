@@ -24,6 +24,7 @@ from app.services.reminders import (
 )
 from app.services.chat_session import cleanup_expired_sessions
 from app.services.obligation_expander import expand_recurring_obligations
+from app.services.quota import reset_all_quotas
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,18 @@ async def run_chat_session_cleanup() -> None:
             tenant_db.close()
     if total:
         logger.info("chat_session cleanup removed %d expired rows", total)
+
+
+async def run_monthly_quota_reset() -> None:
+    """Calendar-1st job (#63): reset docs_used_month → 0 for every tenant."""
+    db: Session = MasterSessionLocal()
+    try:
+        count = reset_all_quotas(db)
+        logger.info("monthly_quota_reset tick: reset %d tenants", count)
+    except Exception as exc:
+        logger.exception("Monthly quota reset failed: %s", exc)
+    finally:
+        db.close()
 
 
 async def run_retry_tick_all_tenants() -> None:
@@ -223,6 +236,15 @@ def create_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(hour=3, minute=0),
         id="chat_session_cleanup",
         replace_existing=True,
+    )
+    scheduler.add_job(
+        run_monthly_quota_reset,
+        # Calendar 1st of month, 00:00 ICT (#63) → reset docs_used_month.
+        trigger=CronTrigger(day=1, hour=0, minute=0),
+        id="monthly_quota_reset",
+        replace_existing=True,
+        misfire_grace_time=12 * 3600,
+        coalesce=True,
     )
     return scheduler
 
