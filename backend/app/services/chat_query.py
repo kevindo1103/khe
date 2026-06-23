@@ -461,7 +461,9 @@ def _tool_search_obligations(
     rows = query.order_by(Obligation.due_date.asc()).all()
     results = []
     for ob, doc in rows:
-        if not ob.due_date:
+        # waiting_trigger items intentionally have due_date=None — include them.
+        # Skip only non-event items with no date (malformed data).
+        if not ob.due_date and ob.status != "waiting_trigger":
             continue
         results.append(
             {
@@ -469,8 +471,17 @@ def _tool_search_obligations(
                 "document_id": doc.id,
                 "file_name": doc.file_name,
                 "field_name": "due_date",
-                "value": ob.due_date,
+                "value": ob.due_date or ob.trigger_condition or "chờ sự kiện",
                 "status": ob.status,
+                "description": ob.description,
+                "direction": ob.direction,
+                "obligor": ob.obligor,
+                "obligation_type": ob.obligation_type,
+                "amount_raw": ob.amount_raw,
+                "milestone_series_id": ob.milestone_series_id,
+                "milestone_index": ob.milestone_index,
+                "milestone_total": ob.milestone_total,
+                "trigger_condition": ob.trigger_condition,
             }
         )
     return results
@@ -887,6 +898,16 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
             "status": r.get("status"),
             "clause_num": r.get("clause_num"),
             "clause_title": r.get("clause_title"),
+            # Obligation-specific fields for FE direction labels + series context (#146).
+            "description": r.get("description"),
+            "direction": r.get("direction"),
+            "obligor": r.get("obligor"),
+            "obligation_type": r.get("obligation_type"),
+            "amount_raw": r.get("amount_raw"),
+            "milestone_series_id": r.get("milestone_series_id"),
+            "milestone_index": r.get("milestone_index"),
+            "milestone_total": r.get("milestone_total"),
+            "trigger_condition": r.get("trigger_condition"),
         }
         for r in all_results
         if r["type"] != "truncation_hint"

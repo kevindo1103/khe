@@ -1165,6 +1165,97 @@ class TestObligationTypeDirectionFilter:
         assert len(sources) == 1
         assert sources[0]["value"] == "2026-07-01"
 
+    def test_obligation_sources_include_direction_and_series_fields(self, auth_client, db, monkeypatch):
+        """search_obligations sources must include direction, description, series fields (#146)."""
+        # Unique doc name scopes this test via doc_hint — avoids cross-test contamination.
+        doc = Document(tenant_id="chat-tenant", file_name="series_fields_146.pdf",
+                       file_path="x/series_fields_146.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Obligation(
+            tenant_id="chat-tenant",
+            document_id=doc.id,
+            description="Bảo hành thiết bị đợt 2",
+            recurrence="once",
+            obligation_type="warranty",
+            due_date="2026-08-15",
+            status="pending",
+            direction="nghĩa_vụ",
+            obligor="Bên cung cấp",
+            amount_raw="40000000",
+            milestone_series_id="series-warranty-146",
+            milestone_index=2,
+            milestone_total=3,
+        ))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {"due_within_days": None, "status": "pending",
+                         "doc_hint": "series_fields_146",
+                         "due_from": None, "due_to": None,
+                         "obligation_type": None, "direction": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Còn đợt 2/3."))
+
+        r = auth_client.post("/chat/query", json={"question": "còn bao nhiêu đợt bảo hành?"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        src = sources[0]
+        assert src["description"] == "Bảo hành thiết bị đợt 2"
+        assert src["direction"] == "nghĩa_vụ"
+        assert src["obligor"] == "Bên cung cấp"
+        assert src["obligation_type"] == "warranty"
+        assert src["amount_raw"] == "40000000"
+        assert src["milestone_series_id"] == "series-warranty-146"
+        assert src["milestone_index"] == 2
+        assert src["milestone_total"] == 3
+
+    def test_waiting_trigger_included_in_results(self, auth_client, db, monkeypatch):
+        """waiting_trigger obligations (due_date=None) must appear in search_obligations (#146)."""
+        doc = Document(tenant_id="chat-tenant", file_name="waiting_trigger_146.pdf",
+                       file_path="x/waiting_trigger_146.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Obligation(
+            tenant_id="chat-tenant",
+            document_id=doc.id,
+            description="Bàn giao sau nghiệm thu",
+            recurrence="once",
+            obligation_type="handover",
+            due_date=None,
+            status="waiting_trigger",
+            milestone_trigger="event",
+            trigger_condition="sau khi nghiệm thu công trình",
+        ))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {"due_within_days": None, "status": "waiting_trigger",
+                         "doc_hint": "waiting_trigger_146",
+                         "due_from": None, "due_to": None,
+                         "obligation_type": None, "direction": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Đang chờ nghiệm thu."))
+
+        r = auth_client.post("/chat/query", json={"question": "việc gì đang chờ sự kiện?"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "sau khi nghiệm thu công trình"
+        assert sources[0]["trigger_condition"] == "sau khi nghiệm thu công trình"
+        assert sources[0]["status"] == "waiting_trigger"
+
     def test_prompt_includes_direction_rules(self):
         """Router prompt must include direction + obligation_type routing rules."""
         from app.services.chat_query import _build_router_system_prompt
