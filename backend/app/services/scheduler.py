@@ -22,6 +22,7 @@ from app.services.reminders import (
     retry_failed_reminders_for_tenant,
     send_reminders_for_tenant,
 )
+from app.services.chat_session import cleanup_expired_sessions
 from app.services.obligation_expander import expand_recurring_obligations
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,27 @@ async def run_expand_all_tenants() -> None:
     _scheduler_metrics["last_expand_tick_ms"] = elapsed_ms
     _scheduler_metrics["last_run_at"] = datetime.now(_ICT).isoformat()
     logger.info("obligation_expander tick: tenants=%d duration_ms=%s", len(tenants), elapsed_ms)
+
+
+async def run_chat_session_cleanup() -> None:
+    """Daily job (#201/#203): purge expired chat_sessions per tenant."""
+    db: Session = MasterSessionLocal()
+    try:
+        tenants = db.query(Tenant).all()
+    finally:
+        db.close()
+
+    total = 0
+    for tenant in tenants:
+        tenant_db = get_tenant_session(tenant.id)
+        try:
+            total += cleanup_expired_sessions(tenant_db)
+        except Exception as exc:
+            logger.exception("Chat session cleanup failed for tenant %s: %s", tenant.id, exc)
+        finally:
+            tenant_db.close()
+    if total:
+        logger.info("chat_session cleanup removed %d expired rows", total)
 
 
 async def run_retry_tick_all_tenants() -> None:
@@ -193,6 +215,14 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         misfire_grace_time=600,
         coalesce=True,
+    )
+    scheduler.add_job(
+        run_chat_session_cleanup,
+        # Daily (not weekly): with a 24h TTL a weekly sweep could leave up to
+        # 7 days of stale rows accumulating (#203 M2).
+        trigger=CronTrigger(hour=3, minute=0),
+        id="chat_session_cleanup",
+        replace_existing=True,
     )
     return scheduler
 

@@ -121,6 +121,16 @@ Brief #198 (PM, ratified Kevin 2026-06-23: D-02 concierge Option B; firm journey
 - **Gap C (v0.1 freeze, EXPLICIT):** v0.1 FROZEN, fix-forward in v0.2, migration MANDATORY. Proposed deadline: remove v0.1 imports within 2 weeks of all screens migrating — **needs PM/Frontend confirm**.
 - **QC open-Q accepted:** lock Stage 0/6 first (defer Stage 3 — heaviest, rework risk); OPEN PR for inline review; defer job-shaped nav post-pilot.
 
+## App navigation v0.2 — responsive (Kevin-ratified 2026-06-23, layout-only) — branch `claude/design-nav-responsive-sidebar`
+`mockup_app_nav_v0.2.jsx` (imports Design System v0.2 only). Switch horizontal top nav →
+**desktop vertical sidebar (grouped sections) + mobile bottom-tab bar** (thumb-reach;
+SME owner mobile-first). Reason: group theo category + scale khi thêm feature.
+- LAYOUT-only: nhãn vẫn **entity-shaped** (Phase 1 ratified); job-shaped IA vẫn defer (`PHASE-2-IA-DEBT`).
+- Giữ nav-lock first-session-only (clear ở ACTIVATED) — supersedes `LockedNav` layout in journey primitives (lock semantics identical).
+- Sections: Theo dõi (Tổng quan/Nghĩa vụ) · Tài liệu (Kho/Tải lên) · Trợ lý (Hỏi-đáp) · footer Cài đặt+account. Bottom-tab = 5 primary, center = upload action.
+- Firm section sau này drop-in được mà không đụng phần còn lại.
+
+## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
   Phase 2 detail design, flag via DOCS_INBOX (do not self-resolve).
