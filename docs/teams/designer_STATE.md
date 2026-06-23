@@ -160,6 +160,14 @@ Lấp gap "đủ cho FE revamp chưa": admin steady-state mới chỉ token-swap
 - Preview artifact: `khe_tong_quan_preview.html` (chưa commit — file HTML review).
 - **Còn lại:** PWA (4) vẫn v0.1; document_list/upload re-layout = next; firm portal/quota-429 chưa mock.
 
+## Admin list/upload re-layout + responsive Dashboard — branch `claude/design-admin-list-upload-dashboard`
+Đóng phần còn lại của "đủ cho FE revamp" (PWA defer cả app — không làm):
+- `mockup_admin_upload_v0.2.jsx` — re-layout; **adopt `Dropzone` a11y primitive** (#206) thay div tự chế; queue có failed-row (PartialUpload, không kẹt) + quota hint (D-11). Supersedes v0.1.
+- `mockup_admin_document_list_v0.2.jsx` — re-layout; doc count + filter chips (count per-status, aria-pressed); **2 empty states honest** (cold-start CTA vs filter no-match). Supersedes v0.1.
+- `mockup_admin_dashboard_v0.2.jsx` — **NEW canonical** Tổng quan, **responsive THẬT** (adopt AppSidebar/AppMobileHeader/AppBottomTabs từ #204 + `<style>` media-query @760px). Content = QC-fixed: direction cards (groups[], sum=7) + status strip (status_breakdown cross-cut) + reassurance khớp + ScopeCard honest. Formalize từ `khe_tong_quan_preview.html`.
+- **Admin dashboard responsive = DONE (canonical JSX)**, không chỉ HTML preview.
+- **Coverage giờ:** Admin web đủ cho FE revamp (login/upload/list/detail/obligation/settings/dashboard trên v0.2). NGOÀI scope còn: firm portal, quota-429 screen, PWA (defer cả app).
+
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
