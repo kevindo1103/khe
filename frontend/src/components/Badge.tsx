@@ -13,6 +13,7 @@ interface BadgeProps {
   kind: BadgeKind;
   children: ReactNode;
   className?: string;
+  testId?: string;
 }
 
 const kindClasses: Record<BadgeKind, string> = {
@@ -25,9 +26,10 @@ const kindClasses: Record<BadgeKind, string> = {
   neutral: 'bg-ink-muted text-white',
 };
 
-export function Badge({ kind, children, className = '' }: BadgeProps) {
+export function Badge({ kind, children, className = '', testId }: BadgeProps) {
   return (
     <span
+      data-testid={testId}
       className={`
         inline-flex items-center gap-1
         px-2 py-0.5 rounded-md text-2xs font-medium

@@ -20,7 +20,7 @@ const SUGGESTION_CHIPS = [
 function SourceChip({ source }: { source: ChatSource }) {
   const isObligation = source.type === 'obligation';
   return (
-    <div className="flex flex-wrap gap-1.5 items-center">
+    <div className="flex flex-wrap gap-1.5 items-center" data-testid={`chat-source-${source.document_id}`}>
       <span className="inline-flex items-center gap-1 bg-primary-soft text-primary border border-primary/20 rounded-full px-2.5 py-0.5 text-2xs font-medium">
         📄 {source.file_name}
         {source.clause_num ? ` · ${source.clause_num}` : ''}
@@ -50,7 +50,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   if (role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[78%] bg-primary text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm">
+        <div data-testid="chat-bubble-user" className="max-w-[78%] bg-primary text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm">
           {text}
         </div>
       </div>
@@ -59,9 +59,9 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   if (notFound) {
     return (
-      <div className="flex justify-start max-w-[88%]">
+      <div className="flex justify-start max-w-[88%]" data-testid="chat-bubble-notfound">
         <div className="bg-warning-soft border border-warning/30 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed">
-          <div className="text-warning font-semibold mb-1">{D08_MAIN}</div>
+          <div data-testid="chat-d08-text" className="text-warning font-semibold mb-1">{D08_MAIN}</div>
           <div className="text-warning/90 text-xs">{D08_SUB}</div>
         </div>
       </div>
@@ -71,7 +71,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   if (isLoading) {
     return (
       <div className="flex justify-start">
-        <div className="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-ink-muted italic shadow-sm">
+        <div data-testid="chat-loading" className="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-ink-muted italic shadow-sm">
           Đang tìm…
         </div>
       </div>
@@ -81,6 +81,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   return (
     <div className="flex flex-col gap-1.5 items-start max-w-[88%]">
       <div
+        data-testid="chat-bubble-bot"
         className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
           isError
             ? 'bg-danger-soft border border-danger/30 text-danger'
@@ -229,6 +230,7 @@ export default function Chat() {
               onChange={setInput}
               placeholder="Hỏi về hợp đồng của bạn…"
               className="mb-0"
+              testId="chat-input"
             />
           </div>
           <Button
@@ -236,6 +238,7 @@ export default function Chat() {
             size="sm"
             disabled={!input.trim() || loading}
             className="flex-shrink-0 h-11 w-11 px-0 rounded-full"
+            testId="chat-send"
           >
             ➤
           </Button>

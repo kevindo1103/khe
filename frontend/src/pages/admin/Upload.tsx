@@ -12,6 +12,7 @@ export default function Upload() {
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<UploadOut[] | null>(null);
   const [error, setError] = useState<string>('');
+  const [isConsentError, setIsConsentError] = useState(false);
   const [toastMsg, setToastMsg] = useState<string>('');
   const singleInputRef = useRef<HTMLInputElement>(null);
   const bulkInputRef = useRef<HTMLInputElement>(null);
@@ -24,6 +25,7 @@ export default function Upload() {
     }
     setFiles(selected.filter((f) => f.type === 'application/pdf'));
     setError('');
+    setIsConsentError(false);
     setResults(null);
   };
 
@@ -40,6 +42,7 @@ export default function Upload() {
     }
     setFiles(dropped);
     setError('');
+    setIsConsentError(false);
     setResults(null);
   };
 
@@ -47,6 +50,7 @@ export default function Upload() {
     if (files.length === 0) return;
     setUploading(true);
     setError('');
+    setIsConsentError(false);
     setResults(null);
 
     try {
@@ -68,6 +72,7 @@ export default function Upload() {
       const apiErr = err as ApiError;
       if (apiErr.status === 403) {
         setError('Chưa ghi nhận đồng ý trích xuất AI. Vui lòng liên hệ đại lý/luật sư để kích hoạt.');
+        setIsConsentError(true);
       } else if (apiErr.status === 422) {
         setError('File không hợp lệ. Chỉ chấp nhận PDF.');
       } else {
@@ -82,6 +87,7 @@ export default function Upload() {
     setFiles([]);
     setResults(null);
     setError('');
+    setIsConsentError(false);
     if (singleInputRef.current) singleInputRef.current.value = '';
     if (bulkInputRef.current) bulkInputRef.current.value = '';
   };
@@ -117,6 +123,7 @@ export default function Upload() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => handleDrop(e, tab === 'bulk')}
           onClick={() => (tab === 'single' ? singleInputRef.current?.click() : bulkInputRef.current?.click())}
+          data-testid="upload-dropzone"
         >
           <div className="text-3xl mb-2">📁</div>
           <div className="text-sm text-ink-muted">
@@ -130,6 +137,7 @@ export default function Upload() {
             accept="application/pdf"
             className="hidden"
             onChange={(e) => handleFileSelect(e, false)}
+            data-testid="upload-file-input"
           />
           <input
             ref={bulkInputRef}
@@ -138,6 +146,7 @@ export default function Upload() {
             multiple
             className="hidden"
             onChange={(e) => handleFileSelect(e, true)}
+            data-testid="upload-file-input"
           />
         </div>
 
@@ -158,7 +167,7 @@ export default function Upload() {
         {/* Actions */}
         {files.length > 0 && (
           <div className="flex gap-2 mt-4">
-            <Button onClick={upload} loading={uploading}>
+            <Button onClick={upload} loading={uploading} testId="upload-progress">
               {tab === 'single' ? 'Tải lên' : `Tải lên ${files.length} file`}
             </Button>
             <Button variant="ghost" onClick={clear} disabled={uploading}>
@@ -169,7 +178,7 @@ export default function Upload() {
 
         {/* Error */}
         {error && (
-          <div className="mt-4">
+          <div className="mt-4" data-testid={isConsentError ? 'upload-consent-required' : undefined}>
             <Toast kind="error">{error}</Toast>
           </div>
         )}
