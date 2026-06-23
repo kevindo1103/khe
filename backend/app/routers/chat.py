@@ -11,6 +11,7 @@ from app.models.master import TenantUser
 from app.models.tenant import ChatQueryLog
 from app.schemas.chat import ChatQueryIn, ChatQueryOut, ChatStatsOut
 from app.services.chat_query import answer_question
+from app.services.chat_session import delete_session
 from sqlalchemy import func
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -23,7 +24,24 @@ async def query_chat(
     db: Session = Depends(get_db),
 ):
     """Answer a natural-language question using only extracted tenant data."""
-    return await answer_question(db, user.tenant_id, payload.question)
+    return await answer_question(
+        db,
+        user.tenant_id,
+        payload.question,
+        user_id=user.id,
+        session_id=payload.session_id,
+    )
+
+
+@router.delete("/sessions/current")
+def reset_chat_session(
+    session_id: str,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Reset the progressive chat state ("🔄 Hỏi mới") for a device/tab (#201)."""
+    deleted = delete_session(db, user.tenant_id, user.id, session_id)
+    return {"ok": True, "deleted": deleted}
 
 
 @router.get("/stats", response_model=ChatStatsOut)

@@ -191,3 +191,23 @@ class ChatQueryLog(TenantBase):
     output_tokens = Column(Integer, server_default="0")
     cost_vnd = Column(Float, server_default="0.0")
     llm_calls = Column(Integer, server_default="0")
+
+
+class ChatSession(TenantBase):
+    """Result-seeded progressive chat state (DEC-031 v2, #201).
+
+    One row per device/tab conversation thread. ``state_json`` holds POINTER IDs
+    only (active_doc_ids / active_obligation_ids / working_set_label /
+    last_tool_call) — never PII text — so it is a soft prior for the next query,
+    not a memory of content. TTL 24h via ``expires_at`` + weekly cleanup job.
+    """
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False)
+    session_id = Column(String, nullable=False, unique=True)  # UUID from FE localStorage
+    state_json = Column(Text, nullable=False)                 # pointer IDs only, NO PII
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    expires_at = Column(DateTime, nullable=True)
