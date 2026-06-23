@@ -67,14 +67,16 @@ def test_session_carry_over_sets_then_reads_state(auth_client, test_tenant, db, 
     data = _ask(auth_client, "khi nào hết hạn?", session_id=sid)
     assert data["found"] is True
     assert data["session_id"] == sid
-    assert data["context_label"] == "lease_q7.pdf"  # single-doc working set
+    assert data["context_label"] == f"HĐ #{doc.id}"  # ID-only, no filename PII (#203 C1)
 
     row = db.query(ChatSession).filter(ChatSession.session_id == sid).first()
     assert row is not None
     import json
     state = json.loads(row.state_json)
     assert state["active_doc_ids"] == [doc.id]
-    assert state["working_set_label"] == "lease_q7.pdf"
+    assert state["working_set_label"] == f"HĐ #{doc.id}"
+    # Label must NOT leak the filename (party-name PII).
+    assert "lease_q7" not in state["working_set_label"]
 
 
 # ── 2. TTL expiry → cold start ──────────────────────────────────────────────
@@ -103,10 +105,18 @@ def test_expired_session_is_cold(auth_client, test_tenant, db, monkeypatch):
 
 # ── 3. Size cap ─────────────────────────────────────────────────────────────
 
-def test_over_cap_does_not_persist_working_set(auth_client, test_tenant, db, monkeypatch):
-    """> MAX_ACTIVE_DOC_IDS docs in results → no state, context_label null."""
-    # 21 docs each with a matching term.
-    docs = [_seed_doc(db, test_tenant, f"d{i}.pdf") for i in range(21)]
+def test_over_cap_integration_no_state_written(auth_client, test_tenant, db, monkeypatch):
+    """End-to-end (#203 M3): >20 doc_ids in sources → context_label null + no row.
+
+    Mock the tool directly so we bypass search_terms' 10-row truncation and
+    actually exceed MAX_ACTIVE_DOC_IDS.
+    """
+    fake = [
+        {"type": "term", "document_id": i, "obligation_id": None,
+         "file_name": f"d{i}.pdf", "field_name": "ngay_het_han", "value": "2026-12-31"}
+        for i in range(25)
+    ]
+    monkeypatch.setattr(chat_query, "_tool_search_terms", lambda *a, **k: fake)
     monkeypatch.setattr(chat_query, "_select_tools",
                         _mock_tools([{"name": "search_terms",
                                       "args": {"field_name": "ngay_het_han", "doc_hint": None,
@@ -115,12 +125,43 @@ def test_over_cap_does_not_persist_working_set(auth_client, test_tenant, db, mon
 
     sid = str(uuid.uuid4())
     data = _ask(auth_client, "tất cả ngày hết hạn", session_id=sid)
-    # search_terms truncates at 10 rows, so the working set is actually small here;
-    # to truly exceed the cap we drive compute_working_set directly:
-    big_sources = [{"document_id": i, "file_name": f"d{i}", "obligation_id": None} for i in range(25)]
-    d_ids, o_ids, label = chat_session.compute_working_set(big_sources)
-    assert chat_session.over_cap(d_ids, o_ids) is True
-    assert data["found"] is True  # the response itself still succeeds
+    assert data["found"] is True              # response still succeeds
+    assert data["context_label"] is None      # over cap → no working-set chip
+    # No chat_sessions row persisted for an over-cap result.
+    assert db.query(ChatSession).filter(ChatSession.session_id == sid).first() is None
+
+
+def test_soft_prior_skipped_on_party_filter_intent():
+    """Explicit party_filter intent overrides the prior — don't hide the new target (#203 C2)."""
+    results = [
+        {"type": "term", "document_id": 7, "value": "penfield"},   # in prior
+        {"type": "term", "document_id": 8, "value": "alaska"},     # newly named
+    ]
+    # The router used party_filter (no doc_hint) → treat as explicit intent.
+    out, used = chat_session.apply_soft_prior(results, [7], had_explicit_doc_hint=True)
+    assert used is False
+    assert {r["document_id"] for r in out} == {7, 8}  # ALASKA not hidden
+
+
+def test_sliding_ttl_capped_at_max_age(db, test_tenant):
+    """Sliding refresh never pushes expiry past creation + SESSION_MAX_AGE_DAYS (#203 C3)."""
+    from datetime import datetime, timedelta
+
+    sid = str(uuid.uuid4())
+    # Create a row, then back-date its created_at to ~7 days ago.
+    chat_session.upsert_session(db, test_tenant, 1, sid, {"active_doc_ids": [1]})
+    db.commit()
+    row = db.query(ChatSession).filter(ChatSession.session_id == sid).first()
+    row.created_at = datetime.utcnow() - timedelta(days=7)
+    db.commit()
+
+    # A new query would normally slide expiry to now+24h; the cap must clamp it
+    # to created_at + 7d (i.e. roughly now), not now + 24h.
+    chat_session.upsert_session(db, test_tenant, 1, sid, {"active_doc_ids": [2]})
+    db.commit()
+    db.refresh(row)
+    assert row.expires_at <= row.created_at + timedelta(days=chat_session.SESSION_MAX_AGE_DAYS) + timedelta(seconds=1)
+    assert row.expires_at < datetime.utcnow() + timedelta(hours=24)
 
 
 def test_over_cap_helper_unit():
@@ -194,12 +235,12 @@ def test_multi_device_two_sessions_independent(db, test_tenant):
 
 # ── DELETE endpoint ─────────────────────────────────────────────────────────
 
-def test_delete_session_resets(auth_client, test_tenant, db):
-    """DELETE /chat/sessions/current removes the row."""
+def test_reset_session_via_post_body(auth_client, test_tenant, db):
+    """POST /chat/sessions/reset (JSON body, not query param) removes the row (#203 M1)."""
     sid = str(uuid.uuid4())
     chat_session.upsert_session(db, test_tenant, _user_id(db, test_tenant), sid, {"active_doc_ids": [1]})
     db.commit()
-    r = auth_client.request("DELETE", "/chat/sessions/current", params={"session_id": sid})
+    r = auth_client.post("/chat/sessions/reset", json={"session_id": sid})
     assert r.status_code == 200
     assert r.json()["ok"] is True
     db.expire_all()

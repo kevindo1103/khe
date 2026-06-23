@@ -19,6 +19,12 @@ class ChatQueryOut(BaseModel):
     session_id: str | None = None
 
 
+class ChatSessionResetIn(BaseModel):
+    # POST body (not a query param) so the session_id UUID never lands in nginx
+    # access logs as a device fingerprint (#203 M1, NĐ 13).
+    session_id: str
+
+
 class ChatStatsOut(BaseModel):
     total_queries: int
     total_cost_vnd: float

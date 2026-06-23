@@ -920,9 +920,17 @@ async def answer_question(
                 "context_label": None, "session_id": session_id}
 
     # Soft prior (DEC-031 v2): narrow to the working set only if it still matches;
-    # otherwise keep the full result set (never hide data → D-08 safe).
-    had_doc_hint = any(c["args"].get("doc_hint") for c in tool_calls)
-    all_results, _used_prior = chat_session.apply_soft_prior(all_results, prior_doc_ids, had_doc_hint)
+    # otherwise keep the full result set (never hide data → D-08 safe). Any
+    # explicit entity intent (doc_hint / party_filter / value_contains) overrides
+    # the prior — the user named a new target, so don't scope to the old set
+    # (#203 C2).
+    had_explicit_intent = any(
+        c["args"].get("doc_hint")
+        or c["args"].get("party_filter")
+        or c["args"].get("value_contains")
+        for c in tool_calls
+    )
+    all_results, _used_prior = chat_session.apply_soft_prior(all_results, prior_doc_ids, had_explicit_intent)
 
     # Step 3: format answer from results (D-06: only use provided data).
     answer, format_usage = await _format_answer(question, all_results)
