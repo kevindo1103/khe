@@ -91,7 +91,11 @@ export default function Stage3Review() {
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 360px) 1fr", gap: t.space[5], marginTop: t.space[5], alignItems: "start" }}>
-          {/* LEFT — immutable original (D-06) */}
+          {/* LEFT — immutable original (D-06).
+              FRONTEND HANDOFF: static placeholder here. Implementation needs a PDF
+              viewer that supports anchor-scroll so field `ref` ("tr.1 §A") links jump
+              to the spot in the doc. Engine TBD by Frontend (PDF.js page+coords vs
+              image render vs embed). Tracked post-merge (QC polish #5). */}
           <Card title="Bản gốc (bất biến)" subtitle="D-06 — Khế không sửa nội dung gốc">
             <div style={{ height: 420, borderRadius: t.radius.md, background: t.color.surfaceSunken, border: `1px solid ${t.color.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: t.color.inkSubtle, fontSize: t.font.size.sm }}>
               📄 HĐ thuê mặt bằng Q7.pdf
@@ -122,8 +126,9 @@ export default function Stage3Review() {
 
             {/* confirm gate (D-02) */}
             <div style={{ display: "flex", gap: t.space[3], alignItems: "center", flexWrap: "wrap" }}>
+              {/* QC precision: confirm = "Khế đọc đúng", NOT legal validation of the contract */}
               <Button size="lg" disabled={!self || confirmed} onClick={() => setConfirmStep("readback")}>
-                {confirmed ? "✓ Đã xác nhận" : "Xác nhận hợp đồng đã đúng"}
+                {confirmed ? "✓ Đã xác nhận" : "Xác nhận Khế đọc đúng"}
               </Button>
               {!self && <span style={{ fontSize: t.font.size.sm, color: t.color.warning }}>Chọn “bên nào là bạn” trước.</span>}
             </div>

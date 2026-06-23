@@ -72,6 +72,7 @@ export default function Stage7Obligations({ tenantState = "STEADY" }) {
 
   const renderEmpty = () => {
     if (tenantState === "NEW") return <JourneyEmptyState state="cold_start" onUpload={() => {}} />;
+    if (tenantState === "EXTRACTING") return <JourneyEmptyState state="processing" docCount={3} />; // QC: cover all 4 states
     if (tab === "quyền_lợi") return <div style={{ textAlign: "center", padding: `${t.space[8]}px ${t.space[5]}px`, color: t.color.inkMuted, fontFamily: t.font.family }}>
       <div style={{ fontSize: 22, marginBottom: t.space[2] }}>🤝</div>
       <div style={{ fontSize: t.font.size.md, fontWeight: t.font.weight.semibold, color: t.color.ink }}>Chưa có quyền lợi nào</div>
@@ -99,6 +100,8 @@ export default function Stage7Obligations({ tenantState = "STEADY" }) {
         <div style={{ display: "flex", gap: t.space[2], borderBottom: `1px solid ${t.color.border}`, margin: `${t.space[5]}px 0` }}>
           {TABS.map((tb) => {
             const active = tab === tb.key;
+            // QC: "Cần xác nhận" = pending review, NOT urgent → info (not warning) so it
+            //     doesn't read as "sắp tới hạn".
             const warn = tb.key === "null" && counts.null > 0;
             return (
               <button key={tb.key} onClick={() => setTab(tb.key)} title={tb.hint} style={{
@@ -108,7 +111,7 @@ export default function Stage7Obligations({ tenantState = "STEADY" }) {
                 display: "flex", alignItems: "center", gap: t.space[2],
               }}>
                 {tb.label}
-                <span style={{ fontSize: t.font.size.xs, background: warn ? t.color.warning_soft : t.color.surfaceSunken, color: warn ? t.color.warning : t.color.inkMuted, borderRadius: t.radius.pill, padding: `0 ${t.space[2]}px` }}>{counts[tb.key]}</span>
+                <span style={{ fontSize: t.font.size.xs, background: warn ? t.color.info_soft : t.color.surfaceSunken, color: warn ? t.color.info : t.color.inkMuted, borderRadius: t.radius.pill, padding: `0 ${t.space[2]}px` }}>{counts[tb.key]}</span>
               </button>
             );
           })}
