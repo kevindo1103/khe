@@ -94,6 +94,15 @@ Driven by BA contract logic (DEC-019..022) + DEC-030 self-party direction. Desig
 - "Cần xác nhận" tab + self-party modal depend on backend **#155** (parties[] persist + confirm_self_party) and **#156** type sync (ObligationOut +9 fields). Mockups assume the #157/#155 field shape (direction, obligation_type, milestone_series_id, milestone_index/total, obligor, trigger_condition, amount_raw, status incl. waiting_trigger).
 - 2 PM/Backend ambiguities (per DOCS_INBOX): chat returns direction+series in sources? · parties persist = table vs JSON. Mockups don't depend on the resolution.
 
+## App navigation v0.2 — responsive (Kevin-ratified 2026-06-23, layout-only) — branch `claude/design-nav-responsive-sidebar`
+`mockup_app_nav_v0.2.jsx` (imports Design System v0.2 only). Switch horizontal top nav →
+**desktop vertical sidebar (grouped sections) + mobile bottom-tab bar** (thumb-reach;
+SME owner mobile-first). Reason: group theo category + scale khi thêm feature.
+- LAYOUT-only: nhãn vẫn **entity-shaped** (Phase 1 ratified); job-shaped IA vẫn defer (`PHASE-2-IA-DEBT`).
+- Giữ nav-lock first-session-only (clear ở ACTIVATED) — supersedes `LockedNav` layout in journey primitives (lock semantics identical).
+- Sections: Theo dõi (Tổng quan/Nghĩa vụ) · Tài liệu (Kho/Tải lên) · Trợ lý (Hỏi-đáp) · footer Cài đặt+account. Bottom-tab = 5 primary, center = upload action.
+- Firm section sau này drop-in được mà không đụng phần còn lại.
+
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
