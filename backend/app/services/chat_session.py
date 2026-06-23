@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 MAX_ACTIVE_DOC_IDS = 20
 MAX_ACTIVE_OBLIGATION_IDS = 50
-SESSION_TTL_HOURS = 24
+SESSION_TTL_HOURS = 24              # sliding window refreshed on each query
+SESSION_MAX_AGE_DAYS = 7           # absolute cap from creation (#203 C3 — PM ratify)
 
 
 def load_session_state(
@@ -83,21 +84,24 @@ def apply_soft_prior(
 
 
 def compute_working_set(sources: list[dict]) -> tuple[list[int], list[int], str | None]:
-    """Derive (doc_ids, obligation_ids, label) from the response sources."""
+    """Derive (doc_ids, obligation_ids, label) from the response sources.
+
+    The label is ID-ONLY (no PII): VN contract filenames often embed party names
+    (#203 C1 / NĐ 13). The FE resolves ``active_doc_ids`` → display names from the
+    document list it already holds.
+    """
     doc_ids: list[int] = []
     obl_ids: list[int] = []
-    file_by_doc: dict[int, str | None] = {}
     for s in sources:
         did = s.get("document_id")
         if did is not None and did not in doc_ids:
             doc_ids.append(did)
-            file_by_doc[did] = s.get("file_name")
         oid = s.get("obligation_id")
         if oid is not None and oid not in obl_ids:
             obl_ids.append(oid)
 
     if len(doc_ids) == 1:
-        label = file_by_doc.get(doc_ids[0])
+        label = f"HĐ #{doc_ids[0]}"          # pointer only — never the filename
     elif len(doc_ids) > 1:
         label = f"{len(doc_ids)} tài liệu"
     else:
@@ -134,7 +138,7 @@ def upsert_session(
     bug pattern).
     """
     now = datetime.utcnow()
-    expires = now + timedelta(hours=SESSION_TTL_HOURS)
+    sliding = now + timedelta(hours=SESSION_TTL_HOURS)
     payload = json.dumps(state, ensure_ascii=False)
     row = (
         db.query(ChatSession)
@@ -152,12 +156,17 @@ def upsert_session(
                 user_id=user_id,
                 session_id=session_id,
                 state_json=payload,
-                expires_at=expires,
+                expires_at=sliding,  # fresh row → creation cap doesn't bind yet
             )
         )
     else:
+        # Sliding 24h window, but never past the absolute max-age from creation
+        # (#203 C3): an active daily user gets continuity without an immortal
+        # thread (cross-session memory stays Phase 2).
+        created = row.created_at or now
+        max_expiry = created + timedelta(days=SESSION_MAX_AGE_DAYS)
         row.state_json = payload
-        row.expires_at = expires
+        row.expires_at = min(sliding, max_expiry)
         row.updated_at = now
 
 

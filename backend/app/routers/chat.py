@@ -9,7 +9,7 @@ from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
 from app.models.tenant import ChatQueryLog
-from app.schemas.chat import ChatQueryIn, ChatQueryOut, ChatStatsOut
+from app.schemas.chat import ChatQueryIn, ChatQueryOut, ChatSessionResetIn, ChatStatsOut
 from app.services.chat_query import answer_question
 from app.services.chat_session import delete_session
 from sqlalchemy import func
@@ -33,14 +33,18 @@ async def query_chat(
     )
 
 
-@router.delete("/sessions/current")
+@router.post("/sessions/reset")
 def reset_chat_session(
-    session_id: str,
+    payload: ChatSessionResetIn,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Reset the progressive chat state ("🔄 Hỏi mới") for a device/tab (#201)."""
-    deleted = delete_session(db, user.tenant_id, user.id, session_id)
+    """Reset the progressive chat state ("🔄 Hỏi mới") for a device/tab (#201).
+
+    POST + JSON body (not a DELETE query param) so the session_id UUID is not
+    logged in nginx access logs (#203 M1).
+    """
+    deleted = delete_session(db, user.tenant_id, user.id, payload.session_id)
     return {"ok": True, "deleted": deleted}
 
 

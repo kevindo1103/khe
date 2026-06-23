@@ -100,7 +100,7 @@ async def run_expand_all_tenants() -> None:
 
 
 async def run_chat_session_cleanup() -> None:
-    """Weekly job (#201): purge expired chat_sessions per tenant."""
+    """Daily job (#201/#203): purge expired chat_sessions per tenant."""
     db: Session = MasterSessionLocal()
     try:
         tenants = db.query(Tenant).all()
@@ -218,7 +218,9 @@ def create_scheduler() -> AsyncIOScheduler:
     )
     scheduler.add_job(
         run_chat_session_cleanup,
-        trigger=CronTrigger(day_of_week="sun", hour=3, minute=0),
+        # Daily (not weekly): with a 24h TTL a weekly sweep could leave up to
+        # 7 days of stale rows accumulating (#203 M2).
+        trigger=CronTrigger(hour=3, minute=0),
         id="chat_session_cleanup",
         replace_existing=True,
     )
