@@ -110,18 +110,28 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
     return <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>;
   }
 
-  const pending = obligations.filter((o) => o.status === 'pending');
-  const withDays = pending
+  // active = non-terminal obligations (the dashboard "total")
+  const active = obligations.filter((o) => o.status !== 'done' && o.status !== 'cancelled');
+  const total = active.length;
+
+  // ── DASHBOARD CONSUMER RULE (#227 note 2) — two axes that do NOT add up ──
+  // Direction (groups) → sum to total → rendered as direction cards.
+  const ngVu = active.filter((o) => o.direction === 'nghĩa_vụ').length;
+  const qLoi = active.filter((o) => o.direction === 'quyền_lợi').length;
+  const canXacNhan = total - ngVu - qLoi; // direction null/unset
+  // Status (status_breakdown) → CROSS-CUTS direction → separate strip, never a 4th direction card.
+  const waiting = active.filter((o) => o.status === 'waiting_trigger').length;
+  const dated = active
+    .filter((o) => o.status !== 'waiting_trigger')
     .map((o) => daysUntil(o.due_date))
     .filter((d): d is number => d !== null);
-  const overdue = withDays.filter((d) => d < 0).length;
-  const dueSoon = withDays.filter((d) => d >= 0 && d <= 30).length;
-  const quyenLoi = pending.filter((o) => o.direction === 'quyền_lợi').length;
-  const nearest = withDays.filter((d) => d >= 0).sort((a, b) => a - b)[0];
+  const overdue = dated.filter((d) => d < 0).length;
+  const dueSoon = dated.filter((d) => d >= 0 && d <= 30).length;
+  const nearest = dated.filter((d) => d >= 0).sort((a, b) => a - b)[0];
   const hasWork = overdue + dueSoon > 0;
 
-  // genuinely 0 dated obligations → legitimate all-clear (state 3, not false reassurance)
-  if (withDays.length === 0) {
+  // genuinely 0 active obligations → legitimate all-clear (state 3, not false reassurance)
+  if (total === 0) {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
         <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
@@ -137,7 +147,7 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
     <div className="max-w-2xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
 
-      {/* the single answer to "tôi có cần lo gì không?" */}
+      {/* the single answer to "tôi có cần lo gì không?" — copy uses the group/total numbers */}
       <Card className={hasWork ? 'border-warning/30 bg-warning-soft' : 'border-success/30 bg-success-soft'}>
         <div className="flex items-center gap-3">
           <span className="text-3xl" aria-hidden="true">{hasWork ? '👀' : '🌿'}</span>
@@ -147,8 +157,8 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
             </div>
             <div className="text-sm text-ink-body mt-0.5">
               {nearest != null
-                ? `Hạn gần nhất còn ${nearest} ngày — Khế sẽ nhắc trước.`
-                : 'Khế sẽ nhắc bạn trước mỗi hạn.'}
+                ? `Hạn gần nhất còn ${nearest} ngày — Khế đang theo dõi ${total} nghĩa vụ.`
+                : `Khế đang theo dõi ${total} nghĩa vụ và sẽ nhắc bạn trước mỗi hạn.`}
             </div>
           </div>
         </div>
@@ -159,11 +169,24 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
         )}
       </Card>
 
-      {/* legitimate-reassurance footing: real counts, scoped */}
-      <div className="flex gap-3 flex-wrap">
-        <Stat n={overdue + dueSoon} label="Sắp tới hạn" tone={hasWork ? 'text-warning' : 'text-success'} />
-        <Stat n={quyenLoi} label="Quyền lợi cần đòi" tone="text-info" />
-        <Stat n={docCount} label="Hợp đồng đang theo dõi" tone="text-ink" />
+      {/* AXIS 1 — direction (groups): these sum to `total` */}
+      <div>
+        <div className="text-2xs font-semibold text-ink-subtle uppercase tracking-wide mb-2">Theo vai trò</div>
+        <div className="flex gap-3 flex-wrap">
+          <Stat n={ngVu} label="Nghĩa vụ" tone="text-ink" />
+          <Stat n={qLoi} label="Quyền lợi" tone="text-info" />
+          <Stat n={canXacNhan} label="Cần xác nhận" tone="text-info" />
+        </div>
+      </div>
+
+      {/* AXIS 2 — status: cross-cuts direction → SEPARATE strip, not a direction card */}
+      <div>
+        <div className="text-2xs font-semibold text-ink-subtle uppercase tracking-wide mb-2">Theo tình trạng</div>
+        <div className="flex gap-2 flex-wrap">
+          <Badge kind="overdue">Quá hạn: {overdue}</Badge>
+          <Badge kind="due_soon">Sắp tới hạn: {dueSoon}</Badge>
+          <Badge kind="needs_review">Chờ sự kiện: {waiting}</Badge>
+        </div>
       </div>
 
       <ScopeCard contractCount={docCount} onAddMore={onUpload} />
