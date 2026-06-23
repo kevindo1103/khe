@@ -118,3 +118,22 @@ async def send_obligation_reminder(
         last_exc,
     )
     return False
+
+
+async def send_admin_alert(text: str) -> bool:
+    """Send an operational alert to the admin Telegram channel (#183 dead-letter).
+
+    Uses the global TELEGRAM_CHAT_ID (admin/ops channel, not per-tenant routing).
+    Best-effort: returns False and logs instead of raising if unconfigured or on
+    any send error — an alert failure must never break the retry tick.
+    """
+    chat_id = settings.TELEGRAM_CHAT_ID
+    if not chat_id:
+        logger.warning("No TELEGRAM_CHAT_ID for admin alert; dropping: %s", text)
+        return False
+    try:
+        await _lazy_bot.send_message(chat_id, f"⚠️ *Khế dead-letter*\n\n{text}")
+        return True
+    except Exception as exc:  # noqa: BLE001 — alert is best-effort
+        logger.error("Admin alert delivery failed: %s", exc)
+        return False

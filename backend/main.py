@@ -153,6 +153,20 @@ async def lifespan(app: FastAPI):
         scheduler.start()
         app.state.scheduler = scheduler
 
+        # Cross-restart catch-up (#183): if a crash skipped today's 08:00 fire,
+        # run it now. Best-effort — must never block startup.
+        import asyncio
+
+        from app.services.scheduler import catch_up_missed_daily_run
+
+        async def _catch_up():
+            try:
+                await catch_up_missed_daily_run()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[Main] reminder catch-up skipped: {exc}")
+
+        asyncio.create_task(_catch_up())
+
     yield  # Application runs here
 
     # ---------- Shutdown ----------
