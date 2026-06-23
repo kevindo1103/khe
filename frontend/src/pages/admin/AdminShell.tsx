@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { isFirstSessionLocal } from '../../hooks/useJourneyStage';
+import { useJourneyStage } from '../../hooks/useJourneyStage';
 import { Button } from '../../components';
 
 // First session keeps home + upload OPEN (upload IS the onboarding action);
@@ -17,8 +17,8 @@ const navItems = [
 export default function AdminShell() {
   const { user, logout } = useAuth();
   const location = useLocation();
-  // TODO(#219→#213): replace with is_first_session from GET /tenant/me
-  const firstSession = isFirstSessionLocal();
+  // server-owned is_first_session (#213); cleared atomically at ACTIVATED+
+  const { isFirstSession: firstSession } = useJourneyStage();
 
   return (
     <div className="min-h-screen bg-surface-alt">
