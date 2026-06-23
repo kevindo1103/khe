@@ -13,6 +13,26 @@ def health_check():
     return {"status": "healthy"}
 
 
+@router.get("/scheduler")
+def scheduler_metrics():
+    """One-time benchmark endpoint (#185): report the latest scheduler tick
+    timing + active tenant count, to measure distance to the #181 scaling
+    thresholds. Operational counts only (no PII/secrets), but gated to non-prod
+    to avoid exposing tenant counts publicly. Returns 404 in production.
+    """
+    if settings.ENVIRONMENT not in {"development", "staging", "test", "local"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+    from app.services.scheduler import get_scheduler_metrics
+
+    metrics = get_scheduler_metrics()
+    metrics["note"] = (
+        "Nulls mean the job has not run since process start. "
+        "Trigger a manual tick via POST /reminders/test or wait for the daily cron."
+    )
+    return metrics
+
+
 @router.get("/extraction")
 def extraction_config_diagnostic():
     """Non-prod diagnostic: report which extraction provider env vars the
