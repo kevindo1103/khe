@@ -41,6 +41,14 @@
  *     • aggregate-0 → has data, filter count 0 → found:true, total:0 → "Bạn không có … quá hạn."
  *     • retrieval no-match → found:false, intent:"retrieval", D-08 exact string, sources:[]
  *   Suggestion chips are FE-static (not backend). Acceptance = QC 9-case surface on #199.
+ *
+ *   DASHBOARD CONSUMER RULE (Tổng quan home — QC #199 drift fix): the two axes do
+ *   NOT add together. Direction cards come from `summary.groups[]` (nghĩa_vụ /
+ *   quyền_lợi / null) and SUM to `summary.total`. Status (Chờ sự kiện / Sắp tới /
+ *   Quá hạn) comes from `summary.status_breakdown` and CROSS-CUTS direction — render
+ *   it as a separate strip, never as a 4th direction card. Reassurance copy must use
+ *   the same group/total numbers (no phantom "tháng này" subset unless backend adds
+ *   a due_within_days breakdown).
  */
 import React, { useState } from "react";
 import { tokens as t, Button } from "./mockup_design_system_v0.2.jsx";

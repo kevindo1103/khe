@@ -29,6 +29,12 @@
  *   v0.2.1 (#206): a11y-correct primitives — NavItem, Dropzone, IconButton,
  *   LiveRegion, VisuallyHidden (§2b). Use these for ALL nav/actions/drop targets.
  *
+ * CHIP COLOR SEMANTICS (avoid FE mix-up — QC #199 review):
+ *   • PROVENANCE / source chip ("📄 Nguồn: …") → primary (emerald). It says "đây là
+ *     nguồn của câu trả lời" (FR-CQ-02).
+ *   • SCOPE chip ("đang theo dõi N hợp đồng") → info (blue). It bounds what Khế covers.
+ *   Different purpose → different color; do not unify them.
+ *
  * ACCESSIBILITY — contrast VERIFIED (WCAG 2.1, measured not asserted):
  *   ink 15.0:1 · inkBody 10.8:1 · inkMuted 4.78:1 · primary 5.33:1 (white on
  *   primary 5.33:1) — all PASS AA normal on white. Semantic-on-tint: success

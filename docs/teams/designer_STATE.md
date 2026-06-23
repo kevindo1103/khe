@@ -139,6 +139,14 @@ QC holistic của #200 + #204 surfaced **1 systemic a11y pattern** (interactive 
 - Showcase: "A11y primitives (#206)" section demos cả 5.
 - **Downstream (follow-up, không block):** #200 stages (`LockedNav`, Stage 1 dropzone, Stage 2/8 aria-live) + nav re-import từ corrected primitives khi journey mockups adopt. Gate: trước Frontend nav/journey production build.
 
+## Admin steady-state re-layout + Settings — branch `claude/design-admin-relayout-settings`
+Lấp gap "đủ cho FE revamp chưa": admin steady-state mới chỉ token-swap (#215), chưa re-layout. Thêm:
+- `mockup_admin_document_detail_v0.2.jsx` — **re-layout** minimalist (supersedes v0.1): side-by-side D-06 immutable | extracted Terms; per-field confidence + needs_review (FR-EX-05) + edit→Event (D-07) + **ref-link** anchor vào bản gốc (PDF.js scroll-to = FE wires); **Parties panel** + derived Obligations có **direction** (DEC-030/D-13); sticky original; a11y.
+- `mockup_admin_settings_v0.1.jsx` — **NEW** (lấp nav "Cài đặt"): Hồ sơ DN (legal_name DEC-030) · Kênh nhắc (Telegram/email DEC-006; windows KHÔNG hardcode — DEC-020 pending) · Tài khoản (đổi MK Modal) · NĐ13 consent + thu hồi (D-10 Modal) · Firm access placeholder (M2+).
+- **QC #199 drift fix (preview Tổng quan):** direction cards = `summary.groups[]` (sum = total); status (Chờ sự kiện) = `summary.status_breakdown` cross-cut → strip riêng, KHÔNG cộng vào direction. Reassurance numbers khớp cards. Rule folded vào stage6 header (DASHBOARD CONSUMER RULE). +chip color semantics note (provenance=primary vs scope=info) vào DS v0.2 header.
+- Preview artifact: `khe_tong_quan_preview.html` (chưa commit — file HTML review).
+- **Còn lại:** PWA (4) vẫn v0.1; document_list/upload re-layout = next; firm portal/quota-429 chưa mock.
+
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
