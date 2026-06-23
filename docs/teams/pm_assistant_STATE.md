@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-20 | v2.0*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-23 | v3.0*
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
@@ -43,9 +43,48 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 
 ## Active Sprint Context
 
-**Current phase:** **Sprint 0 COMPLETE (2026-06-11)** — see nghiệm thu issue #23. Ready Sprint 1 kickoff.
-**Sprint 0 goal (ĐÃ ĐẠT):** FastAPI + multi-tenant DB scaffold, CI/CD, Telegram bot, Vision extraction interface + 3 providers. Architecture/contract baseline ratified.
-**Sprint 1 prep:** Spawn KHE_Docs (fold 11 DOCS_INBOX entries) + KHE_Frontend_Admin/PWA/QC/Compliance. Carry-over: #10 per-tenant Alembic, #22 NĐ 13 consent gate.
+**Current phase:** **Sprint 1 IN PROGRESS** — Backend M1+ vertical slice complete on staging. Frontend wiring + QC smoke = critical path to pilot.
+**Sprint 0 goal (ĐÃ ĐẠT 2026-06-11):** FastAPI + multi-tenant DB scaffold, CI/CD, Telegram bot, Vision extraction interface + 3 providers.
+**Sprint 1 status (2026-06-23):** Backend shipped ALL pre-pilot tasks this session (#199/#213/#214/#63/#217 + earlier #201/#203). KHE_AI #230 pending. Frontend wiring Stage 3/6/0/8. QC #187 Playwright pre-pilot.
+
+---
+
+## Pre-Pilot Status Snapshot — 2026-06-23
+
+### ✅ Backend — ALL DONE (staging)
+
+| PR | Issue | What |
+|---|---|---|
+| #202+#205 | #201/#203 | DEC-031 v2 chat sessions (`tenant_009_chat_sessions`) |
+| shipped | #199 | `aggregate_obligations` 4th chat tool — 3 zero-states |
+| shipped | #213 | `tenants.journey_stage` + `is_first_session` master.db |
+| shipped | #214 | `obligations.snoozed_until` — snooze 3 days |
+| shipped | #63 | Quota guard 500 docs/month hard block, calendar reset |
+| PR #229 | #217 | `TermOut` ref/page_num/bbox — Stage 3 anchor contract |
+
+### 🔄 In Progress / Pending
+
+| Team | Issue | What | Gates |
+|---|---|---|---|
+| **KHE_AI** | #230 | Populate page_num/ref/bbox from VisionProvider | Stage 3 real ref-nav |
+| **Frontend** | (no issue) | Wire Stage 6 aggregate (#199 staging) | Stage 6 complete |
+| **Frontend** | (no issue) | Wire Stage 0/8 real journey_stage API (#213 staging) | Onboarding nav-lock |
+| **Frontend** | (no issue) | Wire Stage 3 ref-nav (#217 staging) | Trust gate live |
+| **Frontend** | merge #216 | DS v0.2 token foundation | Everything |
+| **QC** | #187 | Playwright e2e — 3 critical specs | Pre-pilot gate |
+| **QC** | #75/#175 | UAT smoke M0/M1 + E2E script | Pre-pilot gate |
+
+### ⏳ Non-pilot (before go-live)
+
+| Team | Issue | What |
+|---|---|---|
+| KHE_Docs | DOCS_INBOX | Fold 5 backend schema changes from 2026-06-23 (Backend must post) |
+| KHE_Docs | #147 | CONTRACT_LOGIC doc (lawyer partner review) |
+| Compliance | #38 | 90d retention verify-back — counsel confirm (DEC-010 sign-off gate) |
+| Backend | #65 | Firm portal scaffold — #63 now merged → unblocked, but firm journey Phase 2 → LOW |
+
+### ✅ Closed this session
+#179 (DEC-031 storage decision), #201 (DEC-031 implement), #203 (DEC-031 retro fixes).
 
 ---
 
@@ -112,6 +151,20 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | DEC-029 | **doc_type_group taxonomy + full field schema.** Nguồn: lawyer Danh mục HĐ 126 loại → collapse 10 groups: `dan_su` · `thuong_mai` · `lao_dong` · `bat_dong_san` · `van_tai_logistics` · `xay_dung` · `cong_nghe_ip` · `tai_chinh` · `bao_dam` · `hanh_chinh` · `other`. 5 universal fields thêm vào CANONICAL_FIELDS: `doc_type_group` (required, classified first) · `ngay_ky` · `tien_dat_coc` · `thoi_han_bao_hanh` · `thoi_han_thong_bao`. 9 type-specific field sets (~30 fields): lao_dong (3) · bat_dong_san (3) · xay_dung (3) · bao_dam (3) · cong_nghe_ip (3) · thuong_mai (4) · van_tai_logistics (3) · tai_chinh (3) · hanh_chinh (2). Extraction strategy: classify doc_type_group FIRST → extract universal + type-specific conditional trong 1 vision call. Chat: thêm `doc_type_filter` param vào search_terms + search_obligations (exact match, not ILIKE). Issues: #123 (KHE_AI schema) + #124 (Backend chat filter, dep #123). ALL IN CURRENT PHASE (user ratified 2026-06-20). | **Ratified** (Kevin 2026-06-20) | 2026-06-20 |
 
 | DEC-030 | **4-axis Obligation model — REVISED (Kevin 2026-06-20 merge Phase 2 into MVP: PMF core).** Obligation = điểm trong không gian 4 trục độc lập: **(A) obligation_type** (category DEC-027) · **(B) direction + obligor** (góc SME) · **(C) recurrence** (cadence, renamed) · **(D) series metadata** (milestone_series_id / milestone_index / milestone_total / milestone_trigger). **Temporal taxonomy 4 pattern — tất cả MVP:** T1 once · T2 lặp đều (auto-expand engine) · T3 nhiều đợt hữu hạn (series grouping) · T4 vô thời hạn. **Event-chaining (MVP):** `trigger_obligation_id` FK self-ref + `trigger_delay_days` + `trigger_condition` — khi parent done → engine tính due_date con + notify. **Status enum mở rộng:** `pending · in_progress · partial · done · cancelled · waiting_trigger`. **amount_raw + amount_total_raw** lưu string (% hay tuyệt đối, không arithmetic MVP). **Direction:** `nghĩa_vụ / quyền_lợi / null` từ obligor match. **#122 RESOLVED** via Option B. **Extraction generalize:** `payment_schedule[]` → `obligation_schedule[]` (tất cả category). **KHE_AI thêm:** `trigger_condition`, `trigger_delay_days`, `series_id`, `milestone_index/total`, `trigger=date\|event`. **Backend:** migration tenant_005 (+8 cols) + event-chaining service + T2 auto-expand scheduler. **Frontend:** T3 progress chip "Đợt N/total", T3-event "Chờ: X", partial badge, dependency chain view. **Phase 3 còn lại:** cross-doc graph · bank/accounting integration · % parse → VND. D-06 ✅ D-02 ✅ D-08 ✅ D-01 ✅. Issues: #144 (KHE_AI revised) · #145 (Backend revised) · #146 (Frontend revised). | **Ratified** (Kevin 2026-06-20, Phase 2 → MVP) | 2026-06-20 |
+
+| DEC-032 | **D-02 Concierge — Option B ratified (Kevin 2026-06-23).** Concierge pre-fills data, user must self-confirm on first login. Flow: concierge uploads + pre-fills fields → tenant lands at `NEEDS_REVIEW` → user taps confirm on first login → advances to `ACTIVATED`. D-02 preserved (human confirm required, AI never final authority). Filed in #198 PM amendments. | **Ratified** (Kevin 2026-06-23) | 2026-06-23 |
+
+| DEC-033 | **tenant_journey_stage state machine (2026-06-23).** Per-tenant monotonic state machine in `master.db`: `NEW → EXTRACTING → NEEDS_REVIEW → CONFIRMED → ACTIVATED → STEADY`. `home = f(stage)` routing. Nav-lock = `is_first_session` flag only (cleared at ACTIVATED, not persistent punishment). ACTIVATED = ≥1 channel (Telegram OR email) — no hard-block requiring both. Backend task: #213 (shipped 2026-06-23). DOCS_INBOX fold pending. | **Ratified** (Kevin 2026-06-23, via UX BA #198) | 2026-06-23 |
+
+| DEC-034 | **4-state empty matrix — closed contract (2026-06-23).** Applies to ALL list surfaces. States: (1) `cold_start` = 0 docs → "Chưa có tài liệu..." + upload CTA. (2) `processing` = has doc, extraction pending → progress. (3) `all_clear` = has extracted doc, 0 obligations due → "Đã quét — bạn không có hạn nào." ✅ (legitimate). (4) `no_match` = query no match → D-08 + exit. CRITICAL: cold_start ≠ all_clear wording. "Khế sẽ nhắc khi có hạn mới" NEVER on cold tenant. | **Ratified** (Kevin 2026-06-23, via UX BA #198) | 2026-06-23 |
+
+| DEC-035 | **Snooze "Nhắc lại sau 3 ngày" approved (2026-06-23).** `Event.type = reminder_snoozed`, `obligations.snoozed_until = scheduled_at + 3 days`, scheduler skips if `snoozed_until > now`. POST /obligations/{id}/snooze → `{snoozed_until}`. v1: always 3 days, no custom duration. Backend task: #214 (shipped 2026-06-23). | **Ratified** (Kevin 2026-06-23, via #208 comment) | 2026-06-23 |
+
+| DEC-036 | **Quota guard parameters confirmed (Kevin 2026-06-23).** Hard block (HTTP 429) when quota exceeded. Calendar month reset (1st of month). Default 500 docs/month. Response: `{error:"quota_exceeded", limit, used, reset_date}`. Backend #63 shipped. | **Ratified** (Kevin 2026-06-23) | 2026-06-23 |
+
+| DEC-037 | **PWA vs Admin stage split ratified (2026-06-23).** PWA primary: Stage 0 self-serve, 1, 4, 5, 6. Admin primary: Stage 0 concierge, 3. Both: Stage 2, 7, 8. Firm journey deferred to Phase 2 entirely. | **Ratified** (Kevin 2026-06-23, via #208 PM comment) | 2026-06-23 |
+
+| DEC-038 | **FR-CQ ID mapping (deviation accepted 2026-06-23).** KHE_Docs landed DEC-031 FRs as FR-CQ-07/08/09/10 (not 04/05/06/07 as PM spec'd) because 04-06 were occupied by extraction cycles 3+4. Mapping: FR-CQ-07=state_json, FR-CQ-08=scope chip visibility, FR-CQ-09=ambiguity guard+cold-start, FR-CQ-10=session invalidation. PM accepted — no re-number. | **Ratified** (PM accept 2026-06-23) | 2026-06-23 |
 
 | DEC-031 | **Chat context = Result-seeded Progressive State (v2). Anchor: Khế giải multi-turn chat bằng structured data, KHÔNG phải conversation memory.** Model: mỗi query result tự động seeds `chat_sessions.state_json` cho turn tiếp theo — "conversational computation" (Excel filter→SUM; shell pipe; SQL cursor). Generic chatbot không có structured data → buộc dùng prose history (5K tok). Khế có obligations/parties/amounts với ID → maintain 50-token JSON state. **5 invariants (tất cả mandatory):** (1) **State model** — server maintain `chat_sessions.state_json = {active_doc_ids[], active_obligation_ids[], working_set_label, last_tool_call}` per conversation thread, KHÔNG phải prose; (2) **Visibility invariant (mandatory — không drop)** — scope chip hiển thị trong mỗi response bubble "📌 Đang trong context: HĐ Penfield ▾"; tap để widen/reset/switch. Excel/Shell work vì operator explicit — chat không có → chip là operator; (3) **Ambiguity guard** — multi-doc results → ask-clarify KHÔNG auto-narrow silent ("Ý bạn là HĐ nào trong 3 HĐ vừa tìm?"); (4) **Cold-start** — turn 1 deictic ("HĐ này?" khi chưa có context) → ask-clarify ("Bạn muốn hỏi về HĐ nào? [list]"); (5) **Invalidation** — time decay 30-min session timeout + explicit "🔄 Hỏi mới" button + intent-shift detection high threshold → ask trước khi switch. **Spec debt (file cùng engineering task):** result content schema chi tiết; alias resolution rules parties[]; NĐ 13 audit log cho state_json (pointer tới PII data → compliance debt tương tự DEC-028, KHE_Compliance track). **Frontend impact:** scope chip + reset button = mandatory change (không phải zero-frontend). **Engineering hold:** assign sau khi #155 (parties[]) + #156 (type sync) ship. Ref: #178 (KHE_QC BA × 3 rounds). | **Ratified v2** (Kevin 2026-06-20) | 2026-06-20 |
 
@@ -183,15 +236,15 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 
 | # | Session | Status |
 |---|---|---|
-| 1 | KHE_Docs | Branch created ✅ — **NEEDS spawn Sprint 1** (11 DOCS_INBOX pending fold) |
-| 2 | KHE_PM_Assistant | Active ✅ |
-| 3 | KHE_Backend | Sprint 0 ✅ DONE (#2 closed, PR #19 merged `cf6d022`). Sprint 1 backlog: #10 (per-tenant alembic), #22 (NĐ 13 consent gate) |
-| 4-5 | KHE_Frontend_Admin / PWA_Chat | **NEEDS spawn Sprint 1** (M0 vertical slice) |
-| 6 | KHE_QC | **NEEDS spawn Sprint 1** (E2E smoke) |
-| 7 | KHE_Designer | Not spawned |
-| 8 | KHE_Infra | Sprint 0 ✅ DONE (PRs #7, #8, #13, #18, #21 merged). VPS pattern + 8 secrets live |
-| 9 | KHE_AI | Sprint 0 ✅ DONE (#3 closed, PR #17 merged). Pending: 15 PII-scrubbed samples từ Kevin |
-| 10 | KHE_Compliance | **NEEDS spawn Sprint 1** (consent UX for #22) |
+| 1 | KHE_Docs | Active — branch `claude/edit-git-docs-Khe01`. DOCS_INBOX 5 entries pending from 2026-06-23 backend merges. |
+| 2 | KHE_PM_Assistant | Active ✅ — this file |
+| 3 | KHE_Backend | **Sprint 1 COMPLETE** — all pre-pilot tasks shipped to staging (#199/#213/#214/#63/#217 + earlier). Pending: #65 firm portal (Phase 2, low), #230 KHE_AI side. |
+| 4-5 | KHE_Frontend_Admin / PWA_Chat | Active — DS v0.2 migration in progress. Pending: wire Stage 3/6/0/8, merge #216. |
+| 6 | KHE_QC | Active — #187 Playwright e2e (HIGH, pre-pilot), #75/#175 UAT smoke pending. |
+| 7 | KHE_Designer | Active — PRs #197/#200/#204/#210 all merged. 8-stage mockup suite complete. |
+| 8 | KHE_Infra | Low-touch. VPS 2 environments (staging :8001 / prod :8000). CI/CD green. |
+| 9 | KHE_AI | Active — #230 pending (page_num/ref/bbox from VisionProvider for Stage 3). |
+| 10 | KHE_Compliance | Active — #38 open (90d retention counsel verify-back, pre go-live gate). #105 NĐ13 PII logging debt tracked. |
 
 ---
 
@@ -241,6 +294,39 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 - pm-assistant synced với main (merged, CLAUDE.md/BRD lấy bản canonical, xóa draft PRODUCT_STRATEGY_Khe.md trùng)
 - **Chờ KHE_Docs cycle 3:** fold BA_contract_processing_logic v0.4 (DEC-019..022) vào BRD §3.3 + §7.3/7.4 (FR-DR/FR-OB) + SRS schema + Glossary. DOCS_INBOX có đủ instruction.
 - BA doc chỉ sống ở branch `claude/pm-assistant` (chưa lên main); KHE_Docs `git fetch origin claude/pm-assistant` để đọc khi fold.
+
+---
+
+## Design System v0.2 + 8-Stage UX Journey Status — 2026-06-23
+
+### Design System v0.2 (PR #197 merged)
+- 11-step neutral ramp, one accent `khế-emerald #0F7A56`
+- Soft layered elevation e1/e2/e3; motion tokens; focus rings WCAG 2.4.7
+- Components: Button (subtle/iconOnly), Badge (dot), Skeleton, ConfidenceMeter (FR-EX-05), EmptyState (generic + D-08 notFound)
+- §2b a11y primitives (PR #210): NavItem, Dropzone, IconButton, LiveRegion, VisuallyHidden
+- Back-compat: `shadow.*` alias for `elevation.*`
+- warning color fix: `#9A6700→#8A6300` (contrast)
+
+### 8-Stage Mockup Suite (all PRs merged)
+| PR | Content |
+|---|---|
+| #200 | journey primitives (state machine, 4-state empty), + all 8 stage mockups |
+| #204 | App nav v0.2 — desktop sidebar + mobile bottom tab, nav-lock first-session |
+| #210 | a11y primitives (§2b) + Stage 6 aggregate contract (frozen) |
+
+### Stage wire-up status
+| Stage | Mockup | FE code | Backend dep |
+|---|---|---|---|
+| 0 self-serve | ✅ | Building (mock heuristic) | #213 staging ✅ |
+| 0 concierge | ✅ | Building (D-02 Opt B ratified) | #213 staging ✅ |
+| 1 upload | ✅ | Done | — |
+| 2 processing | ✅ | Done | — |
+| 3 review side-by-side | ✅ | Shell done, ref-nav pending | #217 staging ✅, #230 KHE_AI pending |
+| 4 obligation AHA | ✅ | Done | — |
+| 5 Telegram | ✅ | Done | — |
+| 6 chat | ✅ | PR #211 done (POST shape) | #199 staging ✅ — wire aggregate |
+| 7 3-tab obligations | ✅ | Done (#146 chain) | — |
+| 8 steady dashboard | ✅ | Building | #213 staging ✅ |
 
 ---
 
