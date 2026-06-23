@@ -4,6 +4,7 @@ import { apiFetch } from '../../lib/api';
 import type { ChatMessage, ChatQueryOut, ChatSource } from '../../types/chat';
 import type { ApiError } from '../../lib/api';
 import { OBLIGATION_TYPE_LABELS, labelFor } from '../../lib/labels';
+import { useChatSession } from '../../hooks/useChatSession';
 
 const D08_MAIN = 'Không tìm thấy thông tin này trong hồ sơ của bạn.';
 const D08_SUB =
@@ -45,7 +46,7 @@ function SourceChip({ source }: { source: ChatSource }) {
 }
 
 function ChatBubble({ message }: { message: ChatMessage }) {
-  const { role, text, source, notFound, isError, loading: isLoading } = message;
+  const { role, text, source, notFound, isError, loading: isLoading, truncationHint } = message;
 
   if (role === 'user') {
     return (
@@ -97,6 +98,9 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         {text}
       </div>
       {source && <SourceChip source={source} />}
+      {truncationHint && (
+        <div className="text-2xs text-ink-subtle italic">{truncationHint}</div>
+      )}
     </div>
   );
 }
@@ -105,7 +109,9 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [contextLabel, setContextLabel] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { getSessionId, resetSession } = useChatSession();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -122,16 +128,22 @@ export default function Chat() {
     try {
       const data = await apiFetch<ChatQueryOut>('/chat/query', {
         method: 'POST',
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, session_id: getSessionId() }),
       });
       const notFound = !data.found;
+      // truncation_hint is an over-cap signal, not a real source — keep it out
+      // of the SourceChip and surface its text separately under the answer.
+      const realSources = (data.sources || []).filter((s) => s.type !== 'truncation_hint');
+      const truncation = (data.sources || []).find((s) => s.type === 'truncation_hint');
       const botMsg: ChatMessage = {
         role: 'bot',
         text: data.answer || null,
-        source: data.sources?.[0] || null,
+        source: realSources[0] || null,
         notFound,
+        truncationHint: truncation?.value || null,
       };
       setMessages((m) => [...m, botMsg]);
+      setContextLabel(data.context_label);
     } catch (err) {
       const apiErr = err as ApiError;
       setMessages((m) => [
@@ -157,6 +169,13 @@ export default function Chat() {
   const handleChip = (chip: string) => {
     setInput(chip);
     sendMessage(chip);
+  };
+
+  const handleReset = async () => {
+    await resetSession();
+    setMessages([]);
+    setContextLabel(null);
+    setInput('');
   };
 
   const showEmpty = messages.length === 0 && !loading;
@@ -209,6 +228,32 @@ export default function Chat() {
 
       {/* Input */}
       <div className="border-t border-border bg-surface p-3 rounded-b-lg">
+        {/* Scope chip (working set) + reset — DEC-031 v2 */}
+        {messages.length > 0 && (
+          <div className="flex items-center justify-between gap-2 mb-2">
+            {contextLabel ? (
+              <span
+                data-testid="chat-scope-chip"
+                className="inline-flex items-center gap-1 bg-info-soft text-info border border-info/20 rounded-full px-2.5 py-0.5 text-2xs font-medium"
+              >
+                <span aria-hidden="true">📌</span>
+                {contextLabel}
+                <span aria-hidden="true">▾</span>
+              </span>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={handleReset}
+              aria-label="Hỏi mới — xóa ngữ cảnh trò chuyện"
+              data-testid="chat-reset"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-2xs font-medium text-ink-muted hover:text-ink border border-border rounded-full hover:bg-surface-alt transition-colors cursor-pointer flex-shrink-0"
+            >
+              <span aria-hidden="true">🔄</span> Hỏi mới
+            </button>
+          </div>
+        )}
         {messages.length > 0 && !showEmpty && (
           <div className="flex gap-2 overflow-x-auto pb-2 mb-1" style={{ scrollbarWidth: 'none' }}>
             {SUGGESTION_CHIPS.map((chip) => (

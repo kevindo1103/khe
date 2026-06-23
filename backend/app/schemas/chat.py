@@ -17,6 +17,16 @@ class ChatQueryOut(BaseModel):
     # echoed session_id so the FE can persist it.
     context_label: str | None = None
     session_id: str | None = None
+    # #199 aggregate vs retrieval (FR-CQ, Stage 6). Defaults keep every existing
+    # retrieval response byte-compatible.
+    #   intent="aggregate" → summary/source populated; found ALWAYS true (even
+    #   total=0 → "Bạn không có nghĩa vụ X", never D-08).
+    #   tenant_empty=true → tenant has 0 documents (FE cold-start nudge, distinct
+    #   from aggregate-zero).
+    intent: str = "retrieval"
+    summary: dict | None = None
+    source: dict | None = None
+    tenant_empty: bool = False
 
 
 class ChatSessionResetIn(BaseModel):

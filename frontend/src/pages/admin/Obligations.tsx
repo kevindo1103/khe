@@ -371,7 +371,7 @@ export default function Obligations() {
 
       {/* Cần xác nhận — CTA to document detail */}
       {activeTab === null && filteredItems.length > 0 && (
-        <Card className="mb-4 border-warning/30 bg-warning-soft">
+        <Card className="mb-4 border-info/30 bg-info-soft">
           <div className="text-sm font-medium text-ink mb-2">
             Các nghĩa vụ này chưa xác định vai trò
           </div>

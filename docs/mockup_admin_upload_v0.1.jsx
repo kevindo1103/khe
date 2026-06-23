@@ -9,7 +9,7 @@
  *   - Bulk concierge mode ≤20 docs (DEC-012 — "ôm cả ngăn kéo", first 20 SME)
  */
 import React, { useState } from "react";
-import { tokens as t, Button, Card, Badge } from "./mockup_design_system_v0.1.jsx";
+import { tokens as t, Button, Card, Badge } from "./mockup_design_system_v0.2.jsx";
 
 const queueSeed = [
   { name: "HĐ thuê Q7.pdf", state: "extracted" },

@@ -7,3 +7,4 @@ export { ConfidenceMeter } from './ConfidenceMeter';
 export { Toast } from './Toast';
 export { Modal } from './Modal';
 export { EmptyState } from './EmptyState';
+export { JourneyEmptyState } from './JourneyEmptyState';

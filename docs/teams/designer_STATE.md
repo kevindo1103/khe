@@ -44,6 +44,19 @@ Button `subtle` variant + `iconOnly`, Badge `dot`, **Skeleton**. Additive tokens
 `color.neutral[*]`, `color.ring`, `elevation.*`, `motion.*` (kept `shadow.*` alias for
 back-compat). v0.1 marked SUPERSEDED.
 
+### v0.1 → v0.2 migration — Admin (7/7 DONE) — branch `claude/design-migrate-admin-ds-v02`
+Per migrate-on-touch policy (#208), admin screens migrated DS v0.1 → v0.2: `admin_login`,
+`admin_upload`, `admin_document_list`, `admin_document_detail`, `admin_obligation_v0.1`,
+`admin_obligation_v0.2`, `admin_self_party_confirm`. **Import-path swap only** — verified
+zero token/component drift (all used tokens + Button/Input/Card/Table/Badge/EmptyState/
+ConfidenceMeter/Toast/Modal exist in v0.2 with identical API; Badge kinds done/due_soon/
+needs_review/neutral + Toast success all valid). Filenames unchanged (file-version ≠ DS-version,
+same as journey suite). **Still on v0.1: PWA (4)** — `pwa_login/chat/consent/notification`,
+deferred to KHE_PWA_Chat / next touch.
+- Optional a11y follow-up (NOT in migration): some admin text uses `inkSubtle` (v0.2 below-AA,
+  exempt-only) → should move to `inkMuted`; legacy `admin_obligation_v0.1` line ~95 still has
+  the #198 false-reassurance string but is SUPERSEDED by v0.2 — left untouched.
+
 ### QC review of PR #197 — addressed (2026-06-23)
 - **Contrast measured (not asserted):** ink 15.0 · inkBody 10.8 · inkMuted 4.78 · primary 5.33 · semantic-on-tint all AA. Fixed: `warning #9A6700→#8A6300` (was 4.34 FAIL → 4.85 PASS). `inkSubtle` (2.56) reclassified WCAG-exempt-only; Input hint rerouted to `inkMuted`.
 - **Touch target:** md/lg bumped to 44/48px (44 = touch min). `sm` 32px = desktop-dense only (documented).
