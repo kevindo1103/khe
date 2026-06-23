@@ -6,6 +6,10 @@ export default {
   ],
   theme: {
     extend: {
+      // #204 responsive nav breakpoint: sidebar ≥760, bottom-tabs + header <760
+      screens: {
+        nav: '760px',
+      },
       colors: {
         // ── Existing v0.1 semantic values (UNCHANGED) ──
         // Per Designer migrate-on-touch (#208 Q2): shipped screens keep their

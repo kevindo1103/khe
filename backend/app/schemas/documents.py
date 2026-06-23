@@ -74,6 +74,12 @@ class DocumentDetailOut(BaseModel):
     # Event's payload.reason — surfaces the exact failure path (#79 follow-up)
     # so UAT can self-diagnose without VPS access. Null for non-failed docs.
     failure_reason: str | None = None
+    # Last extraction provider/model from the extraction_performed Event (#233).
+    # Lets the staging smoke gate discriminate gemini_flash (anchors required, #230)
+    # vs claude fallback (null anchors OK). Also feeds NĐ 13 PII-processing audit.
+    # Null pre-extraction / for legacy docs.
+    provider: str | None = None     # e.g. "gemini_flash" | "claude_haiku"
+    model: str | None = None        # e.g. "gemini-2.5-flash"
     model_config = ConfigDict(from_attributes=True)
 
 
