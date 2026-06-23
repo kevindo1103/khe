@@ -102,6 +102,14 @@ SME owner mobile-first). Reason: group theo category + scale khi thêm feature.
 - Giữ nav-lock first-session-only (clear ở ACTIVATED) — supersedes `LockedNav` layout in journey primitives (lock semantics identical).
 - Sections: Theo dõi (Tổng quan/Nghĩa vụ) · Tài liệu (Kho/Tải lên) · Trợ lý (Hỏi-đáp) · footer Cài đặt+account. Bottom-tab = 5 primary, center = upload action.
 - Firm section sau này drop-in được mà không đụng phần còn lại.
+- **MERGED PR #204 (`10287b49` → staging)** sau QC holistic. Review-5 fixed inline trước merge: (#1) nav items = `<button>`+focus ring+aria, (#2) `AppMobileHeader` cho Settings/đăng xuất trên mobile, (#3) first-session unlock `upload` (onboarding action) + home, (#4) badge mobile unify warning-soft = `Badge due_soon`, (#5) `LockedNav` deprecation note + follow-up.
+
+## A11y handoff contract (#206) — DONE on Design System v0.2 — branch `claude/sweet-thompson-jixt9y`
+QC holistic của #200 + #204 surfaced **1 systemic a11y pattern** (interactive `<div>`/`<span>` thay vì `<button>`/`<a>`; thiếu `aria-live`). Gốc là pattern → fix ở contract level, KHÔNG sửa rải rác.
+- `mockup_design_system_v0.2.jsx` §2b **a11y-correct primitives** (exported): `NavItem` (auto picks `<a>`/`<button>`; locked → `<button disabled>`), `Dropzone` (role+tabIndex+Enter/Space+drag+aria), `IconButton` (mandatory `label`→aria-label, dev-warn nếu thiếu), `LiveRegion` (aria-live polite), `VisuallyHidden`.
+- Header doc: **A11Y HANDOFF CONTRACT** block — 4 rules (semantic elements / keyboard / live regions / icon semantics), BINDING on Frontend khi build production components.
+- Showcase: "A11y primitives (#206)" section demos cả 5.
+- **Downstream (follow-up, không block):** #200 stages (`LockedNav`, Stage 1 dropzone, Stage 2/8 aria-live) + nav re-import từ corrected primitives khi journey mockups adopt. Gate: trước Frontend nav/journey production build.
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
