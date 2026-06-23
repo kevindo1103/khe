@@ -137,11 +137,23 @@ Ngoài ra, bóc MỌI nghĩa vụ có lịch/đợt thành danh sách "obligatio
 # document it was read so the review UI can link straight to it (Stage 3 trust gate).
 # Claude's lean schema has no anchor slots → it simply ignores this (same as it ignores
 # clauses/parties/obligation_schedule); Gemini's Full schema fills page_num/ref.
+#
+# Live smoke (#232, doc 16) showed Gemini fills `value` but leaves page_num/ref null
+# when the anchor ask is generic — the per-field descriptions only mention `value`, so
+# the model treats the anchor slots as ignorable optionals. This spec is therefore
+# explicit + example-driven + mandatory-when-found, and gives the trivial single-page
+# default so a 1-page contract has no excuse to return page_num=null.
 _ANCHOR_SPEC = """\
-Với MỖI trường bóc được (kể cả type_specific), ghi kèm vị trí trên tài liệu:
-- page_num: số trang (BẮT ĐẦU TỪ 1) nơi giá trị xuất hiện. Nếu không chắc trang nào → null (D-08, KHÔNG đoán).
-- ref: nhãn điều/khoản/mục chứa giá trị, NGUYÊN VĂN — vd "Điều 8", "Khoản 2.3", "Mục IV". null nếu không có.
-Đây chỉ là VỊ TRÍ đọc được — KHÔNG suy diễn, KHÔNG bịa trang/điều khoản không thấy (D-06).
+NGUỒN TRÍCH DẪN (BẮT BUỘC) — Mỗi trường bóc ra là một object
+{value, confidence, needs_review, page_num, ref}. KHI value ≠ null, PHẢI điền THÊM:
+- page_num: số trang (số nguyên, BẮT ĐẦU TỪ 1) nơi đọc được value. Tài liệu CHỈ 1 trang → page_num = 1.
+- ref: nhãn điều/khoản/mục NGUYÊN VĂN chứa value — vd "Điều 3", "Khoản 2.1", "Mục IV".
+  Nếu value ở phần mở đầu/không thuộc điều khoản đánh số → ref = null (nhưng page_num vẫn điền).
+Áp dụng cho MỌI trường: cả 12 trường phổ quát LẪN mọi phần tử trong "type_specific".
+Ví dụ một trường đã điền ĐỦ neo:
+  "ngay_het_han": {"value": "2026-12-31", "confidence": 0.95, "needs_review": false, "page_num": 1, "ref": "Điều 2"}
+KHÔNG bịa trang/điều khoản (D-06/D-08): thật sự không chắc trang nào → page_num = null;
+không có nhãn điều khoản → ref = null. Nhưng KHÔNG để null chỉ vì bỏ qua bước này.
 """
 
 # Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
