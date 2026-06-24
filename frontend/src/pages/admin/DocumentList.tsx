@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { Button, Input, Card, Table, EmptyState } from '../../components';
+import { Link, useNavigate } from 'react-router-dom';
+import { Button, Input, Card, Table, EmptyState, JourneyEmptyState } from '../../components';
 import { Badge } from '../../components/Badge';
 import { apiFetch } from '../../lib/api';
 import type { DocumentListOut, DocumentListItem } from '../../types/documents';
@@ -14,6 +14,7 @@ const FILTERS = [
 ];
 
 export default function DocumentList() {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<string>('');
   const [q, setQ] = useState<string>('');
   const [page, setPage] = useState(1);
@@ -50,8 +51,15 @@ export default function DocumentList() {
 
   return (
     <div>
-      <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
-        <h1 className="text-xl font-bold text-ink">Tài liệu</h1>
+      <div className="flex justify-between items-end flex-wrap gap-3 mb-4">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Kho tài liệu</h1>
+          {data && (
+            <p className="text-sm text-ink-muted mt-0.5">
+              {data.total} tài liệu đang theo dõi
+            </p>
+          )}
+        </div>
         <Link to="/admin/upload">
           <Button size="sm">+ Tải tài liệu</Button>
         </Link>
@@ -59,22 +67,26 @@ export default function DocumentList() {
 
       {/* Filters + search */}
       <div className="flex gap-3 items-center flex-wrap mb-4">
-        <div className="w-full sm:w-64">
+        <div className="w-full sm:w-72 flex items-center gap-2">
+          <span aria-hidden="true" className="text-ink-subtle text-sm">🔍</span>
           <Input
             value={q}
             onChange={setQ}
-            placeholder="Tìm theo tên tài liệu…"
+            placeholder="Tìm theo tên / đối tác…"
+            className="mb-0 flex-1"
           />
         </div>
         <Button size="sm" onClick={handleSearch}>
           Tìm
         </Button>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap" role="group" aria-label="Lọc theo trạng thái">
           {FILTERS.map((f) => (
             <button
               key={f.key || 'all'}
+              type="button"
+              aria-pressed={filter === f.key}
               onClick={() => { setFilter(f.key); setPage(1); }}
-              className={`px-3 py-1.5 rounded-pill text-xs font-medium transition-colors border ${
+              className={`px-3 py-1.5 rounded-pill text-xs font-medium transition-colors border focus-visible:shadow-ring focus-visible:outline-none ${
                 filter === f.key
                   ? 'bg-primary-soft text-primary border-primary'
                   : 'bg-surface text-ink-muted border-border hover:text-ink'
@@ -94,11 +106,16 @@ export default function DocumentList() {
         {loading && !data ? (
           <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>
         ) : data && data.items.length === 0 ? (
-          <EmptyState
-            icon="🗂️"
-            title="Không có tài liệu"
-            description="Thử bỏ bộ lọc hoặc tải tài liệu mới."
-          />
+          // 4-state matrix spirit: truly-zero (cold tenant) ≠ filter/search no-match
+          !filter && !q ? (
+            <JourneyEmptyState state="cold_start" onUpload={() => navigate('/admin/upload')} />
+          ) : (
+            <EmptyState
+              notFound
+              title="Không có tài liệu phù hợp"
+              description="Thử bỏ bộ lọc hoặc đổi từ khoá tìm."
+            />
+          )
         ) : (
           <>
             <Table<DocumentListItem>
