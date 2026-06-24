@@ -37,6 +37,8 @@ from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
     ConfirmDocumentOut,
+    RemapTypeIn,
+    RemapTypeOut,
     DocumentDetailOut,
     DocumentListItem,
     DocumentListOut,
@@ -49,7 +51,9 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
+from app.services.obligation_engine import derive_obligations
 from app.services import directions, quota, tenant_journey
+from modules.extraction import ALL_TYPE_SPECIFIC_FIELDS, ClauseItem, DOC_TYPE_GROUPS, remap_type
 
 # Split routers to match frozen contract #1.
 ingest_router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -718,6 +722,124 @@ def confirm_document(
         directions_recomputed=recomputed,
         journey_advanced=journey_advanced,
         new_journey_stage=new_stage,
+    )
+
+
+@docs_router.post("/{doc_id}/remap-type", response_model=RemapTypeOut)
+async def remap_document_type(
+    doc_id: int,
+    body: RemapTypeIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """Correct a misclassified ``doc_type_group`` by re-mapping the type-specific
+    fields from the already-extracted ``clauses[]`` — text-only, no vision call
+    (#258). ~2-3đ vs ~177đ re-extract; no quota slot.
+
+    Atomic: delete old type-specific Terms → insert new (source="remap") → update
+    the doc_type_group Term → re-derive obligations → reset confirmed_by_user_at
+    (back to NEEDS_REVIEW for re-confirm, D-02) → doc_type_corrected Event (D-07).
+    """
+    target = body.doc_type_group
+    if target not in DOC_TYPE_GROUPS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid doc_type_group. Must be one of: {list(DOC_TYPE_GROUPS)}",
+        )
+
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # clauses[] is the text source. Empty → Claude-fallback doc with no clause text:
+    # can't remap without re-vision (KHE_AI mirrors this with a no-op guard).
+    clause_rows = (
+        db.query(Clause)
+        .filter(Clause.document_id == doc_id, Clause.tenant_id == user.tenant_id)
+        .order_by(Clause.id)
+        .all()
+    )
+    if not clause_rows:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "no_clauses", "message": "Tài liệu chưa có clause text. Cần re-extract để remap."},
+        )
+    clauses = [ClauseItem(num=c.clause_num, title=c.title, content=c.content or "") for c in clause_rows]
+
+    dtg_term = (
+        db.query(Term)
+        .filter(Term.document_id == doc_id, Term.tenant_id == user.tenant_id, Term.field_name == "doc_type_group")
+        .first()
+    )
+    old_type = dtg_term.field_value if dtg_term else None
+
+    # KHE_AI text-only remap (D-06/D-08 — null when not in clauses).
+    result = await remap_type(clauses, target)
+
+    # ── atomic DB ops ──
+    # 1. Clear ALL type-specific Terms (whole union — safer than just the old type's).
+    db.query(Term).filter(
+        Term.document_id == doc_id,
+        Term.tenant_id == user.tenant_id,
+        Term.field_name.in_(list(ALL_TYPE_SPECIFIC_FIELDS)),
+    ).delete(synchronize_session=False)
+
+    # 2. Insert remapped Terms (a row per target key, D-07 — null-value rows included).
+    remapped = 0
+    nulls = 0
+    for key, f in result.fields.items():
+        db.add(Term(
+            tenant_id=user.tenant_id, document_id=doc_id, field_name=key,
+            field_value=f.value, ref=f.ref, page_num=None,
+            confidence=f.confidence, needs_review=f.needs_review, source="remap",
+        ))
+        if f.value is None:
+            nulls += 1
+        else:
+            remapped += 1
+
+    # 3. Update (or create) the doc_type_group Term.
+    if dtg_term is not None:
+        dtg_term.field_value = target
+    else:
+        db.add(Term(tenant_id=user.tenant_id, document_id=doc_id,
+                    field_name="doc_type_group", field_value=target, source="remap"))
+
+    # 4. Back to NEEDS_REVIEW — user must re-confirm the new schema (D-02).
+    doc.confirmed_by_user_at = None
+    # 5. Cost on the doc (#255) — remap spend tracked like extraction.
+    doc.extraction_cost_vnd = (doc.extraction_cost_vnd or 0.0) + result.cost_vnd
+
+    # 6. Old obligations may carry the wrong obligation_type → rebuild (PM Q4).
+    db.query(Obligation).filter(
+        Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id
+    ).delete(synchronize_session=False)
+
+    # 7. Audit (D-07) — commits the whole transaction above.
+    _log_event(
+        db, user.tenant_id,
+        event_type="doc_type_corrected",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"from": old_type, "to": target, "provider": result.provider,
+                 "remap_cost_vnd": result.cost_vnd,
+                 "fields_remapped": remapped, "fields_null": nulls,
+                 "warnings": result.warnings},
+    )
+
+    # 8. Re-derive date-based obligations from the (now-current) Terms.
+    derive_obligations(db, user.tenant_id, doc_id)
+    # 9. Tenant cost aggregate (#255) — master.db, only on a real remap spend.
+    quota.add_extraction_cost_standalone(user.tenant_id, result.cost_vnd)
+
+    return RemapTypeOut(
+        success=True, fields_remapped=remapped, fields_null=nulls, cost_vnd=result.cost_vnd,
     )
 
 
