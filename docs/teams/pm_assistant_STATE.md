@@ -45,7 +45,7 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 
 **Current phase:** **Sprint 1 IN PROGRESS** — Backend M1+ vertical slice complete on staging. Frontend wiring + QC smoke = critical path to pilot.
 **Sprint 0 goal (ĐÃ ĐẠT 2026-06-11):** FastAPI + multi-tenant DB scaffold, CI/CD, Telegram bot, Vision extraction interface + 3 providers.
-**Sprint 1 status (2026-06-24):** Backend shipped ALL pre-pilot tasks (#199/#213/#214/#63/#217/#241 + earlier #201/#203). DEC-039/040 ratified. Designer firm journey F0–F6 complete (PRs #242/#243). Frontend wiring Stage 3/6/0/8 + #238 confirm flow. QC #187 Playwright pre-pilot. KHE_AI #230 pending.
+**Sprint 1 status (2026-06-24):** Backend shipped ALL pre-pilot tasks (#199/#213/#214/#63/#217/#241 + earlier #201/#203). DEC-039/040 ratified. Designer firm journey F0–F6 complete (PRs #242/#243). Frontend wiring Stage 3/6/0/8 + #238 confirm flow. QC #187 Playwright pre-pilot. KHE_AI #230 done. #255 cost tracking + #258 clause remap BA filed.
 
 ---
 
@@ -92,7 +92,10 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 | Backend | #65 | Firm portal scaffold — #63 now merged → unblocked, but firm journey Phase 2 → LOW |
 
 ### ✅ Closed this session (2026-06-24)
-DEC-039 ratified (firm full data model). DEC-040 ratified (#238 Option B — CONFIRMED nav unlock). Backend PR #241 merged. Designer PRs #242/#243 merged (firm journey mockups F0–F6 + primitives). DOCS_INBOX posted for DEC-039 + DEC-040.
+DEC-039 ratified (firm full data model). DEC-040 ratified + amended via #249 (first-confirm gate). DEC-011 pricing revised to 100k/month. Economics locked: 177đ/call, 82.3% GM at 100 docs/month. Backend PR #241 merged. Designer PRs #242/#243 merged (firm journey F0–F6). KHE_AI #230 + #248 closed. Issues filed: #250/#251 (#249 fix), #255 (cost tracking), #258 (clause remap BA).
+
+### ⚙️ Architectural insight locked (2026-06-24)
+**`clauses[]` = source of truth for downstream text processing.** Vision call extracts full clause content once (DEC-026). All subsequent field-level operations (type remap, future schema additions, firm-specific extraction) use text-only LLM calls on clauses — no vision quota, ~2–3đ vs 177đ. Pattern generalizes to: re-classification, multi-language, incremental field addition without re-upload.
 
 ### ✅ Closed previous session (2026-06-23)
 #179 (DEC-031 storage decision), #201 (DEC-031 implement), #203 (DEC-031 retro fixes).
