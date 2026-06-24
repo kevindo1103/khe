@@ -172,8 +172,14 @@ Lấp gap "đủ cho FE revamp chưa": admin steady-state mới chỉ token-swap
 Firm = economic buyer (Chị Hằng, B2B2B). Portal = lead-generator (J5), KHÔNG dashboard. PM resolved 4 blockers + 9 items trên #236; backend contract = #237 (build không cần #237 merged).
 - `mockup_firm_journey_primitives_v0.1.jsx` — 6 primitives: `ConsentStatus` (pending/granted/revoked) · `DataRestrictedLabel` (labor PII metadata-only, PM B4) · `FirmEmptyState` (CLOSED 4-state: cold_start/processing/all_clear/revoked, cold≠clear) · `RevokeBanner` (D-10 instant vanish, no cache) · `LeadSignalCard` (J5: WHO+WHEN+WHY + mailto CTA "Liên hệ tư vấn", urgency ≤7/8-30/31-90) · `ClientCard` (full business data DEC-039, truncate 3 + xem tất cả, read-only). +`urgencyOf()` helper.
 - Constraints: D-09 read-only (no edit affordance) · D-10 SME-only revoke · DEC-039 full data · labor exception field map · desktop-first · inherits #206 a11y.
-- **Status: PR mở, chờ PM spot-review trước khi build F-stage files.** Next: F0/F1 (onboard + F1a concierge/F1b invite dual path) → F3/F4 (portfolio + lead signals) → F5/F6 (digest + consent lifecycle).
+- Primitives **#242 MERGED** (PM approved; ConsentStatus granted → `done` kind per PM note; urgencyOf tokens verified).
 - ⚠ DEC-039 chưa fold canonical — PM post DOCS_INBOX sau Kevin ratify. Firm digest = email-only MVP; no chat/export/push (PM items 4/5/8).
+
+### F-stages DONE — branch `claude/design-firm-fstages-236` (chờ PM final review)
+- `mockup_firm_stage_F0_F1_v0.1.jsx` — F0 cold-start (Mời client) + F1 **dual path** (F1a concierge: tạo tenant + activation link / F1b invite: SME đã có account) + sent-confirm + pending list. **Exports `FirmShell`** (desktop sidebar, reused). NavItem #206.
+- `mockup_firm_stage_F3_F4_v0.1.jsx` — F3 portfolio (ClientCard grid, sort due/name/count + filter 30/60/90, all-clear empty) + F4 lead signals (grouped Khẩn cấp/Sắp tới/Theo dõi, mailto CTA, LiveRegion count, all-clear).
+- `mockup_firm_stage_F5_F6_v0.1.jsx` — F5 digest (stat cards + bản tin tháng + **email-only toggle**, all-clear) + F6 consent settings (active consents list + RevokeBanner transition; **no firm-side revoke** — D-10/PM #9).
+- All read-only (D-09), consent-gated (D-10), desktop-first, inherit #206. Built to #237 contract.
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
