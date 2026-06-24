@@ -45,6 +45,43 @@ def _is_negative_answer(answer: str) -> bool:
         return True
     return bool(_NOT_FOUND_PATTERNS.search(answer))
 
+
+# Entity-query fallback (#263). On a router miss (0 structured rows) for a query
+# that names a proper noun / party, try a broad clause-text search before D-08.
+# Deliberately IGNORES the sentence-initial capital (orthography, not a proper
+# noun) so it doesn't fire on every question ("Có cái gì..." → no entity).
+_FALLBACK_PREFIX = "Tìm gần đúng: "
+_ALLCAPS_RE = re.compile(r"\b[A-ZĐ]{3,}\b")                       # ALASKA, FLC (skip 2-char "HĐ")
+_QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]+)[\"'“”‘’]")
+_CAP_WORD_RE = re.compile(r"^[A-ZĐ][A-Za-zÀ-ỹĐđ]{2,}$", re.UNICODE)
+
+
+def _entity_terms(question: str) -> list[str]:
+    """Proper-noun / party candidates to search clauses for (#263 fallback).
+
+    Quoted phrases + ALL-CAPS tokens + capitalized words that are NOT the first
+    token (a mid-sentence capital signals a name, not orthography). Returns [] for
+    a plain question → no fallback (don't clause-spam every router miss).
+    """
+    if not question:
+        return []
+    terms: list[str] = []
+    terms += [m.strip() for m in _QUOTED_RE.findall(question)]
+    terms += _ALLCAPS_RE.findall(question)
+    tokens = question.split()
+    for tok in tokens[1:]:
+        clean = tok.strip(".,?!:;\"'()[]")
+        if _CAP_WORD_RE.match(clean):
+            terms.append(clean)
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in terms:
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # LIKE wildcard escaping
 # ---------------------------------------------------------------------------
@@ -1293,6 +1330,19 @@ async def answer_question(
                 )
             )
 
+    # Fallback chain (#263): a router miss (0 structured rows) on an entity-named
+    # query → try a broad clause-text search before D-08. Real rows only + an honest
+    # "Tìm gần đúng" prefix (D-08: never fabricate, just disclose approximate). One
+    # DB query per candidate, no LLM. Disabled for non-entity queries.
+    used_fallback = False
+    if not all_results:
+        for term in _entity_terms(question):
+            fb = _tool_search_clauses(db, tenant_id, term, None)
+            if fb:
+                all_results = fb
+                used_fallback = True
+                break
+
     # D-08 hard rule: if no tool returned data, return the exact not-found string.
     if not all_results:
         _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
@@ -1331,6 +1381,11 @@ async def answer_question(
                              cost_vnd=_cost, llm_calls=llm_calls)
         return {"answer": _NOT_FOUND, "sources": [], "found": False,
                 "context_label": None, "session_id": session_id}
+
+    # #263: disclose an approximate (clause-text fallback) match — only after the
+    # answer passed the negative check, so we never prefix a not-found.
+    if used_fallback:
+        answer = _FALLBACK_PREFIX + answer
 
     # Step 4: build provenance sources (exclude internal truncation hints from the response).
     sources = _build_sources(all_results)

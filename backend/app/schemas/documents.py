@@ -93,6 +93,17 @@ class ConfirmDocumentOut(BaseModel):
     new_journey_stage: str | None = None
 
 
+class RemapTypeIn(BaseModel):
+    doc_type_group: str
+
+
+class RemapTypeOut(BaseModel):
+    success: bool = True
+    fields_remapped: int
+    fields_null: int
+    cost_vnd: float
+
+
 # ── Ingest ──
 
 class UploadOut(BaseModel):

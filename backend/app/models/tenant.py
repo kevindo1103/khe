@@ -60,6 +60,8 @@ class Term(TenantBase):
     ref = Column(Text, nullable=True)                  # display label, e.g. "Điều 8" / "tr.1 §A"
     page_num = Column(Integer, nullable=True)          # 1-based page for scroll-to
     bbox = Column(Text, nullable=True)                 # JSON [x0,y0,x1,y1] normalized 0..1
+    # Provenance (#258): how this term's value originated.
+    source = Column(String, nullable=True)             # "extracted" | "remap" | "manual" | NULL(legacy)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
