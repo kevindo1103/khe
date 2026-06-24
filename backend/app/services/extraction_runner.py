@@ -18,7 +18,7 @@ from app.db.database import get_tenant_session
 from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations
-from app.services import tenant_journey
+from app.services import quota, tenant_journey
 from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
@@ -202,6 +202,12 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         # 9. Update document.
         doc.doc_type = result.doc_type.value
         doc.status = "extracted"
+        # Cost tracking (#255): persist provider + token usage + cost on the doc
+        # (denormalised for the pilot cost report) in the same transaction.
+        doc.extraction_provider = result.provider or None
+        doc.extraction_tokens_in = result.usage.input_tokens
+        doc.extraction_tokens_out = result.usage.output_tokens
+        doc.extraction_cost_vnd = result.cost_vnd
 
         # 10. Audit event.
         event = Event(
@@ -225,6 +231,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # Single commit: DELETE + INSERTs + UPDATE + audit Event.
         db.commit()
+
+        # Cost aggregate (#255): add this extraction's cost to the tenant's month +
+        # lifetime totals on master.db. Done here (cost is known) — NOT in the
+        # upload-time quota guard. Only successful extractions are billed.
+        quota.add_extraction_cost_standalone(tenant_id, result.cost_vnd)
 
         # Journey (#213): extraction complete. Any flagged or sub-80%-confidence
         # field routes the tenant to NEEDS_REVIEW (human confirm, D-02); otherwise
