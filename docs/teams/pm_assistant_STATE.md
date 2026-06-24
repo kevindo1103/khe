@@ -97,6 +97,8 @@ DEC-039 ratified (firm full data model). DEC-040 ratified + amended via #249 (fi
 ### ⚙️ Architectural insight locked (2026-06-24)
 **`clauses[]` = source of truth for downstream text processing.** Vision call extracts full clause content once (DEC-026). All subsequent field-level operations (type remap, future schema additions, firm-specific extraction) use text-only LLM calls on clauses — no vision quota, ~2–3đ vs 177đ. Pattern generalizes to: re-classification, multi-language, incremental field addition without re-upload.
 
+**Clause remap (#258) status:** Backend ✅ staging · KHE_AI ✅ staging · Frontend #262 filed (task assignment, in progress).
+
 ### ✅ Closed previous session (2026-06-23)
 #179 (DEC-031 storage decision), #201 (DEC-031 implement), #203 (DEC-031 retro fixes).
 
