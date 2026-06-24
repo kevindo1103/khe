@@ -67,8 +67,8 @@ def _doc(db):
 
 
 def _ob(db, doc, **kw):
-    o = Obligation(tenant_id=TENANT, document_id=doc.id, description="x", recurrence="once",
-                   status="pending", **kw)
+    kw.setdefault("status", "pending")
+    o = Obligation(tenant_id=TENANT, document_id=doc.id, description="x", recurrence="once", **kw)
     db.add(o); db.commit()
     return o
 
@@ -91,6 +91,32 @@ def test_summary_by_direction_with_labels(auth_client, db):
     assert groups["quyền_lợi"]["label"] == "Đối tác cần làm cho bạn"
     assert data["source"]["obligation_count"] == 3
     assert "status_breakdown" in data
+
+
+def test_summary_active_only_default_excludes_terminal(auth_client, db):
+    """#253 FE: dashboard total + cards count active-only by default (no done/cancelled)."""
+    _wipe(db)
+    doc = _doc(db)
+    _ob(db, doc, direction="nghĩa_vụ", due_date="2026-12-31", status="pending")
+    _ob(db, doc, direction="nghĩa_vụ", due_date="2026-11-30", status="done")       # terminal
+    _ob(db, doc, direction="quyền_lợi", due_date="2026-10-01", status="cancelled")  # terminal
+    _ob(db, doc, direction="nghĩa_vụ", due_date="2026-01-01", status="overdue")     # active (late)
+
+    data = auth_client.get("/obligations/summary?group_by=direction").json()
+    assert data["total"] == 2          # 1 pending + 1 overdue; done/cancelled excluded
+    groups = {g["key"]: g["count"] for g in data["groups"]}
+    assert groups.get("nghĩa_vụ") == 2
+    assert "quyền_lợi" not in groups   # its only obligation was cancelled
+
+
+def test_summary_active_only_false_includes_terminal(auth_client, db):
+    _wipe(db)
+    doc = _doc(db)
+    _ob(db, doc, direction="nghĩa_vụ", due_date="2026-12-31", status="pending")
+    _ob(db, doc, direction="nghĩa_vụ", due_date="2026-11-30", status="done")
+
+    data = auth_client.get("/obligations/summary?active_only=false").json()
+    assert data["total"] == 2          # full historical count includes done
 
 
 def test_summary_zero_is_valid(auth_client, db):
