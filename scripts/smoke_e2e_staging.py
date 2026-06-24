@@ -262,12 +262,19 @@ if doc_id:
             print(f"  terms={term_count} anchored(page_num)={anchored} with_ref={reffed}")
 
             if created_test_file:
-                print("  ℹ synthetic PNG used — anchor gate SKIPPED. Set KHE_TEST_FILE to a real contract to gate #230.")
+                print("  ℹ synthetic PNG used — anchor gate SKIPPED. Set KHE_TEST_FILE to a real contract.")
             elif provider == "gemini_flash":
                 if anchored > 0:
                     ok(f"#230 anchors populate ({anchored}/{term_count} terms have page_num, provider=gemini_flash)")
                 else:
-                    die("#230 anchors EMPTY on gemini_flash — grammar 'too many states' / silent drop. Fallback: narrow anchor scope to the 4 benchmark fields, re-run.")
+                    # NOT a hard fail: this smoke hits the DEPLOYED target, which may not
+                    # yet carry the #230 anchor schema+prompt (it ships in PR #232). Zero
+                    # anchors here is ambiguous — "model ignored anchors" vs "feature not
+                    # deployed". The authoritative #230 gate is the isolated probe:
+                    #   python -m backend.modules.extraction.anchor_probe --file <contract>
+                    print(f"  ⚠ #230 anchors EMPTY on gemini_flash ({anchored}/{term_count}).")
+                    print("    If #230 is deployed here, this is a real miss — run anchor_probe to confirm.")
+                    print("    If not yet deployed (PR #232 unmerged), this is expected. Gate via anchor_probe.")
             elif provider and provider.startswith("claude"):
                 print(f"  ℹ provider={provider} (Claude fallback) — null anchors expected (lean schema). anchored={anchored}.")
                 ok("#230 not gated (Claude fallback path, graceful-null by design)")

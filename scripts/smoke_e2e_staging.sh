@@ -182,12 +182,17 @@ if [ -n "$DOC_ID" ]; then
       REFFED=$(echo "$DOC_RESP" | jq '[.terms // [] | map(select(.ref != null)) | length] | .[0]')
       printf "  terms=%s anchored(page_num)=%s with_ref=%s\n" "$TERM_COUNT" "$ANCHORED" "$REFFED"
       if [ "${CREATED_TEST_FILE:-}" = "1" ]; then
-        printf "  ℹ synthetic PNG used — anchor gate SKIPPED. Set KHE_TEST_FILE to a real contract to gate #230.\n"
+        printf "  ℹ synthetic PNG used — anchor gate SKIPPED. Set KHE_TEST_FILE to a real contract.\n"
       elif [ "$PROVIDER" = "gemini_flash" ]; then
         if [ "${ANCHORED:-0}" -gt 0 ] 2>/dev/null; then
           ok "#230 anchors populate ($ANCHORED/$TERM_COUNT terms have page_num, provider=gemini_flash)"
         else
-          die "#230 anchors EMPTY on gemini_flash — grammar 'too many states' / silent drop. Fallback: narrow anchor scope to the 4 benchmark fields, re-run."
+          # NOT a hard fail: this smoke hits the DEPLOYED target, which may not yet carry
+          # the #230 anchor schema+prompt (ships in PR #232). Zero anchors is ambiguous
+          # (model ignored vs feature not deployed). Authoritative gate is the probe:
+          #   python -m backend.modules.extraction.anchor_probe --file <contract>
+          printf "  ⚠ #230 anchors EMPTY on gemini_flash (%s/%s).\n" "$ANCHORED" "$TERM_COUNT"
+          printf "    If #230 deployed here → real miss (run anchor_probe). If not → expected.\n"
         fi
       elif printf '%s' "$PROVIDER" | grep -q '^claude'; then
         printf "  ℹ provider=%s (Claude fallback) — null anchors expected (lean schema). anchored=%s.\n" "$PROVIDER" "$ANCHORED"
