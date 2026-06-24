@@ -18,6 +18,10 @@ function daysUntil(dateStr: string | null): number | null {
   return Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
 }
 
+// keep identical to DocList badge + filter so counter, badge and list agree (#251)
+const isUnconfirmed = (d: DocumentListItem) =>
+  (d.status === 'extracted' || d.status === 'needs_review') && !d.confirmed_by_user_at;
+
 // ── small presentational pieces (mirror journey primitives v0.1) ──
 
 function ScopeCard({ contractCount, onAddMore }: { contractCount: number; onAddMore: () => void }) {
@@ -100,6 +104,32 @@ function StepsChip({ reminderOn }: { reminderOn: boolean }) {
   );
 }
 
+/**
+ * Persistent, non-dismissable unconfirmed-docs counter (#251 / DEC-040 amended #249).
+ * Nav unlocks at FIRST confirm, so remaining unconfirmed docs must stay visible —
+ * Khế is silent on them until confirmed (D-02). Disappears only at 0 unconfirmed.
+ */
+function UnconfirmedCounter({ unconfirmed, total, onView }: { unconfirmed: number; total: number; onView: () => void }) {
+  return (
+    <Card className="border-info-border bg-info-soft" testId="dashboard-unconfirmed-counter">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3">
+          <span className="text-xl" aria-hidden="true">📄</span>
+          <div>
+            <div className="text-sm font-medium text-ink">
+              {unconfirmed}/{total} tài liệu cần xác nhận
+            </div>
+            <div className="text-2xs text-ink-muted mt-0.5">
+              Khế chỉ nhắc nội dung tài liệu sau khi bạn xác nhận — hãy xử lý dần các tài liệu còn lại.
+            </div>
+          </div>
+        </div>
+        <Button size="sm" variant="ghost" onClick={onView}>Xem danh sách →</Button>
+      </div>
+    </Card>
+  );
+}
+
 // ── stage views ──
 
 /** NEW — self-serve cold start: one focused CTA (Hick's law). */
@@ -151,11 +181,17 @@ function StageReview({ docs, onReviewDoc }: { docs: DocumentListItem[]; onReview
 }
 
 /** STEADY/CONFIRMED — "Tôi có cần lo gì không?" dashboard (J-E). Reassurance only when legitimate. */
-function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: () => void }) {
+function StageDashboard({ docCount, unconfirmed, onUpload }: { docCount: number; unconfirmed: number; onUpload: () => void }) {
   const [obligations, setObligations] = useState<ObligationOut[] | null>(null);
   const [reminderOn, setReminderOn] = useState<boolean | null>(null);
   const navigate = useNavigate();
   const goSettings = () => navigate('/admin/settings');
+  const goUnconfirmed = () => navigate('/admin/documents?confirm=pending');
+
+  // MANDATORY persistent surface (#251): unconfirmed work stays visible after the gate unlock.
+  const unconfirmedBlock = unconfirmed > 0 ? (
+    <UnconfirmedCounter unconfirmed={unconfirmed} total={docCount} onView={goUnconfirmed} />
+  ) : null;
 
   useEffect(() => {
     apiFetch<ObligationListOut>('/obligations/?page=1&page_size=100')
@@ -203,6 +239,7 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
     return (
       <div className="max-w-2xl mx-auto space-y-4">
         <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
+        {unconfirmedBlock}
         {reminderBlock}
         <Card>
           <JourneyEmptyState state="all_clear" />
@@ -216,6 +253,7 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
     <div className="max-w-2xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
 
+      {unconfirmedBlock}
       {reminderBlock}
 
       {/* the single answer to "tôi có cần lo gì không?" — copy uses the group/total numbers */}
@@ -307,6 +345,12 @@ export default function Home() {
       return <StageReview docs={docs} onReviewDoc={goReviewDoc} />;
     // CONFIRMED / ACTIVATED / STEADY → steady-state dashboard
     default:
-      return <StageDashboard docCount={docs.length} onUpload={goUpload} />;
+      return (
+        <StageDashboard
+          docCount={docs.length}
+          unconfirmed={docs.filter(isUnconfirmed).length}
+          onUpload={goUpload}
+        />
+      );
   }
 }

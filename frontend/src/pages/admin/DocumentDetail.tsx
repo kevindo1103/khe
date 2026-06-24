@@ -295,6 +295,35 @@ export default function DocumentDetail() {
             )}
           </div>
 
+          {/* #251 — unconfirmed warning: Khế stays silent on this doc until confirmed.
+              Shown once extraction produced terms; the confirm CTA below is the action. */}
+          {doc.terms.length > 0 && !doc.confirmed_by_user_at && (
+            <Card className="mb-4 border-warning-border bg-warning-soft" testId="doc-unconfirmed-warning">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl" aria-hidden="true">⚠️</span>
+                  <div>
+                    <div className="text-sm font-medium text-ink">
+                      Khế chưa nhắc nội dung tài liệu này vì bạn chưa xác nhận.
+                    </div>
+                    <div className="text-2xs text-ink-muted mt-0.5">
+                      Hãy kiểm tra các trường bên dưới và xác nhận để Khế bắt đầu nhắc.
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={confirmDocument}
+                  loading={confirmingDoc}
+                  disabled={editingTermId !== null}
+                  testId="doc-unconfirmed-warning-cta"
+                >
+                  Xác nhận tài liệu này →
+                </Button>
+              </div>
+            </Card>
+          )}
+
           {/* Terms — grouped */}
           {doc.terms.length === 0 ? (
             <Card title="Thông tin trích xuất">
