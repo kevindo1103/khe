@@ -17,6 +17,7 @@ from ..schemas import (
     CANONICAL_FIELDS,
     DOC_TYPE_GROUPS,
     TYPE_SPECIFIC_FIELDS,
+    AnchoredField,
     ClauseItem,
     ContractExtractionLLM,
     ContractExtractionLLMFull,
@@ -348,6 +349,74 @@ def test_prompt_requests_clauses() -> None:
     instr = build_instruction("hd_lao_dong")
     assert "clauses" in instr
     assert "Điều" in instr and "Khoản" in instr  # asks for numbered articles/clauses
+
+
+# --- per-field source anchors: page_num / ref (FR-EX-05 Stage 3, #230) ---
+
+def test_anchored_field_defaults_and_clamp() -> None:
+    # Anchors default to None (D-08: no fabricated location); confidence still clamps.
+    f = AnchoredField()
+    assert f.page_num is None and f.ref is None
+    assert AnchoredField(confidence=1.9).confidence == 1.0
+    # bbox deferred (#230) — must NOT be a field yet (Gemini grammar budget).
+    assert not hasattr(f, "bbox")
+
+
+def test_full_schema_universal_fields_are_anchored() -> None:
+    # Gemini Full path: every universal field carries page_num/ref slots.
+    full = ContractExtractionLLMFull(doc_type=DocType.LABOR)
+    for name in CANONICAL_FIELDS:
+        assert isinstance(getattr(full, name), AnchoredField), name
+
+
+def test_base_schema_has_no_anchor_slots() -> None:
+    # Grammar guard: Claude lean ExtractedField must NOT gain page_num/ref, or the
+    # schema risks "Schema is too complex". The base 7 stay plain ExtractedField.
+    props = ContractExtractionLLM.model_json_schema()["$defs"]["ExtractedField"]["properties"]
+    assert "page_num" not in props and "ref" not in props
+    base = ContractExtractionLLM(doc_type=DocType.OTHER)
+    assert not isinstance(base.ngay_het_han, AnchoredField)
+
+
+def test_anchor_passes_through_to_result() -> None:
+    from ..providers.base import to_result
+
+    full = ContractExtractionLLMFull(
+        doc_type=DocType.LABOR,
+        ngay_het_han=AnchoredField(value="2026-12-31", confidence=0.95, page_num=2, ref="Điều 3"),
+        type_specific=[
+            NamedExtractedField(key="luong_co_ban", value="20tr", confidence=0.9, page_num=1, ref="Điều 5"),
+        ],
+    )
+    res = to_result(
+        full, provider="gemini_flash", model="gemini-2.5-flash",
+        latency_ms=10.0, usage=TokenUsage(input_tokens=5, output_tokens=2), cost=1.0,
+    )
+    # Backend persists via getattr(field, "page_num"/"ref", None) — must survive.
+    assert getattr(res.fields["ngay_het_han"], "page_num", None) == 2
+    assert getattr(res.fields["ngay_het_han"], "ref", None) == "Điều 3"
+    # type_specific anchors threaded through as_field_map too.
+    assert getattr(res.fields["luong_co_ban"], "page_num", None) == 1
+    assert getattr(res.fields["luong_co_ban"], "ref", None) == "Điều 5"
+
+
+def test_flat_schema_fields_have_null_anchors_via_getattr() -> None:
+    # Claude fallback: no anchor attribute → getattr default None → FE graceful-degrade.
+    from ..providers.base import to_result
+
+    res = to_result(
+        ContractExtractionLLM(doc_type=DocType.LEASE),
+        provider="claude_haiku", model="claude-haiku-4-5",
+        latency_ms=5.0, usage=TokenUsage(input_tokens=3, output_tokens=1), cost=0.5,
+    )
+    assert getattr(res.fields["ngay_het_han"], "page_num", None) is None
+
+
+def test_prompt_requests_page_and_ref() -> None:
+    from ..prompts import build_instruction
+
+    instr = build_instruction("hd_lao_dong")
+    assert "page_num" in instr and "ref" in instr
 
 
 # --- extraction schema v2: doc_type_group + type-specific + payment (#123/#117) ---

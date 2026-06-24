@@ -133,6 +133,29 @@ Ngoài ra, bóc MỌI nghĩa vụ có lịch/đợt thành danh sách "obligatio
   giữ dieu_khoan_thanh_toan ở dạng văn bản. KHÔNG bịa lịch (D-06).
 """
 
+# Source-anchor spec (#230 / FR-EX-05): for each extracted field, record WHERE on the
+# document it was read so the review UI can link straight to it (Stage 3 trust gate).
+# Claude's lean schema has no anchor slots → it simply ignores this (same as it ignores
+# clauses/parties/obligation_schedule); Gemini's Full schema fills page_num/ref.
+#
+# Live smoke (#232, doc 16) showed Gemini fills `value` but leaves page_num/ref null
+# when the anchor ask is generic — the per-field descriptions only mention `value`, so
+# the model treats the anchor slots as ignorable optionals. This spec is therefore
+# explicit + example-driven + mandatory-when-found, and gives the trivial single-page
+# default so a 1-page contract has no excuse to return page_num=null.
+_ANCHOR_SPEC = """\
+NGUỒN TRÍCH DẪN (BẮT BUỘC) — Mỗi trường bóc ra là một object
+{value, confidence, needs_review, page_num, ref}. KHI value ≠ null, PHẢI điền THÊM:
+- page_num: số trang (số nguyên, BẮT ĐẦU TỪ 1) nơi đọc được value. Tài liệu CHỈ 1 trang → page_num = 1.
+- ref: nhãn điều/khoản/mục NGUYÊN VĂN chứa value — vd "Điều 3", "Khoản 2.1", "Mục IV".
+  Nếu value ở phần mở đầu/không thuộc điều khoản đánh số → ref = null (nhưng page_num vẫn điền).
+Áp dụng cho MỌI trường: cả 12 trường phổ quát LẪN mọi phần tử trong "type_specific".
+Ví dụ một trường đã điền ĐỦ neo:
+  "ngay_het_han": {"value": "2026-12-31", "confidence": 0.95, "needs_review": false, "page_num": 1, "ref": "Điều 2"}
+KHÔNG bịa trang/điều khoản (D-06/D-08): thật sự không chắc trang nào → page_num = null;
+không có nhãn điều khoản → ref = null. Nhưng KHÔNG để null chỉ vì bỏ qua bước này.
+"""
+
 # Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
 # array of the response schema — no extra API call.
 _CLAUSES_SPEC = """\
@@ -159,6 +182,6 @@ def build_instruction(doc_type: str = "auto") -> str:
         "Đọc ảnh tài liệu hợp đồng bên dưới và bóc tách thông tin theo schema JSON yêu cầu.\n"
         f"{hint}\n"
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
-        f"{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )
