@@ -1,15 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { apiFetch } from '../lib/api';
 import type { TenantMeOut } from '../types/tenant';
 
 /**
- * tenant_journey_stage — drives home routing + first-session nav-lock (#198/#213).
- *
- * Server-owned (backend #213): reads `GET /tenants/me`. The backend auto-advances
- * the stage on real events (upload→EXTRACTING, extraction→NEEDS_REVIEW/CONFIRMED,
- * reminder channel→ACTIVATED) and clears `is_first_session` atomically at
- * ACTIVATED+. Monotonic/forward-only is enforced server-side, so the FE only
- * reads — no client heuristic, no localStorage floor.
+ * Shared tenant journey state (#213/#238). One `GET /tenants/me` for the whole
+ * admin shell — AdminShell (nav-lock), Home (stage routing) and DocumentDetail
+ * (refetch after confirm) all read the same instance, so a doc-confirm that
+ * advances NEEDS_REVIEW→CONFIRMED unlocks the sidebar atomically via refetch().
+ * Replaces the per-component useJourneyStage hook (and folds #222 single-fetch).
  */
 export const JOURNEY_STAGES = [
   'NEW',
@@ -25,22 +23,23 @@ function coerceStage(s: string): JourneyStage {
   return (JOURNEY_STAGES as readonly string[]).includes(s) ? (s as JourneyStage) : 'NEW';
 }
 
-export interface JourneyState {
+interface JourneyState {
   stage: JourneyStage;
   isFirstSession: boolean;
   loading: boolean;
   error: string;
-  refetch: () => void;
+  refetch: () => Promise<void>;
 }
 
-export function useJourneyStage(): JourneyState {
+const JourneyContext = createContext<JourneyState | null>(null);
+
+export function JourneyProvider({ children }: { children: ReactNode }) {
   const [stage, setStage] = useState<JourneyStage>('NEW');
-  // default unlocked until known — never flash-lock the nav for a returning user
   const [isFirstSession, setIsFirstSession] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
+  const refetch = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -55,8 +54,18 @@ export function useJourneyStage(): JourneyState {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    refetch();
+  }, [refetch]);
 
-  return { stage, isFirstSession, loading, error, refetch: load };
+  return (
+    <JourneyContext.Provider value={{ stage, isFirstSession, loading, error, refetch }}>
+      {children}
+    </JourneyContext.Provider>
+  );
+}
+
+export function useJourney(): JourneyState {
+  const ctx = useContext(JourneyContext);
+  if (!ctx) throw new Error('useJourney must be used within JourneyProvider');
+  return ctx;
 }

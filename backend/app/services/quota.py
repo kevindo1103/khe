@@ -63,8 +63,48 @@ def reset_all_quotas(master_db: Session, today: date | None = None) -> int:
     """
     today = today or date.today()
     result = master_db.execute(
-        update(Tenant).values(docs_used_month=0, quota_reset_at=_next_month_first(today))
+        update(Tenant).values(
+            docs_used_month=0,
+            cost_vnd_month=0,  # #255: reset monthly cost with the doc counter
+            quota_reset_at=_next_month_first(today),
+        )
     )
     master_db.commit()
     logger.info("monthly quota reset: %d tenants → next reset %s", result.rowcount, _next_month_first(today))
     return result.rowcount
+
+
+def add_extraction_cost(master_db: Session, tenant_id: str, cost_vnd: float) -> bool:
+    """Atomically add one extraction's cost to a tenant's month + lifetime aggregate (#255).
+
+    Called at extraction-complete (cost is known) — NOT in the upload-time quota
+    guard, which runs before the provider call. Only successful extractions are
+    billed. Returns True if a row was updated.
+    """
+    if not cost_vnd:
+        return False
+    result = master_db.execute(
+        update(Tenant)
+        .where(Tenant.id == tenant_id)
+        .values(
+            cost_vnd_month=Tenant.cost_vnd_month + cost_vnd,
+            cost_vnd_total=Tenant.cost_vnd_total + cost_vnd,
+        )
+    )
+    master_db.commit()
+    return result.rowcount == 1
+
+
+def add_extraction_cost_standalone(tenant_id: str, cost_vnd: float) -> bool:
+    """``add_extraction_cost`` from a background task (own master session, never raises)."""
+    from app.db.database import MasterSessionLocal
+
+    db = MasterSessionLocal()
+    try:
+        return add_extraction_cost(db, tenant_id, cost_vnd)
+    except Exception:  # noqa: BLE001 - cost tracking must never break extraction
+        db.rollback()
+        logger.warning("extraction cost aggregate failed tenant=%s", tenant_id, exc_info=True)
+        return False
+    finally:
+        db.close()

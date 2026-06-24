@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.database import init_master_db, init_tenant_db
-from app.routers import auth, chat, consent, documents, health, obligations, relationships, reminders, tenants
+from app.routers import admin, auth, chat, consent, documents, health, obligations, relationships, reminders, tenants
 from app.services.scheduler import create_scheduler
 
 
@@ -200,6 +200,7 @@ app.include_router(obligations.router)
 app.include_router(reminders.router)
 app.include_router(chat.router)
 app.include_router(tenants.router)
+app.include_router(admin.router)
 app.include_router(health.router)
 
 

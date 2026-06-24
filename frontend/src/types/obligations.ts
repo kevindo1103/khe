@@ -54,3 +54,27 @@ export interface ObligationPatchOut {
   obligation: ObligationOut;
   activated_count: number;
 }
+
+// GET /obligations/summary (#253/#254) — server-side dashboard aggregate.
+// Default group_by=direction, active_only=true (excludes done/cancelled; overdue kept).
+// Single source of truth shared with the #199 chat aggregate.
+export interface ObligationSummaryGroup {
+  key: string;            // 'nghĩa_vụ' | 'quyền_lợi' | 'null'
+  label: string;          // server label — render verbatim (#227 consumer rule)
+  count: number;
+  nearest?: { title: string; days_left: number };
+}
+
+export interface ObligationStatusBreakdown {
+  waiting_trigger: number;
+  overdue: number;
+  due_soon: number;
+}
+
+export interface ObligationSummaryOut {
+  total: number;
+  group_by: string;
+  groups: ObligationSummaryGroup[];          // sorted by count desc
+  status_breakdown: ObligationStatusBreakdown;
+  source: { obligation_count: number; doc_count: number; label: string };
+}

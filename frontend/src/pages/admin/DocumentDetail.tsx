@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, EmptyState } from '../../components';
 import { apiFetch } from '../../lib/api';
-import type { DocumentDetailOut, TermOut, SelfPartyConfirmOut } from '../../types/documents';
+import type { DocumentDetailOut, TermOut, SelfPartyConfirmOut, ConfirmDocumentOut } from '../../types/documents';
 import type { ObligationOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
+import { useJourney } from '../../contexts/JourneyContext';
 import {
   DOC_TYPE_GROUP_LABELS,
   OBLIGATION_TYPE_LABELS,
@@ -27,6 +28,8 @@ export default function DocumentDetail() {
   const [saving, setSaving] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [confirming, setConfirming] = useState(false);
+  const [confirmingDoc, setConfirmingDoc] = useState(false);
+  const { refetch: refetchJourney } = useJourney();
 
   const load = useCallback(async () => {
     if (!docId) return;
@@ -192,8 +195,11 @@ export default function DocumentDetail() {
           body: JSON.stringify({ role_label: selectedRole }),
         }
       );
+      // 3-state honest toast (#238 Bug A): don't show "0 nghĩa vụ" as false success
       setToastMsg(
-        `Đã xác nhận — ${res.updated} nghĩa vụ đã cập nhật hướng.`
+        res.updated > 0
+          ? `Đã ghi nhận bên bạn — ${res.updated} nghĩa vụ đã cập nhật hướng.`
+          : 'Đã ghi nhận bên bạn — chưa có nghĩa vụ nào khớp để suy ra hướng.'
       );
       setSelectedRole('');
       await load();
@@ -201,6 +207,30 @@ export default function DocumentDetail() {
       setError((err as ApiError).message || 'Xác nhận thất bại');
     } finally {
       setConfirming(false);
+    }
+  };
+
+  // #238 — explicit document confirm (D-02). Self-party auto-derived from legal_name.
+  const confirmDocument = async () => {
+    if (!docId) return;
+    setConfirmingDoc(true);
+    setError('');
+    try {
+      const res = await apiFetch<ConfirmDocumentOut>(`/documents/${docId}/confirm`, {
+        method: 'POST',
+      });
+      setToastMsg(
+        res.journey_advanced
+          ? 'Đã xác nhận tài liệu ✓ — hoàn tất kiểm tra, đã mở khoá đầy đủ.'
+          : `Đã xác nhận tài liệu ✓${res.directions_recomputed > 0 ? ` — ${res.directions_recomputed} nghĩa vụ cập nhật hướng` : ''}`
+      );
+      await load();
+      // atomic sidebar unlock: refresh shared journey state if it advanced
+      if (res.journey_advanced) await refetchJourney();
+    } catch (err) {
+      setError((err as ApiError).message || 'Xác nhận tài liệu thất bại');
+    } finally {
+      setConfirmingDoc(false);
     }
   };
 
@@ -264,6 +294,35 @@ export default function DocumentDetail() {
               </a>
             )}
           </div>
+
+          {/* #251 — unconfirmed warning: Khế stays silent on this doc until confirmed.
+              Shown once extraction produced terms; the confirm CTA below is the action. */}
+          {doc.terms.length > 0 && !doc.confirmed_by_user_at && (
+            <Card className="mb-4 border-warning-border bg-warning-soft" testId="doc-unconfirmed-warning">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl" aria-hidden="true">⚠️</span>
+                  <div>
+                    <div className="text-sm font-medium text-ink">
+                      Khế chưa nhắc nội dung tài liệu này vì bạn chưa xác nhận.
+                    </div>
+                    <div className="text-2xs text-ink-muted mt-0.5">
+                      Hãy kiểm tra các trường bên dưới và xác nhận để Khế bắt đầu nhắc.
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={confirmDocument}
+                  loading={confirmingDoc}
+                  disabled={editingTermId !== null}
+                  testId="doc-unconfirmed-warning-cta"
+                >
+                  Xác nhận tài liệu này →
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* Terms — grouped */}
           {doc.terms.length === 0 ? (
@@ -380,6 +439,33 @@ export default function DocumentDetail() {
                   </div>
                 ))}
               </div>
+            </Card>
+          )}
+
+          {/* Document confirm (#238, D-02) — explicit user confirm advances journey */}
+          {doc.terms.length > 0 && (
+            <Card className={`mb-4 ${doc.confirmed_by_user_at ? 'border-success/30' : ''}`}>
+              {doc.confirmed_by_user_at ? (
+                <div className="flex items-center gap-2 flex-wrap text-sm text-ink-body">
+                  <Badge kind="done">đã xác nhận</Badge>
+                  <span>✅ Bạn đã xác nhận document này. Khế dùng để nhắc hạn.</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-sm text-ink-body">
+                    {editingTermId !== null
+                      ? 'Lưu hoặc huỷ trường đang sửa trước khi xác nhận.'
+                      : 'Đã kiểm tra xong các trường? Xác nhận để Khế chốt và bắt đầu nhắc hạn.'}
+                  </span>
+                  <Button
+                    onClick={confirmDocument}
+                    loading={confirmingDoc}
+                    disabled={editingTermId !== null}
+                  >
+                    Xác nhận document này
+                  </Button>
+                </div>
+              )}
             </Card>
           )}
         </>
