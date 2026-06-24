@@ -41,7 +41,7 @@ export function urgencyOf(days) {
  * ========================================================================== */
 const CONSENT = {
   pending:  { kind: "needs_review", label: "Chờ xác nhận" },
-  granted:  { kind: "extracted",    label: "Đang chia sẻ" },
+  granted:  { kind: "done",         label: "Đang chia sẻ" }, // success-green = active/ok (PM note: not "extracted")
   revoked:  { kind: "neutral",      label: "Đã thu hồi" },
 };
 export function ConsentStatus({ status = "pending" }) {
