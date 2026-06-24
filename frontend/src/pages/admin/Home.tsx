@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Badge, JourneyEmptyState } from '../../components';
 import { apiFetch } from '../../lib/api';
-import { useJourneyStage } from '../../hooks/useJourneyStage';
+import { useJourney } from '../../contexts/JourneyContext';
 import type { ObligationListOut, ObligationOut } from '../../types/obligations';
 import type { DocumentListOut, DocumentListItem } from '../../types/documents';
+import type { ConsentEntry } from '../../types/consent';
 
 // ── helpers ──
 
@@ -50,6 +51,51 @@ function Stat({ n, label, tone }: { n: number; label: string; tone: string }) {
   );
 }
 
+/**
+ * MANDATORY at CONFIRMED-without-channel (#238 / DEC-040 / #198 cl.4): nav unlocks
+ * at CONFIRMED, so a tenant can reach steady state with no reminder channel =
+ * silent product failure. This nudge is the required UX bridge.
+ */
+function ReminderNudge({ onEnable }: { onEnable: () => void }) {
+  return (
+    <Card className="border-warning/30 bg-warning-soft">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3">
+          <span className="text-xl" aria-hidden="true">⏰</span>
+          <div>
+            <div className="text-sm font-medium text-ink">Bật nhắc để Khế không bỏ lỡ hạn nào</div>
+            <div className="text-2xs text-ink-muted mt-0.5">
+              Kết nối Telegram hoặc email — bước cuối để Khế nhắc bạn trước mỗi hạn.
+            </div>
+          </div>
+        </div>
+        <Button size="sm" onClick={onEnable}>Bật nhắc →</Button>
+      </div>
+    </Card>
+  );
+}
+
+/** "X/3 bước" onboarding progress (doc reviewed · bật nhắc · ổn định). */
+function StepsChip({ reminderOn }: { reminderOn: boolean }) {
+  const steps = [
+    { label: 'Đã xem tài liệu', done: true },
+    { label: 'Bật nhắc', done: reminderOn },
+    { label: 'Ổn định', done: reminderOn },
+  ];
+  const done = steps.filter((s) => s.done).length;
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-2xs text-ink-muted">
+      <span className="font-semibold text-ink">{done}/3 bước</span>
+      {steps.map((s, i) => (
+        <span key={i} className={`inline-flex items-center gap-1 ${s.done ? 'text-success' : 'text-ink-subtle'}`}>
+          <span aria-hidden="true">{s.done ? '✓' : '○'}</span>
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ── stage views ──
 
 /** NEW — self-serve cold start: one focused CTA (Hick's law). */
@@ -73,19 +119,24 @@ function StageNew({ onUpload }: { onUpload: () => void }) {
 }
 
 /** NEEDS_REVIEW — data exists (incl. concierge pre-fill), user must self-confirm (D-02). */
-function StageReview({ docCount, onReview }: { docCount: number; onReview: () => void }) {
+function StageReview({ docs, onReviewDoc }: { docs: DocumentListItem[]; onReviewDoc: (id: number) => void }) {
+  const total = docs.length;
+  const confirmed = docs.filter((d) => d.confirmed_by_user_at).length;
+  const next = docs.find((d) => !d.confirmed_by_user_at) ?? docs[0];
   return (
     <div className="max-w-xl mx-auto">
       <Card>
         <div className="text-lg font-semibold text-ink">Cần bạn kiểm tra & xác nhận</div>
         <p className="text-sm text-ink-body leading-relaxed mt-2">
-          Khế đã đọc <strong>{docCount} tài liệu</strong> và bóc tách thông tin. Hãy kiểm tra lại
+          Khế đã đọc <strong>{total} tài liệu</strong> và bóc tách thông tin. Hãy kiểm tra lại
           lần cuối và xác nhận — Khế chỉ bắt đầu nhắc sau khi bạn đồng ý.
         </p>
-        <div className="mt-4 flex gap-2 items-center">
-          <Button onClick={onReview}>Kiểm tra & xác nhận</Button>
+        <div className="mt-4 flex gap-2 items-center flex-wrap">
+          <Button onClick={() => next && onReviewDoc(next.id)} disabled={!next}>
+            Kiểm tra & xác nhận
+          </Button>
           {/* D-02: the user is always the final author */}
-          <Badge kind="needs_review">Cần bạn xác nhận</Badge>
+          <Badge kind="needs_review">{confirmed}/{total} đã xác nhận</Badge>
         </div>
       </Card>
       <div className="text-2xs text-ink-subtle text-center mt-3">
@@ -98,17 +149,30 @@ function StageReview({ docCount, onReview }: { docCount: number; onReview: () =>
 /** STEADY/CONFIRMED — "Tôi có cần lo gì không?" dashboard (J-E). Reassurance only when legitimate. */
 function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: () => void }) {
   const [obligations, setObligations] = useState<ObligationOut[] | null>(null);
+  const [reminderOn, setReminderOn] = useState<boolean | null>(null);
   const navigate = useNavigate();
+  const goSettings = () => navigate('/admin/settings');
 
   useEffect(() => {
     apiFetch<ObligationListOut>('/obligations/?page=1&page_size=100')
       .then((res) => setObligations(res.items))
       .catch(() => setObligations([]));
+    apiFetch<ConsentEntry[]>('/consent')
+      .then((res) => setReminderOn(res.find((c) => c.purpose === 'reminder_send')?.status === 'granted'))
+      .catch(() => setReminderOn(true)); // fail-open: don't nag if consent unreadable
   }, []);
 
-  if (obligations === null) {
+  if (obligations === null || reminderOn === null) {
     return <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>;
   }
+
+  // MANDATORY (#238 / DEC-040): CONFIRMED-without-channel must surface the nudge + progress
+  const reminderBlock = !reminderOn ? (
+    <>
+      <StepsChip reminderOn={reminderOn} />
+      <ReminderNudge onEnable={goSettings} />
+    </>
+  ) : null;
 
   // active = non-terminal obligations (the dashboard "total")
   const active = obligations.filter((o) => o.status !== 'done' && o.status !== 'cancelled');
@@ -135,6 +199,7 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
     return (
       <div className="max-w-2xl mx-auto space-y-4">
         <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
+        {reminderBlock}
         <Card>
           <JourneyEmptyState state="all_clear" />
         </Card>
@@ -146,6 +211,8 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
   return (
     <div className="max-w-2xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
+
+      {reminderBlock}
 
       {/* the single answer to "tôi có cần lo gì không?" — copy uses the group/total numbers */}
       <Card className={hasWork ? 'border-warning/30 bg-warning-soft' : 'border-success/30 bg-success-soft'}>
@@ -197,12 +264,12 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
 // ── routed home ──
 
 export default function Home() {
-  const { stage, loading, error } = useJourneyStage();
+  const { stage, loading, error } = useJourney();
   const [docs, setDocs] = useState<DocumentListItem[] | null>(null);
   const navigate = useNavigate();
 
   const goUpload = useCallback(() => navigate('/admin/upload'), [navigate]);
-  const goDocuments = useCallback(() => navigate('/admin/documents'), [navigate]);
+  const goReviewDoc = useCallback((id: number) => navigate(`/admin/documents/${id}`), [navigate]);
 
   // doc list powers the counts shown in several stage views (server owns the stage)
   useEffect(() => {
@@ -233,7 +300,7 @@ export default function Home() {
         </div>
       );
     case 'NEEDS_REVIEW':
-      return <StageReview docCount={docs.length} onReview={goDocuments} />;
+      return <StageReview docs={docs} onReviewDoc={goReviewDoc} />;
     // CONFIRMED / ACTIVATED / STEADY → steady-state dashboard
     default:
       return <StageDashboard docCount={docs.length} onUpload={goUpload} />;

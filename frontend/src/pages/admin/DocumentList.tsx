@@ -153,10 +153,19 @@ export default function DocumentList() {
                     extracted: 'Đã bóc tách',
                     needs_review: '⚠ Cần kiểm tra',
                   };
+                  // #238 — surface unconfirmed docs (confirmed_by_user_at null) once extracted
+                  const needsConfirm = row.status !== 'processing' && !row.confirmed_by_user_at;
                   return (
-                    <Badge kind={badgeMap[row.status] || 'neutral'} testId={`doc-status-${row.id}`}>
-                      {labelMap[row.status] || row.status}
-                    </Badge>
+                    <div className="flex gap-1.5 items-center flex-wrap">
+                      <Badge kind={badgeMap[row.status] || 'neutral'} testId={`doc-status-${row.id}`}>
+                        {labelMap[row.status] || row.status}
+                      </Badge>
+                      {needsConfirm && (
+                        <Badge kind="needs_review" testId={`doc-needsconfirm-${row.id}`}>
+                          Cần xác nhận
+                        </Badge>
+                      )}
+                    </div>
                   );
                 }
                 if (key === 'doc_type') {

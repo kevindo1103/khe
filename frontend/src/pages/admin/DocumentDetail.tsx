@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, EmptyState } from '../../components';
 import { apiFetch } from '../../lib/api';
-import type { DocumentDetailOut, TermOut, SelfPartyConfirmOut } from '../../types/documents';
+import type { DocumentDetailOut, TermOut, SelfPartyConfirmOut, ConfirmDocumentOut } from '../../types/documents';
 import type { ObligationOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
+import { useJourney } from '../../contexts/JourneyContext';
 import {
   DOC_TYPE_GROUP_LABELS,
   OBLIGATION_TYPE_LABELS,
@@ -27,6 +28,8 @@ export default function DocumentDetail() {
   const [saving, setSaving] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [confirming, setConfirming] = useState(false);
+  const [confirmingDoc, setConfirmingDoc] = useState(false);
+  const { refetch: refetchJourney } = useJourney();
 
   const load = useCallback(async () => {
     if (!docId) return;
@@ -192,8 +195,11 @@ export default function DocumentDetail() {
           body: JSON.stringify({ role_label: selectedRole }),
         }
       );
+      // 3-state honest toast (#238 Bug A): don't show "0 nghĩa vụ" as false success
       setToastMsg(
-        `Đã xác nhận — ${res.updated} nghĩa vụ đã cập nhật hướng.`
+        res.updated > 0
+          ? `Đã ghi nhận bên bạn — ${res.updated} nghĩa vụ đã cập nhật hướng.`
+          : 'Đã ghi nhận bên bạn — chưa có nghĩa vụ nào khớp để suy ra hướng.'
       );
       setSelectedRole('');
       await load();
@@ -201,6 +207,30 @@ export default function DocumentDetail() {
       setError((err as ApiError).message || 'Xác nhận thất bại');
     } finally {
       setConfirming(false);
+    }
+  };
+
+  // #238 — explicit document confirm (D-02). Self-party auto-derived from legal_name.
+  const confirmDocument = async () => {
+    if (!docId) return;
+    setConfirmingDoc(true);
+    setError('');
+    try {
+      const res = await apiFetch<ConfirmDocumentOut>(`/documents/${docId}/confirm`, {
+        method: 'POST',
+      });
+      setToastMsg(
+        res.journey_advanced
+          ? 'Đã xác nhận tài liệu ✓ — hoàn tất kiểm tra, đã mở khoá đầy đủ.'
+          : `Đã xác nhận tài liệu ✓${res.directions_recomputed > 0 ? ` — ${res.directions_recomputed} nghĩa vụ cập nhật hướng` : ''}`
+      );
+      await load();
+      // atomic sidebar unlock: refresh shared journey state if it advanced
+      if (res.journey_advanced) await refetchJourney();
+    } catch (err) {
+      setError((err as ApiError).message || 'Xác nhận tài liệu thất bại');
+    } finally {
+      setConfirmingDoc(false);
     }
   };
 
@@ -380,6 +410,39 @@ export default function DocumentDetail() {
                   </div>
                 ))}
               </div>
+            </Card>
+          )}
+
+          {/* Document confirm (#238, D-02) — explicit user confirm advances journey */}
+          {doc.terms.length > 0 && (
+            <Card className="mb-4">
+              {doc.confirmed_by_user_at ? (
+                <div className="flex items-center gap-2">
+                  <Badge kind="extracted">✓ Đã xác nhận</Badge>
+                  <span className="text-2xs text-ink-muted">
+                    {new Date(doc.confirmed_by_user_at).toLocaleDateString('vi-VN')}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    onClick={confirmDocument}
+                    loading={confirmingDoc}
+                    disabled={editingTermId !== null}
+                  >
+                    Xác nhận document này
+                  </Button>
+                  {editingTermId !== null ? (
+                    <span className="text-2xs text-ink-subtle">
+                      Lưu hoặc hủy chỉnh sửa trước khi xác nhận.
+                    </span>
+                  ) : (
+                    <span className="text-2xs text-ink-subtle">
+                      D-02: bạn là người xác nhận cuối — Khế chỉ nhắc sau khi bạn đồng ý.
+                    </span>
+                  )}
+                </div>
+              )}
             </Card>
           )}
         </>

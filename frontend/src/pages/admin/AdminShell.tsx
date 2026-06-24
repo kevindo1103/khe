@@ -1,6 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { useJourneyStage } from '../../hooks/useJourneyStage';
+import { useJourney } from '../../contexts/JourneyContext';
 import { AppSidebar, AppMobileHeader, AppBottomTabs } from '../../components/AppNav';
 
 /**
@@ -9,7 +9,7 @@ import { AppSidebar, AppMobileHeader, AppBottomTabs } from '../../components/App
  */
 export default function AdminShell() {
   const { user, logout } = useAuth();
-  const { isFirstSession } = useJourneyStage();
+  const { isFirstSession } = useJourney();
   const username = user?.username;
 
   return (
