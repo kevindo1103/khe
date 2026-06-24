@@ -103,6 +103,7 @@ def obligations_summary(
     direction: str | None = Query(None),
     obligation_type: str | None = Query(None),
     due_within_days: int | None = Query(None, ge=0),
+    active_only: bool = Query(True),
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -113,11 +114,15 @@ def obligations_summary(
     (e.g. "Bạn cần" / "Đối tác cần làm cho bạn") instead of deriving direction
     counts client-side. Tenant-scoped; count-only (D-06, no money sum). total=0 is
     a valid response, never an error.
+
+    ``active_only`` defaults True (#253) — the dashboard overview excludes terminal
+    done/cancelled so total + direction cards match the active-only list. Pass
+    ``active_only=false`` for the full historical count.
     """
     agg = chat_query.aggregate_obligations(
         db, user.tenant_id, group_by,
         status=status, direction=direction, obligation_type=obligation_type,
-        due_within_days=due_within_days,
+        due_within_days=due_within_days, active_only=active_only,
     )
     s = agg["summary"]
     return ObligationSummaryOut(

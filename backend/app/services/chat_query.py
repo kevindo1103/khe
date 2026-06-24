@@ -584,6 +584,7 @@ def _tool_aggregate_obligations(
     obligation_type: str | None = None,
     due_within_days: int | None = None,
     series_id: str | None = None,
+    active_only: bool = False,
 ) -> dict:
     """Count/group obligations for an aggregate answer.
 
@@ -606,6 +607,11 @@ def _tool_aggregate_obligations(
         q = q.filter(Obligation.obligation_type == obligation_type)
     if series_id:
         q = q.filter(Obligation.milestone_series_id == series_id)
+    if active_only:
+        # Dashboard overview semantics (#253 FE): count only obligations the user
+        # still has to act on — exclude terminal done/cancelled. 'overdue' is NOT
+        # terminal (still actionable, just late) so it stays in.
+        q = q.filter(~Obligation.status.in_(_CLOSED_STATUSES))
 
     # 'overdue' is derived, not a column value — don't push it to the DB filter
     # (would match 0 rows and silently look like no-match). Filter in Python below.
@@ -706,16 +712,23 @@ def aggregate_obligations(
     obligation_type: str | None = None,
     due_within_days: int | None = None,
     series_id: str | None = None,
+    active_only: bool = False,
 ) -> dict:
     """Public obligation-aggregate API (#199 chat path + the REST dashboard summary
     endpoint share this). Returns {"summary", "source", "rows"}; count-only, no
-    money sum (D-06). Counts ALL obligations — it's a view, not an outbound action,
-    so the #250 confirmed-doc reminder gate does not apply here.
+    money sum (D-06).
+
+    ``active_only`` (default False → chat path counts everything, unchanged) drops
+    terminal done/cancelled — the REST dashboard endpoint passes True so its total
+    + direction cards match the active-only list view (#253 FE).
+
+    The #250 confirmed-doc reminder gate does NOT apply here — this is a view, not
+    an outbound action.
     """
     return _tool_aggregate_obligations(
         db, tenant_id, group_by,
         status=status, direction=direction, obligation_type=obligation_type,
-        due_within_days=due_within_days, series_id=series_id,
+        due_within_days=due_within_days, series_id=series_id, active_only=active_only,
     )
 
 
