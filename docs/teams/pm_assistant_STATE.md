@@ -76,7 +76,8 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 | **Frontend** | (no issue) | Wire Stage 0/8 real journey_stage API (#213 staging) | Onboarding nav-lock |
 | **Frontend** | (no issue) | Wire Stage 3 ref-nav (#217 staging) | Trust gate live |
 | **Frontend** | merge #216 | DS v0.2 token foundation | Everything |
-| **Backend** | #237 | Firm portal API (DEC-039: full business data + hd_lao_dong exception) | Firm journey Phase 2 |
+| **Backend** | #270 (BA) | Firm portal engineering BA — consolidates #65+#237: cross-tenant fan-out + consent state machine + DEC-039 visibility. **HELD on Q0 timing (Kevin)** | DEC-037 Phase 2 vs pre-pilot |
+| **Backend** | #65/#237 | Firm portal impl tickets (scaffold → handshake+feed) under BA #270 | Q0 = B (pre-pilot) |
 | **QC** | #187 | Playwright e2e — upload→extract→confirm→assert nav unlock + Event ledger | Pre-pilot gate |
 | **QC** | #75/#175 | UAT smoke M0/M1 + E2E script (needs uat-demo-b + uat-demo-noconsent) | Pre-pilot gate |
 
@@ -98,6 +99,10 @@ DEC-039 ratified (firm full data model). DEC-040 ratified + amended via #249 (fi
 **`clauses[]` = source of truth for downstream text processing.** Vision call extracts full clause content once (DEC-026). All subsequent field-level operations (type remap, future schema additions, firm-specific extraction) use text-only LLM calls on clauses — no vision quota, ~2–3đ vs 177đ. Pattern generalizes to: re-classification, multi-language, incremental field addition without re-upload.
 
 **Clause remap (#258) status:** Backend ✅ staging · KHE_AI ✅ staging · Frontend #262 filed (task assignment, in progress).
+
+### 🏛️ Firm Portal BA filed (2026-06-24) — #270, HELD on Kevin decision
+Consolidated engineering BA (#65 scaffold + #237 handshake/feed) in #258 format. Core value-add over #237: **cross-tenant read fan-out** (consent in master.db + obligations in N per-tenant DBs → scatter-gather via `get_tenant_session()`, caller-close lifecycle = leak risk #1), consent state machine (D-09 firm-cannot-self-grant/revoke, re-request = UPDATE-in-place on `(firm_id,tenant_id)` unique), DEC-039 visibility matrix (gate = `contains_personal_data` boolean not type string), per-tenant Event ledger for consent changes.
+**⚠️ Q0 BLOCKS BUILD (Kevin):** DEC-037 says firm journey = Phase 2, but DEC-013 pilot is firm-paid. Decision A (firm portal = Phase 2, SME-only pilot) vs B (firm portal pre-pilot, firm sees portfolio day 1). PM did NOT self-resolve (scope boundary = Decision Review Gate). If B → assign #65 immediately.
 
 ### ✅ Closed previous session (2026-06-23)
 #179 (DEC-031 storage decision), #201 (DEC-031 implement), #203 (DEC-031 retro fixes).
