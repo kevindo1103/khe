@@ -145,6 +145,9 @@ def test_journey_advances_on_first_confirm(auth_client, master_db, db):
     assert r1["journey_advanced"] is True
     assert r1["new_journey_stage"] == "CONFIRMED"
     assert _stage(master_db) == "CONFIRMED"
+    # DEC-040 (#259): is_first_session must clear atomically at CONFIRMED.
+    master_db.expire_all()
+    assert master_db.query(Tenant).filter(Tenant.id == TENANT).one().is_first_session is False
 
     # Second confirm → already CONFIRMED → no further advance, but per-doc D-02
     # audit still intact (confirmed_by_user_at set + Event written).

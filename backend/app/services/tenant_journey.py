@@ -7,7 +7,8 @@ Monotonic forward-only onboarding spine:
 Rules:
 - No backward transition (strictly increasing stage index).
 - ``is_first_session`` is cleared atomically the first time a tenant reaches
-  ACTIVATED (or beyond) — it powers the FE first-session nav-lock.
+  CONFIRMED (or beyond) — DEC-040 nav-unlock (#259). Self-heals on any later
+  advance call if a tenant was left inconsistent. It powers the FE nav-lock.
 - Branch from EXTRACTING: low-confidence → NEEDS_REVIEW, else CONFIRMED (skip).
 - ACTIVATED = ≥1 reminder channel (Telegram OR email) — not both.
 """
@@ -26,6 +27,7 @@ JOURNEY_STAGES: list[str] = [
 ]
 _ORDER = {stage: i for i, stage in enumerate(JOURNEY_STAGES)}
 _ACTIVATED_IDX = _ORDER["ACTIVATED"]
+_CONFIRMED_IDX = _ORDER["CONFIRMED"]
 
 
 def is_valid_stage(stage: str | None) -> bool:
@@ -60,14 +62,28 @@ def advance_stage(
         return None
 
     current = tenant.journey_stage or "NEW"
+
+    # DEC-040 self-heal (#259): is_first_session MUST be False once a tenant is
+    # at/past CONFIRMED. Clear it even on a no-op advance — this fixes tenants left
+    # in {>=CONFIRMED, is_first_session=True} by the old ACTIVATED threshold (e.g.
+    # a PATCH/confirm that advanced to CONFIRMED before this fix). Idempotency-safe.
+    healed = False
+    if _ORDER.get(current, -1) >= _CONFIRMED_IDX and tenant.is_first_session:
+        tenant.is_first_session = False
+        healed = True
+
     if require_current_at_least is not None and _ORDER.get(current, -1) < _ORDER.get(require_current_at_least, 0):
+        if healed:
+            db.commit()
         return current  # precondition not met — leave stage untouched
     if not is_forward(current, target):
+        if healed:
+            db.commit()
         return current  # already at/past target, or backward → no-op
 
     tenant.journey_stage = target
-    if _ORDER[target] >= _ACTIVATED_IDX:
-        tenant.is_first_session = False  # atomic clear at ACTIVATED+
+    if _ORDER[target] >= _CONFIRMED_IDX:
+        tenant.is_first_session = False  # DEC-040: clear at CONFIRMED+ (nav unlock)
     db.commit()
     logger.info("journey advance tenant=%s %s→%s", tenant_id, current, target)
     return target

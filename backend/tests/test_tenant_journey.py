@@ -83,12 +83,31 @@ def test_extracting_can_skip_to_confirmed(master_db):
     assert tenant_journey.advance_stage(master_db, TENANT, "CONFIRMED") == "CONFIRMED"
 
 
+def test_confirmed_clears_first_session(master_db):
+    """DEC-040 (#259): is_first_session clears at CONFIRMED, not ACTIVATED."""
+    _set_stage(master_db, "NEEDS_REVIEW", first_session=True)
+    tenant_journey.advance_stage(master_db, TENANT, "CONFIRMED")
+    t = _stage(master_db)
+    assert t.journey_stage == "CONFIRMED"
+    assert t.is_first_session is False  # cleared at CONFIRMED+
+
+
 def test_activated_clears_first_session(master_db):
     _set_stage(master_db, "CONFIRMED", first_session=True)
     tenant_journey.advance_stage(master_db, TENANT, "ACTIVATED")
     t = _stage(master_db)
     assert t.journey_stage == "ACTIVATED"
     assert t.is_first_session is False  # cleared atomically
+
+
+def test_self_heal_stuck_first_session(master_db):
+    """#259: a tenant left at {CONFIRMED, is_first_session=True} (old threshold)
+    self-heals on the next advance_stage call, even when it's a no-op."""
+    _set_stage(master_db, "CONFIRMED", first_session=True)   # inconsistent state
+    # No-op advance (already CONFIRMED) must still clear is_first_session.
+    out = tenant_journey.advance_stage(master_db, TENANT, "CONFIRMED")
+    assert out == "CONFIRMED"
+    assert _stage(master_db).is_first_session is False
 
 
 def test_invalid_stage_returns_none(master_db):
@@ -147,6 +166,16 @@ def test_patch_journey_invalid_422(auth_client, master_db):
     _set_stage(master_db, "NEW")
     r = auth_client.patch("/tenants/me/journey", json={"journey_stage": "BOGUS"})
     assert r.status_code == 422
+
+
+def test_patch_journey_clears_is_first_session(auth_client, master_db):
+    """#259: PATCH advancing to CONFIRMED clears is_first_session (DEC-040)."""
+    _set_stage(master_db, "NEEDS_REVIEW", first_session=True)
+    r = auth_client.patch("/tenants/me/journey", json={"journey_stage": "CONFIRMED"})
+    assert r.status_code == 200
+    assert r.json()["journey_stage"] == "CONFIRMED"
+    assert r.json()["is_first_session"] is False
+    assert _stage(master_db).is_first_session is False
 
 
 def test_patch_to_activated_clears_first_session(auth_client, master_db):
