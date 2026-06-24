@@ -78,17 +78,21 @@ function ReminderNudge({ onEnable }: { onEnable: () => void }) {
 /** "X/3 bước" onboarding progress (doc reviewed · bật nhắc · ổn định). */
 function StepsChip({ reminderOn }: { reminderOn: boolean }) {
   const steps = [
-    { label: 'Đã xem tài liệu', done: true },
-    { label: 'Bật nhắc', done: reminderOn },
-    { label: 'Ổn định', done: reminderOn },
+    { label: 'Đã duyệt tài liệu', done: true },
+    { label: 'Bật nhắc Telegram', done: reminderOn },
+    { label: 'Theo dõi tự động', done: reminderOn },
   ];
   const done = steps.filter((s) => s.done).length;
   return (
-    <div className="flex items-center gap-3 flex-wrap text-2xs text-ink-muted">
-      <span className="font-semibold text-ink">{done}/3 bước</span>
+    <div
+      role="group"
+      aria-label={`Tiến độ thiết lập ${done}/${steps.length} bước`}
+      className="inline-flex items-center gap-2 flex-wrap px-3 py-1 rounded-pill bg-surface-sunken border border-border text-2xs"
+    >
+      <span className="font-bold text-ink">{done}/{steps.length} bước</span>
       {steps.map((s, i) => (
-        <span key={i} className={`inline-flex items-center gap-1 ${s.done ? 'text-success' : 'text-ink-subtle'}`}>
-          <span aria-hidden="true">{s.done ? '✓' : '○'}</span>
+        <span key={i} className={`inline-flex items-center gap-1 ${s.done ? 'text-success' : 'text-ink-muted'}`}>
+          <span aria-hidden="true">{s.done ? '✅' : '⬜'}</span>
           {s.label}
         </span>
       ))}

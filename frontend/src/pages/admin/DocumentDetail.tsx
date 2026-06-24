@@ -415,16 +415,19 @@ export default function DocumentDetail() {
 
           {/* Document confirm (#238, D-02) — explicit user confirm advances journey */}
           {doc.terms.length > 0 && (
-            <Card className="mb-4">
+            <Card className={`mb-4 ${doc.confirmed_by_user_at ? 'border-success/30' : ''}`}>
               {doc.confirmed_by_user_at ? (
-                <div className="flex items-center gap-2">
-                  <Badge kind="extracted">✓ Đã xác nhận</Badge>
-                  <span className="text-2xs text-ink-muted">
-                    {new Date(doc.confirmed_by_user_at).toLocaleDateString('vi-VN')}
-                  </span>
+                <div className="flex items-center gap-2 flex-wrap text-sm text-ink-body">
+                  <Badge kind="done">đã xác nhận</Badge>
+                  <span>✅ Bạn đã xác nhận document này. Khế dùng để nhắc hạn.</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-sm text-ink-body">
+                    {editingTermId !== null
+                      ? 'Lưu hoặc huỷ trường đang sửa trước khi xác nhận.'
+                      : 'Đã kiểm tra xong các trường? Xác nhận để Khế chốt và bắt đầu nhắc hạn.'}
+                  </span>
                   <Button
                     onClick={confirmDocument}
                     loading={confirmingDoc}
@@ -432,15 +435,6 @@ export default function DocumentDetail() {
                   >
                     Xác nhận document này
                   </Button>
-                  {editingTermId !== null ? (
-                    <span className="text-2xs text-ink-subtle">
-                      Lưu hoặc hủy chỉnh sửa trước khi xác nhận.
-                    </span>
-                  ) : (
-                    <span className="text-2xs text-ink-subtle">
-                      D-02: bạn là người xác nhận cuối — Khế chỉ nhắc sau khi bạn đồng ý.
-                    </span>
-                  )}
                 </div>
               )}
             </Card>
