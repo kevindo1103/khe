@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.tenant import Event, Obligation
+from app.models.tenant import Document, Event, Obligation
 from app.services.consent import check_consent, get_active_consent_channel
 from app.services.telegram import send_admin_alert, send_obligation_reminder
 
@@ -303,9 +303,15 @@ def _flip_overdue_status(
     today = reference_date or _today()
     pending = (
         db.query(Obligation)
+        .join(Document, Document.id == Obligation.document_id)
         .filter(
             Obligation.tenant_id == tenant_id,
             Obligation.status == "pending",
+            # #250: only act on obligations from user-CONFIRMED docs (D-02 — never
+            # touch unreviewed data). With the first-confirm journey gate a tenant
+            # can be CONFIRMED with docs still unconfirmed; their obligations must
+            # stay untouched until the user confirms them.
+            Document.confirmed_by_user_at.isnot(None),
         )
         .all()
     )
@@ -339,9 +345,13 @@ def compute_due_window(
     today = reference_date or _today()
     pending = (
         db.query(Obligation)
+        .join(Document, Document.id == Obligation.document_id)
         .filter(
             Obligation.tenant_id == tenant_id,
             Obligation.status == "pending",
+            # #250 (D-02): reminders only for user-CONFIRMED docs — never nhắc on a
+            # deadline the user hasn't reviewed. See _flip_overdue_status note.
+            Document.confirmed_by_user_at.isnot(None),
         )
         .all()
     )

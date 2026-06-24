@@ -666,8 +666,9 @@ def confirm_document(
 
     Self-party is auto-derived from the tenant's ``legal_name`` Setting (not a
     manual pick, per PM ratify): direction is recomputed for the doc's
-    obligations. When EVERY extracted doc of the tenant is confirmed, the journey
-    advances NEEDS_REVIEW → CONFIRMED (so the FE sidebar nav unlocks).
+    obligations. The FIRST confirmed doc advances the journey NEEDS_REVIEW →
+    CONFIRMED (#250/#249 — all-docs-confirmed was pilot-blocking friction), so
+    the FE sidebar nav unlocks.
     """
     doc = (
         db.query(Document)
@@ -699,20 +700,13 @@ def confirm_document(
     )
     db.commit()
 
-    # Gate: advance journey only when ALL extracted docs are user-confirmed.
-    unconfirmed = (
-        db.query(Document)
-        .filter(
-            Document.tenant_id == user.tenant_id,
-            Document.status == "extracted",
-            Document.confirmed_by_user_at.is_(None),
-        )
-        .count()
-    )
+    # Gate (#250/#249): the FIRST confirm advances NEEDS_REVIEW → CONFIRMED. The
+    # just-confirmed doc guarantees confirmed_count >= 1; advance is monotonic, so
+    # repeat confirms on an already-CONFIRMED tenant are journey no-ops (idempotent).
     journey_advanced = False
     tenant = master_db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
     new_stage = tenant.journey_stage if tenant else None
-    if unconfirmed == 0 and tenant is not None:
+    if tenant is not None:
         before = tenant.journey_stage
         after = tenant_journey.advance_stage(master_db, user.tenant_id, "CONFIRMED")
         new_stage = after or before
