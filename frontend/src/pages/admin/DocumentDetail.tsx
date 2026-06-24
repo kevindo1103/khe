@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Button, Card, Badge, Input, ConfidenceMeter, Toast, EmptyState } from '../../components';
+import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState } from '../../components';
+import type { ToastKind } from '../../components/Toast';
 import { apiFetch } from '../../lib/api';
-import type { DocumentDetailOut, TermOut, SelfPartyConfirmOut, ConfirmDocumentOut } from '../../types/documents';
+import type { DocumentDetailOut, TermOut, SelfPartyConfirmOut, ConfirmDocumentOut, RemapTypeOut } from '../../types/documents';
 import type { ObligationOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
@@ -15,6 +16,9 @@ import {
   labelFor,
 } from '../../lib/labels';
 
+// #262 (#258) — 11 doc_type_group options for the remap dropdown (DEC-029)
+const DOC_TYPE_GROUPS = Object.keys(DOC_TYPE_GROUP_LABELS);
+
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
   const docId = Number(id);
@@ -23,6 +27,9 @@ export default function DocumentDetail() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [toastMsg, setToastMsg] = useState<string>('');
+  const [toastKind, setToastKind] = useState<ToastKind>('success');
+  const [pendingType, setPendingType] = useState<string | null>(null);
+  const [remapping, setRemapping] = useState(false);
   const [editingTermId, setEditingTermId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -30,6 +37,11 @@ export default function DocumentDetail() {
   const [confirming, setConfirming] = useState(false);
   const [confirmingDoc, setConfirmingDoc] = useState(false);
   const { refetch: refetchJourney } = useJourney();
+
+  const showToast = (msg: string, kind: ToastKind = 'success') => {
+    setToastKind(kind);
+    setToastMsg(msg);
+  };
 
   const load = useCallback(async () => {
     if (!docId) return;
@@ -80,7 +92,7 @@ export default function DocumentDetail() {
             }
           : prev
       );
-      setToastMsg('Đã cập nhật — ghi Event ✓');
+      showToast('Đã cập nhật — ghi Event ✓');
       setEditingTermId(null);
     } catch (err) {
       setError((err as ApiError).message || 'Lưu thất bại');
@@ -196,7 +208,7 @@ export default function DocumentDetail() {
         }
       );
       // 3-state honest toast (#238 Bug A): don't show "0 nghĩa vụ" as false success
-      setToastMsg(
+      showToast(
         res.updated > 0
           ? `Đã ghi nhận bên bạn — ${res.updated} nghĩa vụ đã cập nhật hướng.`
           : 'Đã ghi nhận bên bạn — chưa có nghĩa vụ nào khớp để suy ra hướng.'
@@ -219,7 +231,7 @@ export default function DocumentDetail() {
       const res = await apiFetch<ConfirmDocumentOut>(`/documents/${docId}/confirm`, {
         method: 'POST',
       });
-      setToastMsg(
+      showToast(
         res.journey_advanced
           ? 'Đã xác nhận tài liệu ✓ — hoàn tất kiểm tra, đã mở khoá đầy đủ.'
           : `Đã xác nhận tài liệu ✓${res.directions_recomputed > 0 ? ` — ${res.directions_recomputed} nghĩa vụ cập nhật hướng` : ''}`
@@ -231,6 +243,40 @@ export default function DocumentDetail() {
       setError((err as ApiError).message || 'Xác nhận tài liệu thất bại');
     } finally {
       setConfirmingDoc(false);
+    }
+  };
+
+  // #262 (#258) — text-only clause remap when doc_type_group was misclassified.
+  // No vision call / no quota: backend re-maps fields from existing clauses[].
+  // Resets confirmed_by_user_at → doc re-surfaces in "Cần xác nhận" (#251 handles visibility).
+  const handleRemap = async (newType: string) => {
+    if (!docId) return;
+    setRemapping(true);
+    setError('');
+    try {
+      const res = await apiFetch<RemapTypeOut>(`/documents/${docId}/remap-type`, {
+        method: 'POST',
+        body: JSON.stringify({ doc_type_group: newType }),
+      });
+      setPendingType(null);
+      // refetch = single source of truth → Stage 3 reloads with new type-specific schema
+      await load();
+      let msg = `Đã map lại ${res.fields_remapped} trường`;
+      if (res.fields_null > 0) {
+        msg += ` · ${res.fields_null} trường không tìm thấy trong điều khoản`;
+      }
+      showToast(msg, 'success');
+    } catch (err) {
+      const e = err as ApiError;
+      setPendingType(null);
+      showToast(
+        e.status === 409
+          ? 'Chưa có clause text — không thể map lại loại tài liệu này'
+          : 'Map lại thất bại',
+        'error'
+      );
+    } finally {
+      setRemapping(false);
     }
   };
 
@@ -321,6 +367,54 @@ export default function DocumentDetail() {
                   Xác nhận tài liệu này →
                 </Button>
               </div>
+            </Card>
+          )}
+
+          {/* #262 (#258) — doc_type_group remap. Editable dropdown; "Map lại" re-maps
+              fields from existing clauses[] (text-only, no vision quota). Disabled when
+              no clause text exists. */}
+          {docTypeGroupTerm && doc.terms.length > 0 && (
+            <Card title="Loại hợp đồng" className="mb-4">
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <label
+                    htmlFor="doc-type-group-select"
+                    className="text-xs font-medium text-ink-muted uppercase mb-1 block"
+                  >
+                    Loại hợp đồng
+                  </label>
+                  <select
+                    id="doc-type-group-select"
+                    data-testid="doc-type-group-select"
+                    value={docTypeGroupTerm.field_value || ''}
+                    disabled={doc.clause_count === 0 || remapping || editingTermId !== null}
+                    title={
+                      doc.clause_count === 0
+                        ? 'Chưa có clause text — không thể map lại loại tài liệu này'
+                        : undefined
+                    }
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v && v !== docTypeGroupTerm.field_value) setPendingType(v);
+                    }}
+                    className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {DOC_TYPE_GROUPS.map((t) => (
+                      <option key={t} value={t}>
+                        {labelFor(DOC_TYPE_GROUP_LABELS, t)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {remapping && (
+                  <span className="text-xs text-ink-muted pb-2">Đang map lại…</span>
+                )}
+              </div>
+              <p className="text-2xs text-ink-muted mt-2">
+                {doc.clause_count === 0
+                  ? 'Tài liệu chưa có nội dung điều khoản (clause) nên không thể map lại loại.'
+                  : 'Chọn lại nếu phân loại sai — Khế map lại các trường từ nội dung điều khoản, không tính thêm quota.'}
+              </p>
             </Card>
           )}
 
@@ -471,10 +565,37 @@ export default function DocumentDetail() {
         </>
       )}
 
+      {/* #262 — confirm before remap (destructive: replaces type-specific fields) */}
+      <Modal
+        open={pendingType !== null}
+        title="Map lại loại hợp đồng?"
+        onClose={() => !remapping && setPendingType(null)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPendingType(null)} disabled={remapping}>
+              Hủy
+            </Button>
+            <Button
+              onClick={() => pendingType && handleRemap(pendingType)}
+              loading={remapping}
+              testId="remap-confirm-btn"
+            >
+              Map lại
+            </Button>
+          </>
+        }
+      >
+        Hệ thống sẽ tự động map lại các trường cho loại hợp đồng{' '}
+        <span className="font-medium text-ink">
+          {pendingType ? labelFor(DOC_TYPE_GROUP_LABELS, pendingType) : ''}
+        </span>
+        . Các trường theo loại cũ sẽ bị thay thế. Tiếp tục?
+      </Modal>
+
       {/* Toast */}
       {toastMsg && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-toast">
-          <Toast kind="success">{toastMsg}</Toast>
+          <Toast kind={toastKind}>{toastMsg}</Toast>
         </div>
       )}
     </div>

@@ -61,6 +61,14 @@ export interface ConfirmDocumentOut {
   new_journey_stage: string | null;
 }
 
+// #262 (#258) — POST /documents/{id}/remap-type (text-only clause remap, no vision quota)
+export interface RemapTypeOut {
+  success: boolean;
+  fields_remapped: number;
+  fields_null: number;
+  cost_vnd: number;
+}
+
 export interface UploadOut {
   doc_id: number;
   file_name: string;
