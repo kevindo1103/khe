@@ -27,6 +27,9 @@ class Document(TenantBase):
     file_path = Column(String, nullable=False)
     doc_type = Column(String, nullable=True)           # "lease" | "supply" | "labor" | ...
     status = Column(String, default="pending")         # "pending" | "processing" | "done" | "error"
+    # User-explicit review confirm (#238, D-02). NULL = not yet confirmed → counts
+    # toward the NEEDS_REVIEW gate; set on POST /documents/{id}/confirm.
+    confirmed_by_user_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

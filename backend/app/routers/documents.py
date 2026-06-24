@@ -10,6 +10,7 @@ Frozen contract #1 paths:
 """
 import json
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import (
@@ -31,10 +32,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
-from app.models.master import TenantUser
+from app.models.master import Tenant, TenantProfile, TenantUser
 from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
+    ConfirmDocumentOut,
     DocumentDetailOut,
     DocumentListItem,
     DocumentListOut,
@@ -47,7 +49,7 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
-from app.services import quota, tenant_journey
+from app.services import directions, quota, tenant_journey
 
 # Split routers to match frozen contract #1.
 ingest_router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -440,6 +442,7 @@ def list_documents(
                 term_count=term_count,
                 obligation_count=obligation_count,
                 clause_count=clause_count,
+                confirmed_by_user_at=doc.confirmed_by_user_at,
                 created_at=doc.created_at,
             )
         )
@@ -520,6 +523,7 @@ def get_document(
         failure_reason=failure_reason,
         provider=provider,
         model=model,
+        confirmed_by_user_at=doc.confirmed_by_user_at,
     )
 
 
@@ -649,6 +653,78 @@ def confirm_self_party(
     )
 
     return {"ok": True, "updated": updated}
+
+
+@docs_router.post("/{doc_id}/confirm", response_model=ConfirmDocumentOut)
+def confirm_document(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """User confirms they've reviewed this document (#238, D-02).
+
+    Self-party is auto-derived from the tenant's ``legal_name`` Setting (not a
+    manual pick, per PM ratify): direction is recomputed for the doc's
+    obligations. When EVERY extracted doc of the tenant is confirmed, the journey
+    advances NEEDS_REVIEW → CONFIRMED (so the FE sidebar nav unlocks).
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # Self-party auto-mapping from Settings (DEC-030 / D-13) — no per-doc pick.
+    profile = (
+        master_db.query(TenantProfile)
+        .filter(TenantProfile.tenant_id == user.tenant_id)
+        .first()
+    )
+    legal_name = profile.legal_name if profile else None
+    recomputed = directions.rederive_document_directions(db, user.tenant_id, doc_id, legal_name)
+
+    confirmed_at = datetime.utcnow()
+    doc.confirmed_by_user_at = confirmed_at
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="document_confirmed_by_user",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"directions_recomputed": recomputed, "legal_name_set": bool(legal_name)},
+    )
+    db.commit()
+
+    # Gate: advance journey only when ALL extracted docs are user-confirmed.
+    unconfirmed = (
+        db.query(Document)
+        .filter(
+            Document.tenant_id == user.tenant_id,
+            Document.status == "extracted",
+            Document.confirmed_by_user_at.is_(None),
+        )
+        .count()
+    )
+    journey_advanced = False
+    tenant = master_db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+    new_stage = tenant.journey_stage if tenant else None
+    if unconfirmed == 0 and tenant is not None:
+        before = tenant.journey_stage
+        after = tenant_journey.advance_stage(master_db, user.tenant_id, "CONFIRMED")
+        new_stage = after or before
+        journey_advanced = bool(after and after != before)
+
+    return ConfirmDocumentOut(
+        doc_id=doc_id,
+        confirmed_at=confirmed_at,
+        directions_recomputed=recomputed,
+        journey_advanced=journey_advanced,
+        new_journey_stage=new_stage,
+    )
 
 
 # ── Re-extract (admin-only, #97) ──

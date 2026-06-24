@@ -48,6 +48,7 @@ class DocumentListItem(BaseModel):
     term_count: int = 0
     obligation_count: int = 0
     clause_count: int = 0
+    confirmed_by_user_at: datetime | None = None   # #238 — null = "Cần xác nhận"
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,7 +81,16 @@ class DocumentDetailOut(BaseModel):
     # Null pre-extraction / for legacy docs.
     provider: str | None = None     # e.g. "gemini_flash" | "claude_haiku"
     model: str | None = None        # e.g. "gemini-2.5-flash"
+    confirmed_by_user_at: datetime | None = None   # #238 — null = not yet user-confirmed
     model_config = ConfigDict(from_attributes=True)
+
+
+class ConfirmDocumentOut(BaseModel):
+    doc_id: int
+    confirmed_at: datetime
+    directions_recomputed: int
+    journey_advanced: bool
+    new_journey_stage: str | None = None
 
 
 # ── Ingest ──
