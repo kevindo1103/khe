@@ -10,7 +10,7 @@ Covers PR #66 review fixes:
 import asyncio
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -89,8 +89,14 @@ def db():
         d.close()
 
 
-def _make_obligation(db, due_date: str | None, status="pending", remind_before_days=30):
-    doc = Document(tenant_id="reminder-tenant", file_name="reminder.pdf", file_path="x/y.pdf", status="extracted")
+def _make_obligation(db, due_date: str | None, status="pending", remind_before_days=30, confirmed=True):
+    # #250: reminders only fire for user-CONFIRMED docs, so the default fixture
+    # represents a confirmed doc. Pass confirmed=False to model an unreviewed doc.
+    doc = Document(
+        tenant_id="reminder-tenant", file_name="reminder.pdf", file_path="x/y.pdf",
+        status="extracted",
+        confirmed_by_user_at=datetime.utcnow() if confirmed else None,
+    )
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -169,6 +175,23 @@ class TestReminderEngine:
         due_ids = {o.id for o in due}
         assert ob_in.id in due_ids
         assert ob_out.id not in due_ids
+
+    def test_unconfirmed_docs_do_not_fire_reminders(self, db):
+        """#250 (D-02): obligations from an unconfirmed doc are excluded from the
+        reminder window — and never flipped to overdue — until the user confirms."""
+        today = date.today()
+        ob_confirmed = _make_obligation(db, (today + timedelta(days=5)).isoformat(), confirmed=True)
+        ob_unconfirmed = _make_obligation(db, (today + timedelta(days=5)).isoformat(), confirmed=False)
+
+        due_ids = {o.id for o in compute_due_window(db, "reminder-tenant", reference_date=today)}
+        assert ob_confirmed.id in due_ids
+        assert ob_unconfirmed.id not in due_ids   # unreviewed → no reminder
+
+        # And an unconfirmed past-due obligation is NOT flipped to overdue.
+        ob_past_unconfirmed = _make_obligation(db, (today - timedelta(days=1)).isoformat(), confirmed=False)
+        _flip_overdue_status(db, "reminder-tenant", reference_date=today)
+        db.refresh(ob_past_unconfirmed)
+        assert ob_past_unconfirmed.status == "pending"   # untouched until confirmed
 
     def test_flip_overdue_status(self, db):
         today = date.today()

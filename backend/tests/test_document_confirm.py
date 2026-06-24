@@ -134,21 +134,24 @@ def test_confirm_sets_timestamp_event_and_directions(auth_client, master_db, db)
     assert ev is not None and ev.actor == "cuser"
 
 
-def test_journey_advances_only_when_all_confirmed(auth_client, master_db, db):
+def test_journey_advances_on_first_confirm(auth_client, master_db, db):
+    """#250/#249: the FIRST confirm advances NEEDS_REVIEW → CONFIRMED (was
+    all-docs-confirmed). Subsequent confirms are journey no-ops (idempotent)."""
     _reset(master_db, db, stage="NEEDS_REVIEW")
     d1, d2 = _doc(db), _doc(db)
 
-    # Confirm first of two → still one unconfirmed → no advance.
+    # First confirm → advances immediately, even with d2 still unconfirmed.
     r1 = auth_client.post(f"/documents/{d1.id}/confirm").json()
-    assert r1["journey_advanced"] is False
-    assert r1["new_journey_stage"] == "NEEDS_REVIEW"
-    assert _stage(master_db) == "NEEDS_REVIEW"
-
-    # Confirm last → all confirmed → advance + clear is_first_session.
-    r2 = auth_client.post(f"/documents/{d2.id}/confirm").json()
-    assert r2["journey_advanced"] is True
-    assert r2["new_journey_stage"] == "CONFIRMED"
+    assert r1["journey_advanced"] is True
+    assert r1["new_journey_stage"] == "CONFIRMED"
     assert _stage(master_db) == "CONFIRMED"
+
+    # Second confirm → already CONFIRMED → no further advance, but per-doc D-02
+    # audit still intact (confirmed_by_user_at set + Event written).
+    r2 = auth_client.post(f"/documents/{d2.id}/confirm").json()
+    assert r2["journey_advanced"] is False
+    db.expire_all()
+    assert db.query(Document).filter(Document.id == d2.id).one().confirmed_by_user_at is not None
 
 
 def test_confirm_without_legal_name_keeps_direction_null(auth_client, master_db, db):
