@@ -67,7 +67,8 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 
 | Team | Issue | What | Gates |
 |---|---|---|---|
-| **KHE_AI** | #230 | Populate page_num/ref/bbox from VisionProvider | Stage 3 real ref-nav |
+| **KHE_AI** | ~~#230~~ ✅ | page_num/ref/bbox anchors — DONE (PR #232, staging green) | — |
+| **KHE_AI** | #248 (next) | Flash-lite benchmark → DEC-041 ratification | Cost optimization |
 | **Frontend** | #238 | 4 items: confirm button, Home CTA chip, `journey_advanced` refetch, DocList badge | Nav-lock live end-to-end |
 | **Frontend** | #238 | MANDATORY: ReminderNudge + "X/Y bước" chip for CONFIRMED-without-channel | DEC-040 mitigation |
 | **Frontend** | #238 | Interim: false-success toast 3-state fix (no backend dep) | Ship now |
@@ -180,6 +181,8 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 
 | DEC-040 | **`is_first_session` clears at CONFIRMED, not ACTIVATED (Kevin ratified 2026-06-24 via #238).** Supersedes DEC-033 nav-lock timing. Trigger: `POST /documents/{id}/confirm` with last doc confirmed → atomically sets all docs `confirmed_by_user_at`, advances `NEEDS_REVIEW → CONFIRMED`, clears `is_first_session`. Nav-lock = first-session + pre-CONFIRMED only. At CONFIRMED, sidebar unlocks — user does NOT need to add reminder channel first. Mandatory mitigation: FE MUST ship "Bật nhắc" ReminderNudge component + "X/Y bước" progress chip on dashboard for CONFIRMED-without-channel state (#238 FE go-ahead). Backend PR #241 merged to staging. DOCS_INBOX posted 2026-06-24. Fold: BRD §5 Onboarding AC + SRS journey_stage state machine table + CLAUDE.md §Multi-Tenant DB. | **Ratified** (Kevin 2026-06-24 via #238) | 2026-06-24 |
 
+| DEC-041 | **Flash-lite benchmark → provider swap decision (PENDING KHE_AI result).** DEC-002 cost figure revised to 177đ/doc (measured, not estimate). Flash-lite estimated ~31đ/doc (5× cheaper). KHE_AI to run `anchor_probe.py`/`cost_probe.py` against `gemini-2.5-flash-lite`. If accuracy ≥90% (M-3 target) → PM ratifies swap. Filed #248. | **Pending** — awaiting KHE_AI benchmark | 2026-06-24 |
+
 | DEC-031 | **Chat context = Result-seeded Progressive State (v2). Anchor: Khế giải multi-turn chat bằng structured data, KHÔNG phải conversation memory.** Model: mỗi query result tự động seeds `chat_sessions.state_json` cho turn tiếp theo — "conversational computation" (Excel filter→SUM; shell pipe; SQL cursor). Generic chatbot không có structured data → buộc dùng prose history (5K tok). Khế có obligations/parties/amounts với ID → maintain 50-token JSON state. **5 invariants (tất cả mandatory):** (1) **State model** — server maintain `chat_sessions.state_json = {active_doc_ids[], active_obligation_ids[], working_set_label, last_tool_call}` per conversation thread, KHÔNG phải prose; (2) **Visibility invariant (mandatory — không drop)** — scope chip hiển thị trong mỗi response bubble "📌 Đang trong context: HĐ Penfield ▾"; tap để widen/reset/switch. Excel/Shell work vì operator explicit — chat không có → chip là operator; (3) **Ambiguity guard** — multi-doc results → ask-clarify KHÔNG auto-narrow silent ("Ý bạn là HĐ nào trong 3 HĐ vừa tìm?"); (4) **Cold-start** — turn 1 deictic ("HĐ này?" khi chưa có context) → ask-clarify ("Bạn muốn hỏi về HĐ nào? [list]"); (5) **Invalidation** — time decay 30-min session timeout + explicit "🔄 Hỏi mới" button + intent-shift detection high threshold → ask trước khi switch. **Spec debt (file cùng engineering task):** result content schema chi tiết; alias resolution rules parties[]; NĐ 13 audit log cho state_json (pointer tới PII data → compliance debt tương tự DEC-028, KHE_Compliance track). **Frontend impact:** scope chip + reset button = mandatory change (không phải zero-frontend). **Engineering hold:** assign sau khi #155 (parties[]) + #156 (type sync) ship. Ref: #178 (KHE_QC BA × 3 rounds). | **Ratified v2** (Kevin 2026-06-20) | 2026-06-20 |
 
 **Giữ nguyên (user confirm 2026-06-10):** DEC-002 (VisionExtractionProvider Gemini+Claude), DEC-006 (Telegram), DEC-010 (NĐ 13 Phase 1).
@@ -257,7 +260,7 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | 6 | KHE_QC | Active — #187 Playwright e2e (HIGH, pre-pilot), #75/#175 UAT smoke pending. |
 | 7 | KHE_Designer | Active — PRs #197/#200/#204/#210/#242/#243 all merged. 8-stage SME mockup suite + full firm journey F0–F6 complete. |
 | 8 | KHE_Infra | Low-touch. VPS 2 environments (staging :8001 / prod :8000). CI/CD green. |
-| 9 | KHE_AI | Active — #230 pending (page_num/ref/bbox from VisionProvider for Stage 3). |
+| 9 | KHE_AI | **#230 DONE** — page_num/ref/bbox anchors merged, staging green (12/12 tests, PR #232). #248 cost figure ratified (177đ/doc Gemini 2.5 Flash). Flash-lite benchmark queued as next task (→ DEC-041 pending). |
 | 10 | KHE_Compliance | Active — #38 open (90d retention counsel verify-back, pre go-live gate). #105 NĐ13 PII logging debt tracked. |
 
 ---
