@@ -46,6 +46,16 @@ class SnoozeOut(BaseModel):
     snoozed_until: datetime
 
 
+class ObligationSummaryOut(BaseModel):
+    """Server-side obligation aggregate for the Dashboard (#199 follow-up) —
+    canonical group labels so the FE stops deriving direction counts client-side."""
+    total: int
+    group_by: str
+    groups: list[dict]              # [{key, label, count, nearest?}]
+    status_breakdown: dict          # {waiting_trigger, overdue, due_soon}
+    source: dict                    # {obligation_count, doc_count, label}
+
+
 class ObligationPatchOut(BaseModel):
     ok: bool
     obligation: ObligationOut

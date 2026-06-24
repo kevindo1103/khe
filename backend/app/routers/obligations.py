@@ -21,8 +21,10 @@ from app.schemas.obligations import (
     ObligationOut,
     ObligationPatchIn,
     ObligationPatchOut,
+    ObligationSummaryOut,
     SnoozeOut,
 )
+from app.services import chat_query
 
 router = APIRouter(prefix="/obligations", tags=["obligations"])
 
@@ -91,6 +93,39 @@ def list_obligations(
         page=page,
         page_size=page_size,
         total=total,
+    )
+
+
+@router.get("/summary", response_model=ObligationSummaryOut)
+def obligations_summary(
+    group_by: str = Query("direction"),
+    status: str | None = Query(None),
+    direction: str | None = Query(None),
+    obligation_type: str | None = Query(None),
+    due_within_days: int | None = Query(None, ge=0),
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Server-side obligation aggregate for the Dashboard (#199 follow-up).
+
+    Reuses the canonical aggregate (count + grouped labels + status_breakdown)
+    the chat path already uses, so the FE renders server `groups[].label`
+    (e.g. "Bạn cần" / "Đối tác cần làm cho bạn") instead of deriving direction
+    counts client-side. Tenant-scoped; count-only (D-06, no money sum). total=0 is
+    a valid response, never an error.
+    """
+    agg = chat_query.aggregate_obligations(
+        db, user.tenant_id, group_by,
+        status=status, direction=direction, obligation_type=obligation_type,
+        due_within_days=due_within_days,
+    )
+    s = agg["summary"]
+    return ObligationSummaryOut(
+        total=s["total"],
+        group_by=s["group_by"],
+        groups=s["groups"],
+        status_breakdown=s["status_breakdown"],
+        source=agg["source"],
     )
 
 

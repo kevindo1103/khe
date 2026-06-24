@@ -696,6 +696,29 @@ def _group_key_label(ob, group_by: str) -> tuple[str, str]:
     return key, key
 
 
+def aggregate_obligations(
+    db: Session,
+    tenant_id: str,
+    group_by: str = "direction",
+    *,
+    status: str | None = None,
+    direction: str | None = None,
+    obligation_type: str | None = None,
+    due_within_days: int | None = None,
+    series_id: str | None = None,
+) -> dict:
+    """Public obligation-aggregate API (#199 chat path + the REST dashboard summary
+    endpoint share this). Returns {"summary", "source", "rows"}; count-only, no
+    money sum (D-06). Counts ALL obligations — it's a view, not an outbound action,
+    so the #250 confirmed-doc reminder gate does not apply here.
+    """
+    return _tool_aggregate_obligations(
+        db, tenant_id, group_by,
+        status=status, direction=direction, obligation_type=obligation_type,
+        due_within_days=due_within_days, series_id=series_id,
+    )
+
+
 def _tool_search_clauses(db: Session, tenant_id: str, query_text: str, doc_hint: str | None) -> list[dict]:
     """Return clause rows whose content matches the query text, optionally scoped to a doc hint."""
     query = db.query(Clause, Document).join(
