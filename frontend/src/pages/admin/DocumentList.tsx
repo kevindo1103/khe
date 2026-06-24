@@ -153,8 +153,12 @@ export default function DocumentList() {
                     extracted: 'Đã bóc tách',
                     needs_review: '⚠ Cần kiểm tra',
                   };
-                  // #238 — surface unconfirmed docs (confirmed_by_user_at null) once extracted
-                  const needsConfirm = row.status !== 'processing' && !row.confirmed_by_user_at;
+                  // #238 — surface unconfirmed docs once successfully extracted.
+                  // Gate on extracted/needs_review only: a 'failed' doc has no terms,
+                  // so its confirm card never renders → the badge would be unclearable.
+                  const needsConfirm =
+                    (row.status === 'extracted' || row.status === 'needs_review') &&
+                    !row.confirmed_by_user_at;
                   return (
                     <div className="flex gap-1.5 items-center flex-wrap">
                       <Badge kind={badgeMap[row.status] || 'neutral'} testId={`doc-status-${row.id}`}>
