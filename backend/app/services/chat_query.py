@@ -849,6 +849,12 @@ def _build_router_system_prompt(today: date) -> str:
         "- 'giá trị HĐ với công ty Hán Thị Nga' → search_terms(field_name='gia_tri_hd', party_filter='Hán Thị Nga')\n"
         "- 'ngày hiệu lực HĐ với ALASKA' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA')\n"
         "- 'HĐ với ALASKA năm 2021' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA', value_contains='2021')\n"
+        # #268 Q3: a value/field query about a party stays search_terms even when phrased
+        # plural ('các HĐ với X') — 'giá trị' is a FIELD, NOT a count → never aggregate_obligations.
+        "- 'giá trị các hợp đồng với Penfield' → search_terms(field_name='gia_tri_hd', party_filter='Penfield')\n"
+        "- 'các HĐ với ALASKA hết hạn khi nào' → search_terms(field_name='ngay_het_han', party_filter='ALASKA')\n"
+        "- LƯU Ý: 'giá trị/ngày/thời hạn ... của/với <công ty>' LUÔN là search_terms (field + party_filter), "
+        "DÙ câu hỏi dùng số nhiều 'các hợp đồng'. KHÔNG dùng aggregate_obligations cho câu hỏi về GIÁ TRỊ trường.\n"
         f"Hôm nay là {today_str}. "
         "Quy tắc chuyển cụm từ lịch tiếng Việt thành due_from/due_to ISO (YYYY-MM-DD):\n"
         "- 'tháng này' → due_from=ngày 1 tháng hiện tại, due_to=ngày cuối tháng hiện tại\n"
