@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -38,6 +39,10 @@ class Tenant(MasterBase):
     doc_quota = Column(Integer, nullable=False, server_default="500")
     docs_used_month = Column(Integer, nullable=False, server_default="0")
     quota_reset_at = Column(Date, nullable=True)
+    # Extraction cost aggregate (#255 pilot monitoring). cost_vnd_month resets with
+    # the calendar-1st quota reset; cost_vnd_total is lifetime (never reset).
+    cost_vnd_month = Column(Float, nullable=False, server_default="0")
+    cost_vnd_total = Column(Float, nullable=False, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
 
     users = relationship("TenantUser", back_populates="tenant", cascade="all, delete-orphan")

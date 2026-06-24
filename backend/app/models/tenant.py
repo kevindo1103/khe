@@ -30,6 +30,12 @@ class Document(TenantBase):
     # User-explicit review confirm (#238, D-02). NULL = not yet confirmed → counts
     # toward the NEEDS_REVIEW gate; set on POST /documents/{id}/confirm.
     confirmed_by_user_at = Column(DateTime, nullable=True)
+    # Extraction cost tracking (#255 pilot monitoring). NULL for pre-migration /
+    # not-yet-extracted docs. Set on each successful extraction.
+    extraction_provider = Column(String, nullable=True)    # "gemini_flash" | "claude_haiku" | "claude_sonnet"
+    extraction_tokens_in = Column(Integer, nullable=True)
+    extraction_tokens_out = Column(Integer, nullable=True)
+    extraction_cost_vnd = Column(Float, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
