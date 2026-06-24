@@ -1,13 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Input, Card, Table, EmptyState, JourneyEmptyState } from '../../components';
 import { Badge } from '../../components/Badge';
 import { apiFetch } from '../../lib/api';
 import type { DocumentListOut, DocumentListItem } from '../../types/documents';
 import type { ApiError } from '../../lib/api';
 
+// Cross-cuts the status axis: an unconfirmed doc can be `extracted` OR `needs_review`.
+// Backend GET /documents/ has no `confirmed` param yet → filtered client-side below.
+// TODO(#251): switch to server `?confirmed=false` when Backend adds it (drops the 100-cap).
+const NEEDS_CONFIRM = '__needsconfirm';
+
+// keep this gate identical to the DocList badge + Home counter so all three agree
+const isUnconfirmed = (d: DocumentListItem) =>
+  (d.status === 'extracted' || d.status === 'needs_review') && !d.confirmed_by_user_at;
+
 const FILTERS = [
   { key: '', label: 'Tất cả' },
+  { key: NEEDS_CONFIRM, label: 'Cần xác nhận' },
   { key: 'processing', label: 'Đang xử lý' },
   { key: 'extracted', label: 'Đã bóc tách' },
   { key: 'needs_review', label: 'Cần kiểm tra' },
@@ -15,7 +25,11 @@ const FILTERS = [
 
 export default function DocumentList() {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<string>('');
+  const [searchParams] = useSearchParams();
+  // Deep-link from the dashboard counter (#251 §1): /admin/documents?confirm=pending
+  const [filter, setFilter] = useState<string>(
+    searchParams.get('confirm') === 'pending' ? NEEDS_CONFIRM : ''
+  );
   const [q, setQ] = useState<string>('');
   const [page, setPage] = useState(1);
   const [data, setData] = useState<DocumentListOut | null>(null);
@@ -25,14 +39,21 @@ export default function DocumentList() {
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    const needsConfirm = filter === NEEDS_CONFIRM;
     try {
       const params = new URLSearchParams();
-      if (filter) params.set('status', filter);
+      if (filter && !needsConfirm) params.set('status', filter);
       if (q) params.set('q', q);
-      params.set('page', String(page));
-      params.set('page_size', '20');
+      // No server-side `confirmed` filter yet → pull a wide page and filter client-side.
+      params.set('page', String(needsConfirm ? 1 : page));
+      params.set('page_size', needsConfirm ? '100' : '20');
       const res = await apiFetch<DocumentListOut>(`/documents/?${params.toString()}`);
-      setData(res);
+      if (needsConfirm) {
+        const items = res.items.filter(isUnconfirmed);
+        setData({ ...res, items, total: items.length, page: 1, page_size: 100 });
+      } else {
+        setData(res);
+      }
     } catch (err) {
       setError((err as ApiError).message || 'Không thể tải danh sách');
     } finally {
@@ -106,9 +127,15 @@ export default function DocumentList() {
         {loading && !data ? (
           <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>
         ) : data && data.items.length === 0 ? (
-          // 4-state matrix spirit: truly-zero (cold tenant) ≠ filter/search no-match
+          // 4-state matrix spirit: truly-zero (cold tenant) ≠ all-confirmed ≠ no-match
           !filter && !q ? (
             <JourneyEmptyState state="cold_start" onUpload={() => navigate('/admin/upload')} />
+          ) : filter === NEEDS_CONFIRM ? (
+            <EmptyState
+              icon="🎉"
+              title="Tất cả tài liệu đã được xác nhận"
+              description="Không còn tài liệu nào cần bạn kiểm tra. Khế đang nhắc đầy đủ."
+            />
           ) : (
             <EmptyState
               notFound

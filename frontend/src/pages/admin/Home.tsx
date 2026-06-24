@@ -3,20 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Card, Badge, JourneyEmptyState } from '../../components';
 import { apiFetch } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
-import type { ObligationListOut, ObligationOut } from '../../types/obligations';
+import type { ObligationSummaryOut } from '../../types/obligations';
 import type { DocumentListOut, DocumentListItem } from '../../types/documents';
 import type { ConsentEntry } from '../../types/consent';
 
 // ── helpers ──
 
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dateStr);
-  due.setHours(0, 0, 0, 0);
-  return Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
-}
+// keep identical to DocList badge + filter so counter, badge and list agree (#251)
+const isUnconfirmed = (d: DocumentListItem) =>
+  (d.status === 'extracted' || d.status === 'needs_review') && !d.confirmed_by_user_at;
 
 // ── small presentational pieces (mirror journey primitives v0.1) ──
 
@@ -100,6 +95,32 @@ function StepsChip({ reminderOn }: { reminderOn: boolean }) {
   );
 }
 
+/**
+ * Persistent, non-dismissable unconfirmed-docs counter (#251 / DEC-040 amended #249).
+ * Nav unlocks at FIRST confirm, so remaining unconfirmed docs must stay visible —
+ * Khế is silent on them until confirmed (D-02). Disappears only at 0 unconfirmed.
+ */
+function UnconfirmedCounter({ unconfirmed, total, onView }: { unconfirmed: number; total: number; onView: () => void }) {
+  return (
+    <Card className="border-info-border bg-info-soft" testId="dashboard-unconfirmed-counter">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3">
+          <span className="text-xl" aria-hidden="true">📄</span>
+          <div>
+            <div className="text-sm font-medium text-ink">
+              {unconfirmed}/{total} tài liệu cần xác nhận
+            </div>
+            <div className="text-2xs text-ink-muted mt-0.5">
+              Khế chỉ nhắc nội dung tài liệu sau khi bạn xác nhận — hãy xử lý dần các tài liệu còn lại.
+            </div>
+          </div>
+        </div>
+        <Button size="sm" variant="ghost" onClick={onView}>Xem danh sách →</Button>
+      </div>
+    </Card>
+  );
+}
+
 // ── stage views ──
 
 /** NEW — self-serve cold start: one focused CTA (Hick's law). */
@@ -150,23 +171,38 @@ function StageReview({ docs, onReviewDoc }: { docs: DocumentListItem[]; onReview
   );
 }
 
+// direction-card tone by server group key — labels themselves come from the server (#227)
+const DIRECTION_TONE: Record<string, string> = {
+  'nghĩa_vụ': 'text-ink',
+  'quyền_lợi': 'text-info',
+  'null': 'text-info',
+};
+
 /** STEADY/CONFIRMED — "Tôi có cần lo gì không?" dashboard (J-E). Reassurance only when legitimate. */
-function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: () => void }) {
-  const [obligations, setObligations] = useState<ObligationOut[] | null>(null);
+function StageDashboard({ docCount, unconfirmed, onUpload }: { docCount: number; unconfirmed: number; onUpload: () => void }) {
+  // #253/#254 — consume the server aggregate; FE no longer derives direction counts.
+  const [summary, setSummary] = useState<ObligationSummaryOut | null>(null);
   const [reminderOn, setReminderOn] = useState<boolean | null>(null);
   const navigate = useNavigate();
   const goSettings = () => navigate('/admin/settings');
+  const goUnconfirmed = () => navigate('/admin/documents?confirm=pending');
+
+  // MANDATORY persistent surface (#251): unconfirmed work stays visible after the gate unlock.
+  const unconfirmedBlock = unconfirmed > 0 ? (
+    <UnconfirmedCounter unconfirmed={unconfirmed} total={docCount} onView={goUnconfirmed} />
+  ) : null;
 
   useEffect(() => {
-    apiFetch<ObligationListOut>('/obligations/?page=1&page_size=100')
-      .then((res) => setObligations(res.items))
-      .catch(() => setObligations([]));
+    // default group_by=direction + active_only=true (#254) → counts match the active list
+    apiFetch<ObligationSummaryOut>('/obligations/summary?group_by=direction')
+      .then(setSummary)
+      .catch(() => setSummary(null));
     apiFetch<ConsentEntry[]>('/consent')
       .then((res) => setReminderOn(res.find((c) => c.purpose === 'reminder_send')?.status === 'granted'))
       .catch(() => setReminderOn(true)); // fail-open: don't nag if consent unreadable
   }, []);
 
-  if (obligations === null || reminderOn === null) {
+  if (summary === null || reminderOn === null) {
     return <div className="p-8 text-center text-ink-muted text-sm">Đang tải…</div>;
   }
 
@@ -178,31 +214,22 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
     </>
   ) : null;
 
-  // active = non-terminal obligations (the dashboard "total")
-  const active = obligations.filter((o) => o.status !== 'done' && o.status !== 'cancelled');
-  const total = active.length;
-
+  const { total, groups, status_breakdown: sb } = summary;
   // ── DASHBOARD CONSUMER RULE (#227 note 2) — two axes that do NOT add up ──
-  // Direction (groups) → sum to total → rendered as direction cards.
-  const ngVu = active.filter((o) => o.direction === 'nghĩa_vụ').length;
-  const qLoi = active.filter((o) => o.direction === 'quyền_lợi').length;
-  const canXacNhan = total - ngVu - qLoi; // direction null/unset
-  // Status (status_breakdown) → CROSS-CUTS direction → separate strip, never a 4th direction card.
-  const waiting = active.filter((o) => o.status === 'waiting_trigger').length;
-  const dated = active
-    .filter((o) => o.status !== 'waiting_trigger')
-    .map((o) => daysUntil(o.due_date))
-    .filter((d): d is number => d !== null);
-  const overdue = dated.filter((d) => d < 0).length;
-  const dueSoon = dated.filter((d) => d >= 0 && d <= 30).length;
-  const nearest = dated.filter((d) => d >= 0).sort((a, b) => a - b)[0];
-  const hasWork = overdue + dueSoon > 0;
+  // AXIS 1 direction = `groups` (sum to total). AXIS 2 status = `status_breakdown` (cross-cuts).
+  const hasWork = sb.overdue + sb.due_soon > 0;
+  // nearest upcoming across all direction groups (server gives per-group days_left)
+  const nearestDays = groups
+    .map((g) => g.nearest?.days_left)
+    .filter((d): d is number => d != null)
+    .sort((a, b) => a - b)[0];
 
   // genuinely 0 active obligations → legitimate all-clear (state 3, not false reassurance)
   if (total === 0) {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
         <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
+        {unconfirmedBlock}
         {reminderBlock}
         <Card>
           <JourneyEmptyState state="all_clear" />
@@ -216,6 +243,7 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
     <div className="max-w-2xl mx-auto space-y-4">
       <h1 className="text-xl font-bold text-ink">Tổng quan</h1>
 
+      {unconfirmedBlock}
       {reminderBlock}
 
       {/* the single answer to "tôi có cần lo gì không?" — copy uses the group/total numbers */}
@@ -224,11 +252,11 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
           <span className="text-3xl" aria-hidden="true">{hasWork ? '👀' : '🌿'}</span>
           <div>
             <div className="text-lg font-semibold text-ink" aria-live="polite">
-              {hasWork ? `Có ${overdue + dueSoon} việc cần chú ý.` : 'Mọi thứ trong tầm kiểm soát.'}
+              {hasWork ? `Có ${sb.overdue + sb.due_soon} việc cần chú ý.` : 'Mọi thứ trong tầm kiểm soát.'}
             </div>
             <div className="text-sm text-ink-body mt-0.5">
-              {nearest != null
-                ? `Hạn gần nhất còn ${nearest} ngày — Khế đang theo dõi ${total} nghĩa vụ.`
+              {nearestDays != null
+                ? `Hạn gần nhất còn ${nearestDays} ngày — Khế đang theo dõi ${total} nghĩa vụ.`
                 : `Khế đang theo dõi ${total} nghĩa vụ và sẽ nhắc bạn trước mỗi hạn.`}
             </div>
           </div>
@@ -240,13 +268,13 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
         )}
       </Card>
 
-      {/* AXIS 1 — direction (groups): these sum to `total` */}
+      {/* AXIS 1 — direction (server groups, labels verbatim): these sum to `total` */}
       <div>
         <div className="text-2xs font-semibold text-ink-subtle uppercase tracking-wide mb-2">Theo vai trò</div>
         <div className="flex gap-3 flex-wrap">
-          <Stat n={ngVu} label="Nghĩa vụ" tone="text-ink" />
-          <Stat n={qLoi} label="Quyền lợi" tone="text-info" />
-          <Stat n={canXacNhan} label="Cần xác nhận" tone="text-info" />
+          {groups.map((g) => (
+            <Stat key={g.key} n={g.count} label={g.label} tone={DIRECTION_TONE[g.key] ?? 'text-ink'} />
+          ))}
         </div>
       </div>
 
@@ -254,9 +282,9 @@ function StageDashboard({ docCount, onUpload }: { docCount: number; onUpload: ()
       <div>
         <div className="text-2xs font-semibold text-ink-subtle uppercase tracking-wide mb-2">Theo tình trạng</div>
         <div className="flex gap-2 flex-wrap">
-          <Badge kind="overdue">Quá hạn: {overdue}</Badge>
-          <Badge kind="due_soon">Sắp tới hạn: {dueSoon}</Badge>
-          <Badge kind="needs_review">Chờ sự kiện: {waiting}</Badge>
+          <Badge kind="overdue">Quá hạn: {sb.overdue}</Badge>
+          <Badge kind="due_soon">Sắp tới hạn: {sb.due_soon}</Badge>
+          <Badge kind="needs_review">Chờ sự kiện: {sb.waiting_trigger}</Badge>
         </div>
       </div>
 
@@ -307,6 +335,12 @@ export default function Home() {
       return <StageReview docs={docs} onReviewDoc={goReviewDoc} />;
     // CONFIRMED / ACTIVATED / STEADY → steady-state dashboard
     default:
-      return <StageDashboard docCount={docs.length} onUpload={goUpload} />;
+      return (
+        <StageDashboard
+          docCount={docs.length}
+          unconfirmed={docs.filter(isUnconfirmed).length}
+          onUpload={goUpload}
+        />
+      );
   }
 }
