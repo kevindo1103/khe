@@ -168,6 +168,13 @@ Lấp gap "đủ cho FE revamp chưa": admin steady-state mới chỉ token-swap
 - **Admin dashboard responsive = DONE (canonical JSX)**, không chỉ HTML preview.
 - **Coverage giờ:** Admin web đủ cho FE revamp (login/upload/list/detail/obligation/settings/dashboard trên v0.2). NGOÀI scope còn: firm portal, quota-429 screen, PWA (defer cả app).
 
+## Firm journey (#236, DEC-039) — primitives DONE — branch `claude/design-firm-primitives-236`
+Firm = economic buyer (Chị Hằng, B2B2B). Portal = lead-generator (J5), KHÔNG dashboard. PM resolved 4 blockers + 9 items trên #236; backend contract = #237 (build không cần #237 merged).
+- `mockup_firm_journey_primitives_v0.1.jsx` — 6 primitives: `ConsentStatus` (pending/granted/revoked) · `DataRestrictedLabel` (labor PII metadata-only, PM B4) · `FirmEmptyState` (CLOSED 4-state: cold_start/processing/all_clear/revoked, cold≠clear) · `RevokeBanner` (D-10 instant vanish, no cache) · `LeadSignalCard` (J5: WHO+WHEN+WHY + mailto CTA "Liên hệ tư vấn", urgency ≤7/8-30/31-90) · `ClientCard` (full business data DEC-039, truncate 3 + xem tất cả, read-only). +`urgencyOf()` helper.
+- Constraints: D-09 read-only (no edit affordance) · D-10 SME-only revoke · DEC-039 full data · labor exception field map · desktop-first · inherits #206 a11y.
+- **Status: PR mở, chờ PM spot-review trước khi build F-stage files.** Next: F0/F1 (onboard + F1a concierge/F1b invite dual path) → F3/F4 (portfolio + lead signals) → F5/F6 (digest + consent lifecycle).
+- ⚠ DEC-039 chưa fold canonical — PM post DOCS_INBOX sau Kevin ratify. Firm digest = email-only MVP; no chat/export/push (PM items 4/5/8).
+
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
