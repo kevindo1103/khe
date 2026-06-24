@@ -34,6 +34,14 @@ import importlib
 import sys
 from pathlib import Path
 
+# Vietnamese refs ("Điều 2") mangle on Windows' default cp1252 console — force UTF-8 so
+# the printed table is readable. The underlying string is always correct UTF-8; this is
+# display-only. No-op where stdout has no reconfigure (older streams) or already UTF-8.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+except (AttributeError, ValueError):  # pragma: no cover - platform-dependent
+    pass
+
 _PROVIDER_REGISTRY = {
     "gemini_flash": ("providers.gemini_flash", "GeminiFlashProvider"),
     "claude_haiku": ("providers.claude_haiku", "ClaudeHaikuProvider"),
