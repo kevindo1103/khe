@@ -96,13 +96,15 @@ function FieldRow({ f, editing, onEdit, onSave, onCancel }) {
 export default function AdminDocumentDetailV2() {
   const [editKey, setEditKey] = useState(null);
   const [toast, setToast] = useState(null);
+  const [confirmed, setConfirmed] = useState(false);
   const lowCount = FIELDS.filter((f) => f.conf < 0.8).length;
+  const editing = editKey !== null;
 
-  const save = () => {
-    setEditKey(null);
-    setToast("Đã lưu — ghi Event ✓");
-    setTimeout(() => setToast(null), 2500);
-  };
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2500); };
+  const save = () => { setEditKey(null); flash("Đã lưu — ghi Event ✓"); };
+  // #238 confirm flow: POST /documents/{id}/confirm → confirmed_by_user_at + Event (D-02/D-07);
+  // when all docs confirmed → journey NEEDS_REVIEW→CONFIRMED (DEC-040 nav unlock). X/Y on Home/list.
+  const confirm = () => { setConfirmed(true); flash("Đã xác nhận document — ghi Event ✓ (3/16)"); };
 
   return (
     <div style={{ minHeight: "100vh", background: t.color.surfaceAlt, fontFamily: t.font.family }}>
@@ -115,7 +117,8 @@ export default function AdminDocumentDetailV2() {
             <div style={{ display: "flex", gap: t.space[2], marginTop: t.space[2], alignItems: "center" }}>
               <Badge kind="brand">Hợp đồng thuê</Badge>
               <Badge kind="extracted">đã bóc tách</Badge>
-              {lowCount > 0 && <Badge kind="needs_review">{lowCount} field cần kiểm tra</Badge>}
+              {lowCount > 0 && !confirmed && <Badge kind="needs_review">{lowCount} field cần kiểm tra</Badge>}
+              {confirmed && <Badge kind="done">đã xác nhận</Badge>}
             </div>
           </div>
           <Button variant="secondary" size="sm">Tải bản gốc</Button>
@@ -178,6 +181,20 @@ export default function AdminDocumentDetailV2() {
               </div>
             </Card>
           </div>
+        </div>
+
+        {/* #238 confirm CTA — explicit user confirm (D-02); disabled while a field is in edit mode */}
+        <div style={{ marginTop: t.space[5], display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: t.space[3], padding: t.space[4], background: t.color.surface, border: `1px solid ${confirmed ? t.color.successBorder : t.color.border}`, borderRadius: t.radius.lg, boxShadow: t.elevation.e1 }}>
+          <span style={{ fontSize: t.font.size.sm, color: t.color.inkBody }}>
+            {confirmed
+              ? <>✅ Bạn đã xác nhận document này. Khế dùng để nhắc hạn.</>
+              : editing
+                ? <>Lưu hoặc huỷ trường đang sửa trước khi xác nhận.</>
+                : <>Đã kiểm tra xong các trường? Xác nhận để Khế chốt và bắt đầu nhắc hạn (3/16 đã xác nhận).</>}
+          </span>
+          <Button disabled={confirmed || editing} onClick={confirm}>
+            {confirmed ? "Đã xác nhận" : "Xác nhận document này"}
+          </Button>
         </div>
       </div>
 

@@ -13,7 +13,7 @@
  *   Sắp tới / Đã xong") is still deferred — // PHASE-2-IA-DEBT below.
  *
  * Behaviour kept from LockedNav: nav-lock ONLY on is_first_session (cleared at
- *   ACTIVATED). Return visits = full nav. Supersedes `LockedNav` in journey
+ *   CONFIRMED — DEC-040 #238). Return visits = full nav. Supersedes `LockedNav` in journey
  *   primitives for the layout (the lock semantics are identical).
  *   → DEPRECATION: `LockedNav` (journey primitives, PR #200) is superseded by
  *     AppSidebar/AppBottomTabs. Migration tracked as a follow-up issue; the two
