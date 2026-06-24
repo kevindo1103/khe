@@ -26,6 +26,7 @@ export interface DocumentListItem {
   term_count: number;
   obligation_count: number;
   clause_count: number;
+  confirmed_by_user_at: string | null;   // #238 — null = "Cần xác nhận"
   created_at: string | null;
 }
 
@@ -46,8 +47,18 @@ export interface DocumentDetailOut {
   terms: TermOut[];
   obligations: ObligationOut[];
   clause_count: number;
+  confirmed_by_user_at: string | null;   // #238 — null = not yet user-confirmed
   failure_reason: string | null;
   parties?: { name: string; role_label: string | null }[];
+}
+
+// #238 — POST /documents/{id}/confirm (no body; self-party auto-derived from legal_name)
+export interface ConfirmDocumentOut {
+  doc_id: number;
+  confirmed_at: string;
+  directions_recomputed: number;
+  journey_advanced: boolean;
+  new_journey_stage: string | null;
 }
 
 export interface UploadOut {

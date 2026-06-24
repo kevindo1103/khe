@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { JourneyProvider } from './contexts/JourneyContext';
 import Login from './pages/admin/Login';
 import AdminShell from './pages/admin/AdminShell';
 import Home from './pages/admin/Home';
@@ -34,7 +35,9 @@ export default function App() {
         path="/admin"
         element={
           <ProtectedRoute>
-            <AdminShell />
+            <JourneyProvider>
+              <AdminShell />
+            </JourneyProvider>
           </ProtectedRoute>
         }
       >

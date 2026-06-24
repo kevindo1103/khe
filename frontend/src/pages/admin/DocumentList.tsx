@@ -153,10 +153,23 @@ export default function DocumentList() {
                     extracted: 'Đã bóc tách',
                     needs_review: '⚠ Cần kiểm tra',
                   };
+                  // #238 — surface unconfirmed docs once successfully extracted.
+                  // Gate on extracted/needs_review only: a 'failed' doc has no terms,
+                  // so its confirm card never renders → the badge would be unclearable.
+                  const needsConfirm =
+                    (row.status === 'extracted' || row.status === 'needs_review') &&
+                    !row.confirmed_by_user_at;
                   return (
-                    <Badge kind={badgeMap[row.status] || 'neutral'} testId={`doc-status-${row.id}`}>
-                      {labelMap[row.status] || row.status}
-                    </Badge>
+                    <div className="flex gap-1.5 items-center flex-wrap">
+                      <Badge kind={badgeMap[row.status] || 'neutral'} testId={`doc-status-${row.id}`}>
+                        {labelMap[row.status] || row.status}
+                      </Badge>
+                      {needsConfirm && (
+                        <Badge kind="needs_review" testId={`doc-needsconfirm-${row.id}`}>
+                          Cần xác nhận
+                        </Badge>
+                      )}
+                    </div>
                   );
                 }
                 if (key === 'doc_type') {
