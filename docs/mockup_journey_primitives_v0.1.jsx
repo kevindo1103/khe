@@ -226,6 +226,27 @@ export function ReminderNudge({ onEnable }) {
 }
 
 /* ===========================================================================
+ * 6b. ProgressChip — compact inline "N/M bước" pill (DEC-040)
+ *   Sibling of SetupProgress (§3): same {label, done} step shape, but a single
+ *   inline pill for reuse on dense surfaces (dashboard banner, doc-detail,
+ *   doc-list headers) where the full stepper is too heavy. Steps are caller-
+ *   supplied — NO hardcoded copy here (drift guard, same spirit as §3).
+ * ========================================================================= */
+export function ProgressChip({ steps }) {
+  const done = steps.filter((s) => s.done).length;
+  return (
+    <div role="group" aria-label={`Tiến độ thiết lập ${done}/${steps.length} bước`} style={{ display: "inline-flex", alignItems: "center", gap: t.space[2], flexWrap: "wrap", padding: `${t.space[1]}px ${t.space[3]}px`, borderRadius: t.radius.pill, background: t.color.surfaceSunken, border: `1px solid ${t.color.border}` }}>
+      <span style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.bold, color: t.color.ink }}>{done}/{steps.length} bước</span>
+      {steps.map((s, i) => (
+        <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: t.font.size.xs, color: s.done ? t.color.success : t.color.inkMuted }}>
+          <span aria-hidden="true">{s.done ? "✅" : "⬜"}</span>{s.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/* ===========================================================================
  * 7. ConciergeWelcome — D-02 Option B (pre-filled → user self-confirms)
  * ========================================================================= */
 export function ConciergeWelcome({ firmName, docCount, oblCount, nearest, onReview }) {
@@ -375,6 +396,7 @@ export default function JourneyPrimitivesShowcase() {
           </div>
         </Frame>
         <Frame label="Reminder nudge (top bar)"><div style={{ padding: t.space[3] }}><ReminderNudge /></div></Frame>
+        <Frame label="ProgressChip (inline, DEC-040)"><div style={{ padding: t.space[3] }}><ProgressChip steps={[{ label: "Đã duyệt tài liệu", done: true }, { label: "Bật nhắc Telegram", done: false }, { label: "Theo dõi tự động", done: false }]} /></div></Frame>
       </Block>
 
       <Block title="LockedNav" note="Nav-lock CHỈ is_first_session (clear khi CONFIRMED — DEC-040). Return = full nav, không punitive.">

@@ -24,7 +24,7 @@
 import React, { useState } from "react";
 import { tokens as t } from "./mockup_design_system_v0.2.jsx";
 import { AppSidebar, AppBottomTabs, AppMobileHeader } from "./mockup_app_nav_v0.2.jsx";
-import { ReminderNudge } from "./mockup_journey_primitives_v0.1.jsx";
+import { ReminderNudge, ProgressChip } from "./mockup_journey_primitives_v0.1.jsx";
 
 const GROUPS = [
   { key: "nghĩa_vụ", label: "Bạn cần", count: 4, dot: t.color.primary, near: "Gần nhất: gia hạn mặt bằng Q7", pill: "còn 23 ngày" },
@@ -68,21 +68,13 @@ function Card({ g }) {
   );
 }
 
-/* "2/3 bước" onboarding progress — visible forward motion at CONFIRMED-without-channel (DEC-040). */
-function ProgressChip() {
-  const steps = [["Đã duyệt tài liệu", true], ["Bật nhắc Telegram", false], ["Theo dõi tự động", false]];
-  const done = steps.filter(([, d]) => d).length;
-  return (
-    <div role="group" aria-label={`Tiến độ thiết lập ${done}/${steps.length} bước`} style={{ display: "inline-flex", alignItems: "center", gap: t.space[2], flexWrap: "wrap", padding: `${t.space[1]}px ${t.space[3]}px`, borderRadius: t.radius.pill, background: t.color.surfaceSunken, border: `1px solid ${t.color.border}` }}>
-      <span style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.bold, color: t.color.ink }}>{done}/{steps.length} bước</span>
-      {steps.map(([label, d], i) => (
-        <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: t.font.size.xs, color: d ? t.color.success : t.color.inkMuted }}>
-          <span aria-hidden="true">{d ? "✅" : "⬜"}</span>{label}
-        </span>
-      ))}
-    </div>
-  );
-}
+/* "2/3 bước" onboarding progress steps — visible forward motion at CONFIRMED-without-channel (DEC-040).
+ * Component promoted to journey primitives (§6b) for reuse; steps stay screen-local copy. */
+const SETUP_STEPS = [
+  { label: "Đã duyệt tài liệu", done: true },
+  { label: "Bật nhắc Telegram", done: false },
+  { label: "Theo dõi tự động", done: false },
+];
 
 export default function AdminDashboardV2() {
   const [hasChannel, setHasChannel] = useState(false); // false = CONFIRMED-without-channel (DEC-040 mandatory state)
@@ -110,7 +102,7 @@ export default function AdminDashboardV2() {
           {/* DEC-040 MANDATORY: CONFIRMED-without-channel → ReminderNudge + 2/3 progress (silent-failure guard) */}
           {!hasChannel && (
             <div style={{ display: "flex", flexDirection: "column", gap: t.space[3], margin: `${t.space[4]}px 0` }}>
-              <ProgressChip />
+              <ProgressChip steps={SETUP_STEPS} />
               <ReminderNudge onEnable={() => setHasChannel(true)} />
             </div>
           )}
