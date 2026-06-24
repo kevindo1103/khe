@@ -18,8 +18,8 @@
  *       NEW → EXTRACTING → NEEDS_REVIEW → CONFIRMED → ACTIVATED → STEADY
  *       Home = f(tenant_journey_stage). A new doc after ACTIVATED is a per-doc
  *       cycle (floating nudge), it NEVER regresses the tenant stage.
- *   • Nav-lock ONLY on is_first_session (cleared at ACTIVATED). Return visits =
- *       full nav always; never punitive.
+ *   • Nav-lock ONLY on is_first_session (cleared at CONFIRMED — DEC-040 #238, was
+ *       ACTIVATED). Return visits = full nav always; never punitive.
  *   • Achievement copy = PER-CONTRACT scope + hint loop. NEVER "đã được bảo vệ"
  *       (overpromise on a partial vault).
  *   • ACTIVATED gate = ≥1 reminder channel (Telegram OR email). No hard block —
@@ -377,7 +377,7 @@ export default function JourneyPrimitivesShowcase() {
         <Frame label="Reminder nudge (top bar)"><div style={{ padding: t.space[3] }}><ReminderNudge /></div></Frame>
       </Block>
 
-      <Block title="LockedNav" note="Nav-lock CHỈ is_first_session (clear khi ACTIVATED). Return = full nav, không punitive.">
+      <Block title="LockedNav" note="Nav-lock CHỈ is_first_session (clear khi CONFIRMED — DEC-040). Return = full nav, không punitive.">
         <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: t.space[3] }}>
           <div><div style={{ fontSize: t.font.size.xs, color: t.color.inkMuted, marginBottom: t.space[1] }}>First session</div><LockedNav isFirstSession /></div>
           <div><div style={{ fontSize: t.font.size.xs, color: t.color.inkMuted, marginBottom: t.space[1] }}>Return visit</div><LockedNav isFirstSession={false} active="obligations" /></div>

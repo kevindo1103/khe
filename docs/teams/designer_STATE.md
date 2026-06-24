@@ -181,6 +181,13 @@ Firm = economic buyer (Chị Hằng, B2B2B). Portal = lead-generator (J5), KHÔN
 - `mockup_firm_stage_F5_F6_v0.1.jsx` — F5 digest (stat cards + bản tin tháng + **email-only toggle**, all-clear) + F6 consent settings (active consents list + RevokeBanner transition; **no firm-side revoke** — D-10/PM #9).
 - All read-only (D-09), consent-gated (D-10), desktop-first, inherit #206. Built to #237 contract.
 
+## DEC-040 confirm-flow design (#238 ratify) — branch `claude/design-confirm-flow-dec040-238`
+Kevin ratified #238: `POST /documents/{id}/confirm` + nav-unlock = **Option (B) CONFIRMED** (is_first_session clears tại CONFIRMED, không phải ACTIVATED). Option B ⇒ user có thể tới steady WITHOUT reminder channel → "silent product failure" → MANDATORY nudge. Designer A+B+C:
+- **A (MANDATORY):** `mockup_admin_dashboard_v0.2.jsx` thêm state **CONFIRMED-without-channel** → `ReminderNudge` (#198 primitive) + chip **"2/3 bước"** (doc ✅ · nhắc Telegram ⬜ · steady ⬜) + nút Bật nhắc. Showcase toggle 2 state.
+- **B:** DEC-040 fix nav-lock refs **ACTIVATED → CONFIRMED** trong `mockup_app_nav_v0.2.jsx` + `mockup_journey_primitives_v0.1.jsx` (header + LockedNav note). Giữ nguyên ACTIVATED ở chỗ = stage enum + reminder-channel gate (vẫn đúng).
+- **C:** `mockup_admin_document_detail_v0.2.jsx` thêm footer **"Xác nhận document này"** (disabled khi đang sửa field) + confirmed badge + toast (3/16) — design ref cho FE item 1/2 (#238).
+- ⚠ DEC-040 = clarification của #213, KHE_Docs fold DOCS_INBOX (PM note). Mockup-scope, no BRD/SRS edit by me.
+
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
