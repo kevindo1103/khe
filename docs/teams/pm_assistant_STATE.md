@@ -67,7 +67,12 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 
 **Architecture (DEC-044):** Modular monolith + Protocol contracts (KHÔNG microservice). Extractable "Contract Analysis Core" = ExtractionProvider → ObligationDeriver pipeline (Protocol mới, tách inline schedule loop) → Obligation+Rights model → CompletenessVerifier. Refactor reversible, rẻ.
 
-**Core BA issue:** **#272** (filed 2026-06-25). 3-phase plan (P1 core pre-pilot / P2 depth / P3 recall metric). 4 open Q (top-N standing types, labeled samples, schedule-vs-new-list, P1 timing). Đề xuất DEC-043/044/045.
+**Core BA issue:** **#272** (filed 2026-06-25). 3-phase plan (P1 core / P2 depth / P3 recall metric). Đề xuất DEC-043/044/045.
+
+**🚦 P1 GATES PILOT (Kevin 2026-06-25).** P1 = (a) ObligationDeriver Protocol + tách inline schedule loop, (b) completeness runtime flag từ clauses[], (c) direction-aware reminder copy — PHẢI ship TRƯỚC concierge 20 SME. → **P1 core = pre-pilot critical path #1.**
+- **⚠️ Sequencing tension (flag Kevin):** firm portal #65/#237 cũng pre-pilot (DEC-042). Per DEC-043 ("extraction depth > chat/reminder polish") + P1-gate, **PM rec: P1 core sequences AHEAD of firm portal** — core đảm bảo promise trung tâm, firm portal là surface cho paying customer nhưng không gate product promise. Nếu Kevin muốn firm portal song song → cần thêm Backend capacity hoặc chấp nhận P1 chậm. Chưa tự resolve — flag.
+- **Open Q1–Q3 (#272):** top-N standing types + labeled recall samples + schedule-vs-new-list = P2/P3 input, KHÔNG block P1. P1 file được ngay.
+- **Next PM action:** break P1 → team issues (Backend deriver refactor + Backend/AI completeness flag + Backend reminder copy) — chờ Kevin xác nhận file hoặc review BA trước.
 
 ---
 
