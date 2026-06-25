@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-24 | v3.1*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-25 | v3.2*
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
@@ -71,8 +71,26 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 
 **🚦 P1 GATES PILOT (Kevin 2026-06-25).** P1 = (a) ObligationDeriver Protocol + tách inline schedule loop, (b) completeness runtime flag từ clauses[], (c) direction-aware reminder copy — PHẢI ship TRƯỚC concierge 20 SME. → **P1 core = pre-pilot critical path #1.**
 - **✅ Sequencing RESOLVED (DEC-046):** firm portal deferred post-pilot → **P1 core = sole pre-pilot critical path.** No contention.
-- **Open Q1–Q3 (#272):** top-N standing types + labeled recall samples + schedule-vs-new-list = P2/P3 input, KHÔNG block P1. P1 file được ngay.
-- **Next PM action:** break P1 → 3 team issues (Backend deriver refactor + Backend/AI completeness flag + Backend reminder copy) — chờ Kevin green-light file.
+- **Open Q1–Q3 (#272):** top-N standing types + labeled recall samples + schedule-vs-new-list = P2/P3 input, KHÔNG block P1.
+
+### ✅ QC Architecture Review — accepted 2026-06-25 (all 8 points)
+
+**Architecture corrections applied:**
+- **Event Bus → REMOVED.** Actual mechanism = D-07 append-only Event Ledger (exists) + APScheduler daily tick. No in-process pub/sub needed or built.
+- **`may_have_unextracted_obligations` = `documents` column ONLY** (not obligations). Three states: NULL=unknown, True=miss detected, False=cleared.
+
+**Critical-path re-cut (QC point 1 + Kevin ratified):**
+```
+Pre-pilot:  #274 StandingDeriver (surface-only)
+            #275 Direction-aware reminders (quyền_lợi trigger semantics, not just copy)
+            #276 Honest completeness flag (always-on disclaimer, no LLM call)
+            #277 Chat reliability (#268 trace fix + #263 clause fallback)
+Fast-follow: Smart CompletenessVerifier + recall corpus
+```
+
+**P1 issues filed:** #274 / #275 / #276 / #277 (2026-06-25). QC response posted on #272. DOCS_INBOX comment posted #1.
+**QC offers accepted:** (a) post review on DEC thread, (b) draft §FR-OB completeness AC block → PM folds when received.
+**Standing obligations surface:** doc-detail "Cam kết đang hiệu lực" section — PM default. Kevin confirm needed before Designer mockup.
 
 ---
 
@@ -111,6 +129,10 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 | **Frontend** | (no issue) | Wire Stage 0/8 real journey_stage API (#213 staging) | Onboarding nav-lock |
 | **Frontend** | (no issue) | Wire Stage 3 ref-nav (#217 staging) | Trust gate live |
 | **Frontend** | merge #216 | DS v0.2 token foundation | Everything |
+| **Backend** | **#274** | StandingObligationDeriver — extract + surface "Cam kết đang hiệu lực" | **P1 pre-pilot** |
+| **Backend** | **#275** | Direction-aware reminders — quyền_lợi trigger semantics + 4 Telegram templates | **P1 pre-pilot** |
+| **Backend + Frontend** | **#276** | Honest completeness flag — always-on disclaimer, backfill=NULL | **P1 pre-pilot** |
+| **Backend** | **#277** | Chat reliability — #268 trace fix + #263 clause fallback | **P1 pre-pilot 🔴** |
 | ~~Backend~~ | #270/#65/#237 | **Firm portal ⏸️ DEFERRED post-pilot (DEC-046).** BA #270 frozen as Phase 2 spec. Build resumes post-pilot. | — (out of pilot) |
 | **QC** | #187 | Playwright e2e — upload→extract→confirm→assert nav unlock + Event ledger | Pre-pilot gate |
 | **QC** | #75/#175 | UAT smoke M0/M1 + E2E script (needs uat-demo-b + uat-demo-noconsent) | Pre-pilot gate |
