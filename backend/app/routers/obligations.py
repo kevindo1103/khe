@@ -14,15 +14,22 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
-from app.models.tenant import Document, Event, Obligation
+from app.models.tenant import Document, Event, Obligation, OBLIGATION_STATUSES
+from app.services.obligation_chain import propagate_obligation_done
 from app.schemas.obligations import (
     ObligationListOut,
     ObligationOut,
     ObligationPatchIn,
     ObligationPatchOut,
+    ObligationSummaryOut,
+    SnoozeOut,
 )
+from app.services import chat_query
 
 router = APIRouter(prefix="/obligations", tags=["obligations"])
+
+# Snooze duration (#214) — v1 is always 3 days, no custom duration.
+SNOOZE_DAYS = 3
 
 
 def _log_event(
@@ -43,7 +50,6 @@ def _log_event(
         payload=json.dumps(payload) if payload else None,
     )
     db.add(event)
-    db.commit()
 
 
 @router.get("/", response_model=ObligationListOut)
@@ -90,6 +96,44 @@ def list_obligations(
     )
 
 
+@router.get("/summary", response_model=ObligationSummaryOut)
+def obligations_summary(
+    group_by: str = Query("direction"),
+    status: str | None = Query(None),
+    direction: str | None = Query(None),
+    obligation_type: str | None = Query(None),
+    due_within_days: int | None = Query(None, ge=0),
+    active_only: bool = Query(True),
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Server-side obligation aggregate for the Dashboard (#199 follow-up).
+
+    Reuses the canonical aggregate (count + grouped labels + status_breakdown)
+    the chat path already uses, so the FE renders server `groups[].label`
+    (e.g. "Bạn cần" / "Đối tác cần làm cho bạn") instead of deriving direction
+    counts client-side. Tenant-scoped; count-only (D-06, no money sum). total=0 is
+    a valid response, never an error.
+
+    ``active_only`` defaults True (#253) — the dashboard overview excludes terminal
+    done/cancelled so total + direction cards match the active-only list. Pass
+    ``active_only=false`` for the full historical count.
+    """
+    agg = chat_query.aggregate_obligations(
+        db, user.tenant_id, group_by,
+        status=status, direction=direction, obligation_type=obligation_type,
+        due_within_days=due_within_days, active_only=active_only,
+    )
+    s = agg["summary"]
+    return ObligationSummaryOut(
+        total=s["total"],
+        group_by=s["group_by"],
+        groups=s["groups"],
+        status_breakdown=s["status_breakdown"],
+        source=agg["source"],
+    )
+
+
 @router.patch("/{obligation_id}", response_model=ObligationPatchOut)
 def patch_obligation(
     obligation_id: int,
@@ -98,7 +142,7 @@ def patch_obligation(
     db: Session = Depends(get_db),
 ):
     """Update an obligation's status. SME/status-machine edits only (D-02)."""
-    allowed = {"pending", "done", "cancelled"}
+    allowed = set(OBLIGATION_STATUSES)
     if payload.status not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -115,8 +159,10 @@ def patch_obligation(
 
     old_status = ob.status
     ob.status = payload.status
-    db.commit()
-    db.refresh(ob)
+
+    activated_count = 0
+    if payload.status == "done":
+        activated_count = propagate_obligation_done(ob.id, db)
 
     _log_event(
         db,
@@ -128,4 +174,43 @@ def patch_obligation(
         payload={"old_status": old_status, "new_status": payload.status},
     )
 
-    return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob))
+    db.commit()
+    db.refresh(ob)
+
+    return ObligationPatchOut(ok=True, obligation=ObligationOut.model_validate(ob), activated_count=activated_count)
+
+
+@router.post("/{obligation_id}/snooze", response_model=SnoozeOut)
+def snooze_obligation(
+    obligation_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Snooze this obligation's reminder for 3 days ("Nhắc lại sau 3 ngày", #214).
+
+    Suppresses only the reminder — the obligation itself (status, due_date) is
+    untouched and still visible (D-07). Auto-resumes once snoozed_until passes.
+    """
+    ob = (
+        db.query(Obligation)
+        .filter(Obligation.id == obligation_id, Obligation.tenant_id == user.tenant_id)
+        .first()
+    )
+    if ob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obligation not found")
+
+    snoozed_until = datetime.utcnow() + timedelta(days=SNOOZE_DAYS)
+    ob.snoozed_until = snoozed_until
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="reminder_snoozed",
+        entity_type="obligation",
+        entity_id=ob.id,
+        actor=user.username,
+        payload={"obligation_id": ob.id, "snoozed_until": snoozed_until.isoformat()},
+    )
+
+    db.commit()
+    return SnoozeOut(ok=True, snoozed_until=snoozed_until)

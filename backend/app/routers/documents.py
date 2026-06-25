@@ -10,6 +10,7 @@ Frozen contract #1 paths:
 """
 import json
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import (
@@ -29,15 +30,20 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.database import get_db
+from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
-from app.models.master import TenantUser
-from app.models.tenant import Clause, Document, Event, Obligation, Term
+from app.models.master import Tenant, TenantProfile, TenantUser
+from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
+    ConfirmDocumentOut,
+    RemapTypeIn,
+    RemapTypeOut,
     DocumentDetailOut,
     DocumentListItem,
     DocumentListOut,
+    SelfPartyIn,
+    SelfPartyOut,
     TermOut,
     TermPatchIn,
     UploadOut,
@@ -45,6 +51,9 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
+from app.services.obligation_engine import derive_obligations
+from app.services import directions, quota, tenant_journey
+from modules.extraction import ALL_TYPE_SPECIFIC_FIELDS, ClauseItem, DOC_TYPE_GROUPS, remap_type
 
 # Split routers to match frozen contract #1.
 ingest_router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -93,6 +102,29 @@ def _log_event(
     db.commit()
 
 
+def _latest_event_payload(
+    db: Session, tenant_id: str, doc_id: int, event_type: str
+) -> dict | None:
+    """Parsed payload of the most recent Event of `event_type` for a document, or None."""
+    ev = (
+        db.query(Event)
+        .filter(
+            Event.tenant_id == tenant_id,
+            Event.entity_type == "document",
+            Event.entity_id == doc_id,
+            Event.event_type == event_type,
+        )
+        .order_by(Event.created_at.desc(), Event.id.desc())
+        .first()
+    )
+    if ev and ev.payload:
+        try:
+            return json.loads(ev.payload)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def _enqueue_extraction(
     background_tasks: BackgroundTasks,
     doc_id: int,
@@ -103,6 +135,43 @@ def _enqueue_extraction(
     background_tasks.add_task(run_extraction, doc_id, tenant_id, doc_type)
 
 
+_UPLOAD_CHUNK_BYTES = 64 * 1024
+
+
+def _stream_to_disk_capped(file: UploadFile, dest: Path, max_bytes: int) -> int:
+    """Stream the upload to disk in chunks; reject with 413 if cap exceeded (#56).
+
+    Avoids `file.file.read()` which loads the whole upload into memory. On
+    overrun the partial file is deleted before raising so the storage dir stays
+    clean. Returns the bytes written.
+    """
+    written = 0
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = file.file.read(_UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    out.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"File too large. Maximum {max_bytes // (1024 * 1024)}MB.",
+                    )
+                out.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save uploaded file.",
+        ) from exc
+    return written
+
+
 def _persist_upload(
     db: Session,
     tenant_id: str,
@@ -111,11 +180,20 @@ def _persist_upload(
     doc_type: str | None,
     background_tasks: BackgroundTasks,
 ) -> UploadOut:
-    """Shared upload logic: write temp file, then commit DB row atomically.
+    """Shared upload logic — atomic Document insert + audit Event (#56).
 
-    Avoids orphan Document rows if file I/O fails by writing the file before
-    committing the Document row. If DB commit fails, the temporary file is
-    removed.
+    Steps:
+      1. PDF magic-byte check (422 on miss).
+      2. Stream the upload to a temp file with a hard byte cap (413 on overrun)
+         instead of loading the whole body into memory.
+      3. INSERT the Document and flush() to get its autoincrement id — no commit
+         yet, so a later failure rolls back the row.
+      4. Rename the temp file to its final ``{id}_{name}`` path.
+      5. Update ``doc.file_path`` AND add the ``document_uploaded`` Event in one
+         transaction → single commit. If anything in (3–5) fails the row is
+         rolled back and the on-disk file is cleaned up; no orphan + no missing
+         audit row.
+      6. Enqueue the extraction worker as a BackgroundTask.
     """
     # 1. PDF validation
     if not _is_pdf(file):
@@ -131,70 +209,61 @@ def _persist_upload(
     temp_disk_name = f"temp_{temp_id}_{safe_name}"
     temp_disk_path = tenant_dir / temp_disk_name
 
-    try:
-        with open(temp_disk_path, "wb") as out:
-            out.write(file.file.read())
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save uploaded file.",
-        ) from e
+    _stream_to_disk_capped(file, temp_disk_path, settings.MAX_UPLOAD_MB * 1024 * 1024)
 
-    # 3. Persist Document row
-    rel_path = str(Path(tenant_id) / temp_disk_name)
+    # 3. INSERT Document + flush() to get the autoincrement id (no commit yet)
     doc = Document(
         tenant_id=tenant_id,
         file_name=file.filename or "unnamed.pdf",
-        file_path=rel_path,
+        file_path="",  # placeholder; set after the rename
         doc_type=doc_type,
         status="processing",
     )
     db.add(doc)
     try:
-        db.commit()
-        db.refresh(doc)
+        db.flush()
     except Exception:
-        # Rollback DB and delete temp file to avoid orphan storage
         db.rollback()
-        try:
-            temp_disk_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        temp_disk_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to persist document metadata.",
         )
 
-    # 4. Rename to final path using doc_id
+    # 4. Rename to final path using the now-known doc.id
     final_disk_name = f"{doc.id}_{safe_name}"
     final_disk_path = tenant_dir / final_disk_name
     try:
         temp_disk_path.rename(final_disk_path)
     except Exception:
-        # Clean up: delete DB row and temp file
-        db.delete(doc)
-        db.commit()
-        try:
-            temp_disk_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        db.rollback()
+        temp_disk_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to finalise uploaded file.",
         )
 
-    doc.file_path = str(Path(tenant_id) / final_disk_name)
-    db.commit()
-
-    # 5. Log upload event
-    _log_event(
-        db,
-        tenant_id,
-        event_type="document_uploaded",
-        entity_type="document",
-        entity_id=doc.id,
-        actor=username,
-    )
+    # 5. Atomic commit: final file_path + audit Event in one transaction.
+    try:
+        doc.file_path = str(Path(tenant_id) / final_disk_name)
+        db.add(
+            Event(
+                tenant_id=tenant_id,
+                event_type="document_uploaded",
+                entity_type="document",
+                entity_id=doc.id,
+                actor=username,
+            )
+        )
+        db.commit()
+        db.refresh(doc)
+    except Exception:
+        db.rollback()
+        final_disk_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to commit document.",
+        )
 
     # 6. Enqueue extraction worker (PR-B)
     _enqueue_extraction(background_tasks, doc.id, tenant_id, doc_type)
@@ -213,6 +282,7 @@ def upload_document(
     doc_type: str | None = None,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """Upload a single PDF. Consent gate FIRST; 403 if SME has not consented."""
     if not check_extraction_consent(db, user.tenant_id):
@@ -221,7 +291,18 @@ def upload_document(
             detail="SME consent for AI extraction not recorded. Log consent first.",
         )
 
-    return _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+    # Quota gate (D-11 / #63): atomic consume BEFORE persist + extraction (no LLM
+    # call once over quota). The conditional UPDATE is the TOCTOU-safe gate.
+    if not quota.try_consume_quota(master_db, user.tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Quota exceeded. Contact your firm partner to adjust limit.",
+        )
+
+    result = _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+    # Journey (#213): first upload moves NEW → EXTRACTING (monotonic no-op after).
+    tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
+    return result
 
 
 @ingest_router.post("/bulk", response_model=BulkUploadOut, status_code=status.HTTP_201_CREATED)
@@ -232,6 +313,7 @@ def upload_bulk(
     doc_type: str | None = None,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """Upload up to 20 PDFs in one batch."""
     if len(files) > 20:
@@ -247,13 +329,25 @@ def upload_bulk(
             detail="SME consent for AI extraction not recorded. Log consent first.",
         )
 
+    # Quota gate per-file (D-11 / #63, PM Q4): a near-limit batch accepts files
+    # until the quota is hit, then marks the rest quota_exceeded — never fails the
+    # whole batch (DEC-012 concierge onboarding). Slot consumed atomically per file.
     results: list[UploadOut] = []
+    accepted = 0
     for file in files:
+        if not quota.try_consume_quota(master_db, user.tenant_id):
+            results.append(UploadOut(doc_id=None, file_name=file.filename or "", status="quota_exceeded"))
+            continue
         results.append(
             _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
         )
+        accepted += 1
 
-    return BulkUploadOut(count=len(results), documents=results)
+    # Journey (#213): first accepted upload moves NEW → EXTRACTING (no-op after).
+    if accepted:
+        tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
+
+    return BulkUploadOut(count=accepted, documents=results)
 
 
 # ── List (documents) ──
@@ -352,6 +446,7 @@ def list_documents(
                 term_count=term_count,
                 obligation_count=obligation_count,
                 clause_count=clause_count,
+                confirmed_by_user_at=doc.confirmed_by_user_at,
                 created_at=doc.created_at,
             )
         )
@@ -393,6 +488,12 @@ def get_document(
         .all()
     )
 
+    parties = (
+        db.query(Party)
+        .filter(Party.document_id == doc_id, Party.tenant_id == user.tenant_id)
+        .all()
+    )
+
     clause_count = (
         db.query(Clause)
         .filter(Clause.document_id == doc_id, Clause.tenant_id == user.tenant_id)
@@ -403,22 +504,14 @@ def get_document(
     # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
     failure_reason: str | None = None
     if doc.status == "failed":
-        latest_fail = (
-            db.query(Event)
-            .filter(
-                Event.tenant_id == user.tenant_id,
-                Event.entity_type == "document",
-                Event.entity_id == doc.id,
-                Event.event_type == "extraction_failed",
-            )
-            .order_by(Event.created_at.desc(), Event.id.desc())
-            .first()
-        )
-        if latest_fail and latest_fail.payload:
-            try:
-                failure_reason = json.loads(latest_fail.payload).get("reason")
-            except (ValueError, TypeError):
-                failure_reason = None
+        fail_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_failed")
+        failure_reason = fail_payload.get("reason") if fail_payload else None
+
+    # Last extraction provider/model from the extraction_performed Event (#233) —
+    # lets the smoke gate tell gemini_flash (anchors required) from claude fallback.
+    extract_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_performed")
+    provider = extract_payload.get("provider") if extract_payload else None
+    model = extract_payload.get("model") if extract_payload else None
 
     return DocumentDetailOut(
         id=doc.id,
@@ -430,7 +523,11 @@ def get_document(
         terms=[TermOut.model_validate(t) for t in terms],
         obligations=[ObligationOut.model_validate(o) for o in obligations],
         clause_count=clause_count,
+        parties=[{"name": p.name, "role_label": p.role_label} for p in parties],
         failure_reason=failure_reason,
+        provider=provider,
+        model=model,
+        confirmed_by_user_at=doc.confirmed_by_user_at,
     )
 
 
@@ -509,3 +606,297 @@ def patch_term(
     )
 
     return {"ok": True, "term_id": term.id, "field_value": term.field_value}
+
+
+# ── Self-party confirmation (DEC-030, #155) ──
+
+
+@docs_router.post("/{doc_id}/confirm_self_party", response_model=SelfPartyOut)
+def confirm_self_party(
+    doc_id: int,
+    body: SelfPartyIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """User selects which role_label is 'me' → re-derive direction for all obligations.
+
+    D-02: this is a user-confirm action — direction is set from human choice, not auto.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    obligations = (
+        db.query(Obligation)
+        .filter(Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id)
+        .all()
+    )
+    updated = 0
+    for obl in obligations:
+        if obl.obligor:
+            new_direction = "nghĩa_vụ" if obl.obligor == body.role_label else "quyền_lợi"
+            if obl.direction != new_direction:
+                obl.direction = new_direction
+                updated += 1
+        # obligor is None → direction stays null (D-08)
+
+    db.commit()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="self_party_confirmed",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"role_label": body.role_label, "updated": updated},
+    )
+
+    return {"ok": True, "updated": updated}
+
+
+@docs_router.post("/{doc_id}/confirm", response_model=ConfirmDocumentOut)
+def confirm_document(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """User confirms they've reviewed this document (#238, D-02).
+
+    Self-party is auto-derived from the tenant's ``legal_name`` Setting (not a
+    manual pick, per PM ratify): direction is recomputed for the doc's
+    obligations. The FIRST confirmed doc advances the journey NEEDS_REVIEW →
+    CONFIRMED (#250/#249 — all-docs-confirmed was pilot-blocking friction), so
+    the FE sidebar nav unlocks.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # Self-party auto-mapping from Settings (DEC-030 / D-13) — no per-doc pick.
+    profile = (
+        master_db.query(TenantProfile)
+        .filter(TenantProfile.tenant_id == user.tenant_id)
+        .first()
+    )
+    legal_name = profile.legal_name if profile else None
+    recomputed = directions.rederive_document_directions(db, user.tenant_id, doc_id, legal_name)
+
+    confirmed_at = datetime.utcnow()
+    doc.confirmed_by_user_at = confirmed_at
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="document_confirmed_by_user",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"directions_recomputed": recomputed, "legal_name_set": bool(legal_name)},
+    )
+    db.commit()
+
+    # Gate (#250/#249): the FIRST confirm advances NEEDS_REVIEW → CONFIRMED. The
+    # just-confirmed doc guarantees confirmed_count >= 1; advance is monotonic, so
+    # repeat confirms on an already-CONFIRMED tenant are journey no-ops (idempotent).
+    journey_advanced = False
+    tenant = master_db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+    new_stage = tenant.journey_stage if tenant else None
+    if tenant is not None:
+        before = tenant.journey_stage
+        after = tenant_journey.advance_stage(master_db, user.tenant_id, "CONFIRMED")
+        new_stage = after or before
+        journey_advanced = bool(after and after != before)
+
+    return ConfirmDocumentOut(
+        doc_id=doc_id,
+        confirmed_at=confirmed_at,
+        directions_recomputed=recomputed,
+        journey_advanced=journey_advanced,
+        new_journey_stage=new_stage,
+    )
+
+
+@docs_router.post("/{doc_id}/remap-type", response_model=RemapTypeOut)
+async def remap_document_type(
+    doc_id: int,
+    body: RemapTypeIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """Correct a misclassified ``doc_type_group`` by re-mapping the type-specific
+    fields from the already-extracted ``clauses[]`` — text-only, no vision call
+    (#258). ~2-3đ vs ~177đ re-extract; no quota slot.
+
+    Atomic: delete old type-specific Terms → insert new (source="remap") → update
+    the doc_type_group Term → re-derive obligations → reset confirmed_by_user_at
+    (back to NEEDS_REVIEW for re-confirm, D-02) → doc_type_corrected Event (D-07).
+    """
+    target = body.doc_type_group
+    if target not in DOC_TYPE_GROUPS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid doc_type_group. Must be one of: {list(DOC_TYPE_GROUPS)}",
+        )
+
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # clauses[] is the text source. Empty → Claude-fallback doc with no clause text:
+    # can't remap without re-vision (KHE_AI mirrors this with a no-op guard).
+    clause_rows = (
+        db.query(Clause)
+        .filter(Clause.document_id == doc_id, Clause.tenant_id == user.tenant_id)
+        .order_by(Clause.id)
+        .all()
+    )
+    if not clause_rows:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "no_clauses", "message": "Tài liệu chưa có clause text. Cần re-extract để remap."},
+        )
+    clauses = [ClauseItem(num=c.clause_num, title=c.title, content=c.content or "") for c in clause_rows]
+
+    dtg_term = (
+        db.query(Term)
+        .filter(Term.document_id == doc_id, Term.tenant_id == user.tenant_id, Term.field_name == "doc_type_group")
+        .first()
+    )
+    old_type = dtg_term.field_value if dtg_term else None
+
+    # KHE_AI text-only remap (D-06/D-08 — null when not in clauses).
+    result = await remap_type(clauses, target)
+
+    # ── atomic DB ops ──
+    # 1. Clear ALL type-specific Terms (whole union — safer than just the old type's).
+    db.query(Term).filter(
+        Term.document_id == doc_id,
+        Term.tenant_id == user.tenant_id,
+        Term.field_name.in_(list(ALL_TYPE_SPECIFIC_FIELDS)),
+    ).delete(synchronize_session=False)
+
+    # 2. Insert remapped Terms (a row per target key, D-07 — null-value rows included).
+    remapped = 0
+    nulls = 0
+    for key, f in result.fields.items():
+        db.add(Term(
+            tenant_id=user.tenant_id, document_id=doc_id, field_name=key,
+            field_value=f.value, ref=f.ref, page_num=None,
+            confidence=f.confidence, needs_review=f.needs_review, source="remap",
+        ))
+        if f.value is None:
+            nulls += 1
+        else:
+            remapped += 1
+
+    # 3. Update (or create) the doc_type_group Term.
+    if dtg_term is not None:
+        dtg_term.field_value = target
+    else:
+        db.add(Term(tenant_id=user.tenant_id, document_id=doc_id,
+                    field_name="doc_type_group", field_value=target, source="remap"))
+
+    # 4. Back to NEEDS_REVIEW — user must re-confirm the new schema (D-02).
+    doc.confirmed_by_user_at = None
+    # 5. Cost on the doc (#255) — remap spend tracked like extraction.
+    doc.extraction_cost_vnd = (doc.extraction_cost_vnd or 0.0) + result.cost_vnd
+
+    # 6. Old obligations may carry the wrong obligation_type → rebuild (PM Q4).
+    db.query(Obligation).filter(
+        Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id
+    ).delete(synchronize_session=False)
+
+    # 7. Audit (D-07) — commits the whole transaction above.
+    _log_event(
+        db, user.tenant_id,
+        event_type="doc_type_corrected",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"from": old_type, "to": target, "provider": result.provider,
+                 "remap_cost_vnd": result.cost_vnd,
+                 "fields_remapped": remapped, "fields_null": nulls,
+                 "warnings": result.warnings},
+    )
+
+    # 8. Re-derive date-based obligations from the (now-current) Terms.
+    derive_obligations(db, user.tenant_id, doc_id)
+    # 9. Tenant cost aggregate (#255) — master.db, only on a real remap spend.
+    quota.add_extraction_cost_standalone(user.tenant_id, result.cost_vnd)
+
+    return RemapTypeOut(
+        success=True, fields_remapped=remapped, fields_null=nulls, cost_vnd=result.cost_vnd,
+    )
+
+
+# ── Re-extract (admin-only, #97) ──
+
+
+@docs_router.post("/{doc_id}/re-extract", status_code=status.HTTP_202_ACCEPTED)
+def re_extract_document(
+    doc_id: int,
+    background_tasks: BackgroundTasks,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-trigger extraction on a document — admin only.
+
+    Used to unstick docs whose extraction crashed mid-flight (status='processing'
+    after a worker restart) or to pull in a schema upgrade (e.g. #162 added
+    `obligation_schedule`). The extraction runner is idempotent: it replaces
+    Terms / Clauses / Parties / schedule-derived Obligations for this doc in
+    a single transaction.
+
+    CAUTION: chain-resolved Obligations (with non-null source_doc_chain) survive
+    re-extraction; if the underlying terms changed materially, run obligation
+    derivation afterwards — out of scope here.
+
+    D-02: user-triggered action; audit Event logged.
+    """
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    if not check_extraction_consent(db, user.tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SME consent for AI extraction not recorded. Log consent first.",
+        )
+
+    previous_status = doc.status
+    doc.status = "processing"
+    db.commit()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="extraction_retriggered",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={"previous_status": previous_status},
+    )
+
+    _enqueue_extraction(background_tasks, doc_id, user.tenant_id, doc.doc_type)
+    return {"ok": True, "doc_id": doc_id, "status": "processing"}

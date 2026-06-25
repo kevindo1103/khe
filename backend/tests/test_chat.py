@@ -7,6 +7,7 @@
 """
 import os
 import sys
+from datetime import date
 
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, backend_dir)
@@ -17,7 +18,7 @@ from fastapi.testclient import TestClient
 from app.core.security import get_password_hash
 from app.db.database import MasterSessionLocal, get_tenant_session, init_master_db, init_tenant_db
 from app.models.master import Tenant, TenantUser
-from app.models.tenant import Clause, Document, Obligation, Term
+from app.models.tenant import ChatQueryLog, Clause, Document, Obligation, Term
 from app.services import chat_query
 from main import app
 
@@ -107,7 +108,7 @@ def _seed(db):
         tenant_id="chat-tenant",
         document_id=doc.id,
         description="Hợp đồng lease_2026.pdf hết hạn ngày 2026-12-31",
-        obligation_type="once",
+        recurrence="once",
         due_date="2026-12-31",
         status="pending",
     )
@@ -126,18 +127,18 @@ def _seed(db):
     return doc
 
 
-def _mock_select_tools(calls):
-    """Return an async function that yields the given tool_calls."""
+def _mock_select_tools(calls, usage=None):
+    """Return an async function that yields the given tool_calls + usage."""
     async def _select(*args, **kwargs):
-        return calls
+        return calls, usage or {"in": 100, "out": 20}
 
     return _select
 
 
-def _mock_format_answer(answer):
-    """Return an async function that yields the canned answer."""
+def _mock_format_answer(answer, usage=None):
+    """Return an async function that yields the canned answer + usage."""
     async def _format(*args, **kwargs):
-        return answer
+        return answer, usage or {"in": 200, "out": 50}
 
     return _format
 
@@ -200,6 +201,146 @@ class TestChatQuery:
         assert any(s["type"] == "obligation" and s["field_name"] == "due_date" for s in data["sources"])
         for s in data["sources"]:
             self._assert_source_shape(s)
+
+    def test_search_obligations_due_range(self, auth_client, db, monkeypatch):
+        """search_obligations filters by inclusive due_from/due_to range."""
+        doc = _seed(db)
+        # Add obligations outside the target range.
+        db.add_all(
+            [
+                Obligation(
+                    tenant_id="chat-tenant",
+                    document_id=doc.id,
+                    description="Hợp đồng hết hạn tháng 6",
+                    recurrence="once",
+                    due_date="2026-06-15",
+                    status="pending",
+                ),
+                Obligation(
+                    tenant_id="chat-tenant",
+                    document_id=doc.id,
+                    description="Hợp đồng hết hạn tháng 7",
+                    recurrence="once",
+                    due_date="2026-07-20",
+                    status="pending",
+                ),
+                Obligation(
+                    tenant_id="chat-tenant",
+                    document_id=doc.id,
+                    description="Hợp đồng hết hạn tháng 8",
+                    recurrence="once",
+                    due_date="2026-08-10",
+                    status="pending",
+                ),
+            ]
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": None, "status": None, "doc_hint": None, "due_from": "2026-07-01", "due_to": "2026-07-31"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 hợp đồng hết hạn tháng 7."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ nào hết hạn tháng 7?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        values = [s["value"] for s in data["sources"] if s["type"] == "obligation"]
+        assert "2026-07-20" in values
+        assert "2026-06-15" not in values
+        assert "2026-08-10" not in values
+
+    def test_search_obligations_due_range_inclusive(self, auth_client, db, monkeypatch):
+        """Boundary due_from and due_to dates are inclusive."""
+        doc = _seed(db)
+        db.add(
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Boundary",
+                recurrence="once",
+                due_date="2026-06-01",
+                status="pending",
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": None, "status": None, "doc_hint": None, "due_from": "2026-06-01", "due_to": "2026-06-01"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 hợp đồng."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ hết hạn ngày 2026-06-01?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["type"] == "obligation" and s["value"] == "2026-06-01" for s in data["sources"])
+
+    def test_search_obligations_due_range_and_status_and_doc_hint(self, auth_client, db, monkeypatch):
+        """due_from + due_to + status + doc_hint are AND-composed."""
+        unique_name = "unique_due_range_test.pdf"
+        doc = Document(tenant_id="chat-tenant", file_name=unique_name, file_path="x/y.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Matching",
+                recurrence="once",
+                due_date="2026-06-15",
+                status="pending",
+            )
+        )
+        db.add(
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Wrong status",
+                recurrence="once",
+                due_date="2026-06-15",
+                status="done",
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": None, "status": "pending", "doc_hint": "unique_due_range_test", "due_from": "2026-06-01", "due_to": "2026-06-30"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 pending."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ unique_due_range_test pending hết hạn tháng 6?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        sources = [s for s in data["sources"] if s["type"] == "obligation"]
+        # At least the 2026-06-15 pending row must be present.
+        matching = [s for s in sources if s["value"] == "2026-06-15" and s["status"] == "pending"]
+        assert matching, "Expected 2026-06-15 pending obligation in results"
+        # No done-status rows should leak through the status=pending filter.
+        assert not any(s["status"] == "done" for s in sources)
+
+    def test_select_tools_prompt_includes_today_date(self):
+        """Router system prompt must include today's date and calendar-range rules."""
+        prompt = chat_query._build_router_system_prompt(date(2026, 6, 20))
+        assert "Hôm nay là 2026-06-20" in prompt
+        assert "due_from" in prompt
+        assert "due_to" in prompt
+        assert "tháng này" in prompt
+        assert "quý sau" in prompt
 
     def test_search_clauses_tool(self, auth_client, db, monkeypatch):
         """search_clauses returns clause content with clause_num + clause_title."""
@@ -306,6 +447,618 @@ class TestChatQuery:
         assert "2026-12-31" in data["answer"]
         assert any(s["type"] == "term" for s in data["sources"])
 
+    def test_search_terms_value_contains(self, auth_client, db, monkeypatch):
+        """search_terms value_contains finds party data across documents by value substring."""
+        doc = _seed(db)
+        # Add a second doc with a different party to prove cross-document search.
+        doc2 = Document(tenant_id="chat-tenant", file_name="second.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "doi_tac", "doc_hint": None, "value_contains": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có hợp đồng với ALASKA."))
+
+        r = auth_client.post("/chat/query", json={"question": "Hợp đồng nào có đối tác là CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        sources = [s for s in data["sources"] if s["type"] == "term" and "ALASKA" in s["value"]]
+        assert sources
+        assert any(s["file_name"] == "second.pdf" for s in sources)
+
+    def test_search_terms_value_contains_cross_tenant_isolation(self, auth_client, db, monkeypatch):
+        """value_contains must not match terms in another tenant."""
+        # chat-tenant has ALASKA; other-tenant has a different party. Querying as other-tenant must return D-08.
+        _seed(db)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=db.query(Document).filter(Document.tenant_id == "chat-tenant", Document.file_name == "lease_2026.pdf").first().id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        init_tenant_db("other-chat-tenant")
+        mdb = MasterSessionLocal()
+        if not mdb.query(Tenant).filter(Tenant.id == "other-chat-tenant").first():
+            mdb.add(Tenant(id="other-chat-tenant", name="Other", db_path="tenants/other-chat-tenant.db"))
+            mdb.commit()
+        if not mdb.query(TenantUser).filter(TenantUser.tenant_id == "other-chat-tenant", TenantUser.username == "otherchatuser").first():
+            mdb.add(
+                TenantUser(
+                    tenant_id="other-chat-tenant",
+                    username="otherchatuser",
+                    hashed_password=get_password_hash("otherchatpass"),
+                    role="staff",
+                )
+            )
+            mdb.commit()
+        mdb.close()
+
+        # Seed a different party in the other tenant.
+        other_db = get_tenant_session("other-chat-tenant")
+        try:
+            other_doc = Document(tenant_id="other-chat-tenant", file_name="other.pdf", file_path="x/y.pdf", status="extracted")
+            other_db.add(other_doc)
+            other_db.commit()
+            other_db.refresh(other_doc)
+            other_db.add(
+                Term(
+                    tenant_id="other-chat-tenant",
+                    document_id=other_doc.id,
+                    field_name="doi_tac",
+                    field_value="CÔNG TY B",
+                    confidence=0.9,
+                )
+            )
+            other_db.commit()
+        finally:
+            other_db.close()
+
+        other = TestClient(app)
+        other.post(
+            "/auth/login",
+            json={"tenant_id": "other-chat-tenant", "username": "otherchatuser", "password": "otherchatpass"},
+        )
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "doi_tac", "doc_hint": None, "value_contains": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = other.post("/chat/query", json={"question": "Hợp đồng nào có đối tác ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert "Không tìm thấy" in data["answer"]
+
+    def test_party_filter_returns_field_for_docs_matching_party(self, auth_client, db, monkeypatch):
+        """party_filter pre-filters docs by doi_tac, then returns requested field with provenance."""
+        _seed(db)
+        # chat-tenant lease_2026.pdf has doi_tac "Công ty A" by default from _seed.
+        # Add a second doc with ALASKA party and an ngay_hieu_luc term.
+        doc2 = Document(tenant_id="chat-tenant", file_name="alaska_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="ngay_hieu_luc",
+                field_value="2024-01-15",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hợp đồng với ALASKA có hiệu lực từ 2024-01-15."))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực của hợp đồng với ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["type"] == "term" and s["field_name"] == "ngay_hieu_luc" and s["value"] == "2024-01-15" and s["file_name"] == "alaska_lease.pdf" for s in data["sources"])
+
+    def test_party_filter_no_match_returns_d08(self, auth_client, db, monkeypatch):
+        """party_filter with no matching party returns D-08."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "NONEXISTENT"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực của hợp đồng với NONEXISTENT?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert data["answer"] == "Không tìm thấy thông tin này trong hồ sơ của bạn."
+
+    def test_party_filter_escapes_like_wildcards(self, auth_client, db, monkeypatch):
+        """A literal % or _ in party_filter must not broaden the match."""
+        _seed(db)
+        # Add a doc whose party value actually contains a literal percent.
+        doc2 = Document(tenant_id="chat-tenant", file_name="pct_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="50% ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="ngay_hieu_luc",
+                field_value="2024-02-01",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        # Search for the literal "%" — should NOT match rows that simply have any characters.
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "%"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Ngày hiệu lực: 2025-03-01."))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực HĐ với đối tác chứa %?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["file_name"] == "pct_lease.pdf" for s in data["sources"])
+
+        # Search for "_" literal — should NOT match every single-char party.
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "_"}}]
+            ),
+        )
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực HĐ với đối tác chứa _?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+
+    def test_party_filter_cross_tenant_isolation(self, auth_client, db, monkeypatch):
+        """party_filter must not match party data in another tenant."""
+        _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="alaska_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        init_tenant_db("other-chat-tenant")
+        mdb = MasterSessionLocal()
+        if not mdb.query(Tenant).filter(Tenant.id == "other-chat-tenant").first():
+            mdb.add(Tenant(id="other-chat-tenant", name="Other", db_path="tenants/other-chat-tenant.db"))
+            mdb.commit()
+        if not mdb.query(TenantUser).filter(TenantUser.tenant_id == "other-chat-tenant", TenantUser.username == "otherchatuser").first():
+            mdb.add(
+                TenantUser(
+                    tenant_id="other-chat-tenant",
+                    username="otherchatuser",
+                    hashed_password=get_password_hash("otherchatpass"),
+                    role="staff",
+                )
+            )
+            mdb.commit()
+        mdb.close()
+
+        other = TestClient(app)
+        other.post(
+            "/auth/login",
+            json={"tenant_id": "other-chat-tenant", "username": "otherchatuser", "password": "otherchatpass"},
+        )
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer(""))
+
+        r = other.post("/chat/query", json={"question": "Ngày hiệu lực HĐ với ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert "Không tìm thấy" in data["answer"]
+
+    def test_party_filter_and_value_contains_compose(self, auth_client, db, monkeypatch):
+        """value_contains AND party_filter compose together (both filter the same result)."""
+        _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="alaska_lease.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc2.id,
+                field_name="ngay_hieu_luc",
+                field_value="2024-01-15",
+                confidence=0.9,
+            )
+        )
+        # Another ALASKA doc with a different ngay_hieu_luc that should be excluded by value_contains.
+        doc3 = Document(tenant_id="chat-tenant", file_name="alaska_lease_2025.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc3)
+        db.commit()
+        db.refresh(doc3)
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc3.id,
+                field_name="doi_tac",
+                field_value="CÔNG TY CỔ PHẦN ĐẦU TƯ ĐỊA ỐC ALASKA",
+                confidence=0.9,
+            )
+        )
+        db.add(
+            Term(
+                tenant_id="chat-tenant",
+                document_id=doc3.id,
+                field_name="ngay_hieu_luc",
+                field_value="2025-01-15",
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": "2024", "party_filter": "ALASKA"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Ngày hiệu lực: 2024-01-15."))
+
+        r = auth_client.post("/chat/query", json={"question": "Ngày hiệu lực năm 2024 của hợp đồng với ALASKA?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert any(s["file_name"] == "alaska_lease.pdf" for s in data["sources"])
+        assert not any(s["file_name"] == "alaska_lease_2025.pdf" for s in data["sources"])
+
+
+class TestD08ExactStringEnforcement:
+    """#126 — D-08 paraphrase detection and exact-string enforcement."""
+
+    def test_is_negative_answer_empty(self):
+        assert chat_query._is_negative_answer("") is True
+        assert chat_query._is_negative_answer("   ") is True
+
+    def test_is_negative_answer_paraphrase(self):
+        assert chat_query._is_negative_answer(
+            "Không tìm thấy thông tin về ngày hiệu lực của hợp đồng với DANH VIỆT."
+        ) is True
+        assert chat_query._is_negative_answer("Không có thông tin trong dữ liệu") is True
+        assert chat_query._is_negative_answer("Chưa có dữ liệu về hợp đồng này") is True
+
+    def test_is_negative_answer_factual(self):
+        assert chat_query._is_negative_answer("Hợp đồng có hiệu lực từ 2021-06-01") is False
+        assert chat_query._is_negative_answer("Thời hạn: 12 tháng") is False
+
+    def test_valid_open_ended_term_not_suppressed(self):
+        """Regression: 'không xác định thời hạn' is a valid thoi_han_hd value, NOT D-08."""
+        assert chat_query._is_negative_answer("Thời hạn hợp đồng: không xác định thời hạn") is False
+
+    def test_paraphrase_forced_to_exact_d08(self, auth_client, db, monkeypatch):
+        """Tool returns data + LLM paraphrases negation → exact D-08, sources empty."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": "lease_2026"}}]),
+        )
+        monkeypatch.setattr(
+            chat_query,
+            "_format_answer",
+            _mock_format_answer("Không tìm thấy thông tin về ngày hết hạn trong dữ liệu được cung cấp."),
+        )
+
+        r = auth_client.post("/chat/query", json={"question": "hợp đồng lease_2026 hết hạn khi nào?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert data["answer"] == "Không tìm thấy thông tin này trong hồ sơ của bạn."
+        assert data["sources"] == []
+
+    def test_factual_answer_passes_through(self, auth_client, db, monkeypatch):
+        """Tool returns data + LLM gives factual answer → passthrough with sources."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": "lease_2026"}}]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hợp đồng lease_2026.pdf hết hạn ngày 2026-12-31."))
+
+        r = auth_client.post("/chat/query", json={"question": "hợp đồng lease_2026 hết hạn khi nào?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert "2026-12-31" in data["answer"]
+        assert len(data["sources"]) > 0
+
+
+class TestDueWithinDaysLowerBound:
+    """#127 — due_within_days must exclude past-due obligations."""
+
+    def test_due_within_days_excludes_past_due(self, auth_client, db, monkeypatch):
+        """Only obligations with due_date >= today are returned for due_within_days."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Past obligation",
+                recurrence="once",
+                due_date="2024-01-15",
+                status="pending",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Future obligation",
+                recurrence="once",
+                due_date="2026-07-15",
+                status="pending",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": 365, "status": None, "doc_hint": None, "due_from": None, "due_to": None}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 hợp đồng sắp hết hạn."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ nào sắp hết hạn?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        values = [s["value"] for s in data["sources"] if s["type"] == "obligation"]
+        assert "2026-07-15" in values
+        assert "2024-01-15" not in values
+        # Also exclude the seed obligation (2026-12-31 is within 365 days from ~2026-06-20, so it's fine)
+        assert "2026-12-31" in values
+
+    def test_due_within_days_combined_with_status(self, auth_client, db, monkeypatch):
+        """status='overdue' + due_within_days should not silently filter — both apply."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Past overdue",
+                recurrence="once",
+                due_date="2024-01-15",
+                status="overdue",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Future pending",
+                recurrence="once",
+                due_date="2026-07-15",
+                status="pending",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_obligations", "args": {"due_within_days": 365, "status": "overdue", "doc_hint": None, "due_from": None, "due_to": None}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 0 hợp đồng."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ overdue sắp hết hạn?"})
+        assert r.status_code == 200
+        data = r.json()
+        # overdue + due_within_days (>= today) → the 2024 overdue row is excluded by lower bound
+        # The 2026-07-15 row is pending, not overdue → excluded by status filter
+        # The seed 2026-12-31 is pending → excluded by status filter
+        assert data["found"] is False
+
+
+class TestPartyFilterRoutingAndLog:
+    """#128 — Vietnamese-diacritic few-shot + PII-safe routing log."""
+
+    def test_prompt_contains_vietnamese_diacritic_examples(self):
+        """Router prompt must include Vietnamese-with-diacritics few-shot examples."""
+        prompt = chat_query._build_router_system_prompt(date(2026, 6, 20))
+        assert "Danh Việt" in prompt
+        assert "Hán Thị Nga" in prompt
+        assert "party_filter='Danh Việt'" in prompt
+
+    def test_prompt_contains_overdue_rules(self):
+        """Router prompt must include overdue vs sắp hết hạn routing rules."""
+        prompt = chat_query._build_router_system_prompt(date(2026, 6, 20))
+        assert "sắp hết hạn" in prompt
+        assert "đã quá hạn" in prompt
+        assert "status='overdue'" in prompt
+
+    def test_routing_log_emits_pii_safe_shape(self, auth_client, db, monkeypatch):
+        """Routing log must show tool name + field_name + arg keys, NOT raw values."""
+        _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools(
+                [{"name": "search_terms", "args": {"field_name": "ngay_hieu_luc", "doc_hint": None, "value_contains": None, "party_filter": "Hán Thị Nga"}}]
+            ),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hợp đồng có hiệu lực từ 2021-06-01."))
+
+        # Capture logger.info calls via monkeypatch (TestClient runs in a separate thread,
+        # so caplog may not capture cross-thread logs reliably).
+        logged_calls = []
+        original_info = chat_query.logger.info
+
+        def _capture_info(msg, *args, **kwargs):
+            logged_calls.append((msg, args, kwargs))
+            original_info(msg, *args, **kwargs)
+
+        monkeypatch.setattr(chat_query.logger, "info", _capture_info)
+
+        r = auth_client.post("/chat/query", json={"question": "ngày hiệu lực HĐ với Hán Thị Nga?"})
+        assert r.status_code == 200
+
+        # Find the routing log line
+        routing_logs = [
+            (msg % args if args else msg)
+            for msg, args, _ in logged_calls
+            if "chat_query routed" in msg
+        ]
+        assert routing_logs, "Expected a routing log line"
+        log_line = routing_logs[0]
+        # Must contain tool name and field_name
+        assert "search_terms" in log_line
+        assert "ngay_hieu_luc" in log_line
+        assert "party_filter" in log_line  # args_present should include party_filter
+        # Must NOT contain the raw party name (PII)
+        assert "Hán Thị Nga" not in log_line
+
+
+class TestSQLiteUnicodeLower:
+    """Verify party_filter ilike works with Vietnamese diacritics via custom lower() (issue #134)."""
+
+    def test_party_filter_uppercase_vietnamese_matches(self, db, monkeypatch):
+        """party_filter='Danh Việt' must match stored 'DANH VIỆT' — proves unicode lower is active."""
+        doc = Document(tenant_id="chat-tenant", file_name="viet_test.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="doi_tac", field_value="DANH VIỆT", confidence=0.9,
+        ))
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="ngay_hieu_luc", field_value="2026-03-01", confidence=0.9,
+        ))
+        db.commit()
+
+        from app.services.chat_query import _tool_search_terms
+        results = _tool_search_terms(db, "chat-tenant", "ngay_hieu_luc", None, party_filter="Danh Việt")
+        assert any(r["value"] == "2026-03-01" for r in results), (
+            "party_filter='Danh Việt' must match stored 'DANH VIỆT' — SQLite unicode lower override not active"
+        )
+
+    def test_party_filter_ascii_regression(self, db, monkeypatch):
+        """party_filter='alaska' still matches stored 'ALASKA' (regression guard)."""
+        doc = Document(tenant_id="chat-tenant", file_name="alaska_test.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="doi_tac", field_value="ALASKA", confidence=0.9,
+        ))
+        db.add(Term(
+            tenant_id="chat-tenant", document_id=doc.id,
+            field_name="ngay_hieu_luc", field_value="2025-01-15", confidence=0.9,
+        ))
+        db.commit()
+
+        from app.services.chat_query import _tool_search_terms
+        results = _tool_search_terms(db, "chat-tenant", "ngay_hieu_luc", None, party_filter="alaska")
+        assert any(r["value"] == "2025-01-15" for r in results), "ASCII case-fold regression: 'alaska' must match 'ALASKA'"
+
+    def test_prompt_bat_buoc_precedes_calendar_rules(self):
+        """BẮT BUỘC party_filter section must appear before calendar rules in prompt (Option B)."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        bat_buoc_pos = prompt.find("BẮT BUỘC")
+        calendar_pos = prompt.find("tháng này")
+        assert bat_buoc_pos != -1, "BẮT BUỘC not found in prompt"
+        assert calendar_pos != -1, "'tháng này' not found in prompt"
+        assert bat_buoc_pos < calendar_pos, "BẮT BUỘC must precede calendar rules"
+
 
 class TestDocumentClauseCount:
     def test_clause_count_in_detail(self, auth_client, db):
@@ -315,3 +1068,700 @@ class TestDocumentClauseCount:
         assert r.status_code == 200
         data = r.json()
         assert data["clause_count"] == 1
+
+
+class TestObligationTypeDirectionFilter:
+    """#145 — search_obligations filters by obligation_type (category) + direction."""
+
+    def test_filter_by_obligation_type_payment(self, auth_client, db, monkeypatch):
+        """search_obligations(obligation_type='payment') returns only payment obligations."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Tạm ứng đợt 1",
+                recurrence="once",
+                obligation_type="payment",
+                due_date="2026-07-01",
+                status="pending",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Hết hạn HĐ",
+                recurrence="once",
+                obligation_type="expiration",
+                due_date="2026-12-31",
+                status="pending",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": "pending", "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": "payment", "direction": None,
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Có 1 thanh toán."))
+
+        r = auth_client.post("/chat/query", json={"question": "thanh toán sắp tới"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-07-01"
+
+    def test_filter_by_direction_nghia_vu(self, auth_client, db, monkeypatch):
+        """search_obligations(direction='nghĩa_vụ') returns only nghĩa_vụ obligations."""
+        doc = _seed(db)
+        db.add_all([
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Tạm ứng",
+                recurrence="once",
+                obligation_type="payment",
+                due_date="2026-07-01",
+                status="pending",
+                direction="nghĩa_vụ",
+            ),
+            Obligation(
+                tenant_id="chat-tenant",
+                document_id=doc.id,
+                description="Đối tác giao hàng",
+                recurrence="once",
+                obligation_type="delivery",
+                due_date="2026-08-01",
+                status="pending",
+                direction="quyền_lợi",
+            ),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": "pending", "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": "nghĩa_vụ",
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Nghĩa vụ của bạn."))
+
+        r = auth_client.post("/chat/query", json={"question": "nghĩa vụ phải trả"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-07-01"
+
+    def test_obligation_sources_include_direction_and_series_fields(self, auth_client, db, monkeypatch):
+        """search_obligations sources must include direction, description, series fields (#146)."""
+        # Unique doc name scopes this test via doc_hint — avoids cross-test contamination.
+        doc = Document(tenant_id="chat-tenant", file_name="series_fields_146.pdf",
+                       file_path="x/series_fields_146.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Obligation(
+            tenant_id="chat-tenant",
+            document_id=doc.id,
+            description="Bảo hành thiết bị đợt 2",
+            recurrence="once",
+            obligation_type="warranty",
+            due_date="2026-08-15",
+            status="pending",
+            direction="nghĩa_vụ",
+            obligor="Bên cung cấp",
+            amount_raw="40000000",
+            milestone_series_id="series-warranty-146",
+            milestone_index=2,
+            milestone_total=3,
+        ))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {"due_within_days": None, "status": "pending",
+                         "doc_hint": "series_fields_146",
+                         "due_from": None, "due_to": None,
+                         "obligation_type": None, "direction": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Còn đợt 2/3."))
+
+        r = auth_client.post("/chat/query", json={"question": "còn bao nhiêu đợt bảo hành?"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        src = sources[0]
+        assert src["description"] == "Bảo hành thiết bị đợt 2"
+        assert src["direction"] == "nghĩa_vụ"
+        assert src["obligor"] == "Bên cung cấp"
+        assert src["obligation_type"] == "warranty"
+        assert src["amount_raw"] == "40000000"
+        assert src["milestone_series_id"] == "series-warranty-146"
+        assert src["milestone_index"] == 2
+        assert src["milestone_total"] == 3
+
+    def test_waiting_trigger_included_in_results(self, auth_client, db, monkeypatch):
+        """waiting_trigger obligations (due_date=None) must appear in search_obligations (#146)."""
+        doc = Document(tenant_id="chat-tenant", file_name="waiting_trigger_146.pdf",
+                       file_path="x/waiting_trigger_146.pdf", status="extracted")
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        db.add(Obligation(
+            tenant_id="chat-tenant",
+            document_id=doc.id,
+            description="Bàn giao sau nghiệm thu",
+            recurrence="once",
+            obligation_type="handover",
+            due_date=None,
+            status="waiting_trigger",
+            milestone_trigger="event",
+            trigger_condition="sau khi nghiệm thu công trình",
+        ))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {"due_within_days": None, "status": "waiting_trigger",
+                         "doc_hint": "waiting_trigger_146",
+                         "due_from": None, "due_to": None,
+                         "obligation_type": None, "direction": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Đang chờ nghiệm thu."))
+
+        r = auth_client.post("/chat/query", json={"question": "việc gì đang chờ sự kiện?"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "sau khi nghiệm thu công trình"
+        assert sources[0]["trigger_condition"] == "sau khi nghiệm thu công trình"
+        assert sources[0]["status"] == "waiting_trigger"
+
+    def test_prompt_includes_direction_rules(self):
+        """Router prompt must include direction + obligation_type routing rules."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        assert "nghĩa_vụ" in prompt
+        assert "quyền_lợi" in prompt
+        assert "obligation_type" in prompt or "payment" in prompt
+
+
+class TestChatQueryLog:
+    """#119 — chat_query_log rows written on every POST /chat/query (DEC-028)."""
+
+    def test_log_written_on_hit(self, auth_client, db, monkeypatch):
+        """A successful query writes a chat_query_log row with found=True."""
+        doc = _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "ngay_het_han", "doc_hint": None, "value_contains": None, "party_filter": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-12-31."))
+
+        r = auth_client.post("/chat/query", json={"question": "khi nào hết hạn"})
+        assert r.status_code == 200
+
+        log = db.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "chat-tenant",
+            ChatQueryLog.question == "khi nào hết hạn",
+        ).first()
+        assert log is not None
+        assert log.found is True
+        assert log.result_count > 0
+
+    def test_log_written_on_miss(self, auth_client, db, monkeypatch):
+        """A D-08 miss writes a chat_query_log row with found=False."""
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "nonexistent", "doc_hint": None, "value_contains": None, "party_filter": None},
+            }]),
+        )
+
+        r = auth_client.post("/chat/query", json={"question": "số tài khoản ngân hàng"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+        log = db.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "chat-tenant",
+            ChatQueryLog.question == "số tài khoản ngân hàng",
+        ).first()
+        assert log is not None
+        assert log.found is False
+        assert log.result_count == 0
+
+    def test_log_tool_calls_json_roundtrip(self, auth_client, db, monkeypatch):
+        """tool_calls JSON in chat_query_log round-trips with name + args."""
+        doc = _seed(db)
+        tool_calls = [{
+            "name": "search_terms",
+            "args": {"field_name": "ngay_het_han", "doc_hint": None, "value_contains": None, "party_filter": None},
+        }]
+        monkeypatch.setattr(chat_query, "_select_tools", _mock_select_tools(tool_calls))
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-12-31."))
+
+        r = auth_client.post("/chat/query", json={"question": "tool_calls json test"})
+        assert r.status_code == 200
+
+        import json as _json
+        log = db.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "chat-tenant",
+            ChatQueryLog.question == "tool_calls json test",
+        ).first()
+        assert log is not None
+        assert log.tool_calls is not None
+        parsed = _json.loads(log.tool_calls)
+        assert len(parsed) == 1
+        assert parsed[0]["name"] == "search_terms"
+        assert parsed[0]["args"]["field_name"] == "ngay_het_han"
+
+    def test_log_failure_does_not_break_response(self, auth_client, db, monkeypatch):
+        """A forced exception in _log_chat_query does not break the chat response."""
+        doc = _seed(db)
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "ngay_het_han", "doc_hint": None, "value_contains": None, "party_filter": None},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-12-31."))
+
+        def _failing_log(*args, **kwargs):
+            raise RuntimeError("simulated DB failure")
+
+        monkeypatch.setattr(chat_query, "_log_chat_query", _failing_log)
+
+        r = auth_client.post("/chat/query", json={"question": "resilience test query"})
+        assert r.status_code == 200
+        assert r.json()["found"] is True
+
+    def test_pii_safe_logger_unchanged(self, auth_client, db, monkeypatch):
+        """App logger stream must NOT contain raw PII (party names, values)."""
+        doc = _seed(db)
+        pii_value = "Công ty ABC"
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {"field_name": "doi_tac", "doc_hint": None, "value_contains": None, "party_filter": pii_value},
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Đối tác là Công ty ABC."))
+
+        captured = []
+        original_info = chat_query.logger.info
+
+        def _capture_info(msg, *args, **kwargs):
+            captured.append(msg % args if args else msg)
+            original_info(msg, *args, **kwargs)
+
+        monkeypatch.setattr(chat_query.logger, "info", _capture_info)
+
+        r = auth_client.post("/chat/query", json={"question": "đối tác là ai"})
+        assert r.status_code == 200
+
+        # The PII-safe routing log must contain field_name + args_present but NOT raw party_filter value.
+        log_text = "\n".join(captured)
+        assert "doi_tac" in log_text
+        assert "party_filter" in log_text  # key name is fine
+        assert pii_value not in log_text  # raw value must NOT appear
+
+
+class TestDocTypeFilter:
+    """#124 — doc_type_filter for search_terms + search_obligations (DEC-029)."""
+
+    def test_search_terms_doc_type_filter(self, auth_client, db, monkeypatch):
+        """search_terms(doc_type_filter='lao_dong') returns only docs with doc_type_group=lao_dong."""
+        doc1 = _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="labor.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+
+        db.add(Term(tenant_id="chat-tenant", document_id=doc1.id, field_name="doc_type_group", field_value="thuong_mai", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc2.id, field_name="doc_type_group", field_value="lao_dong", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc1.id, field_name="ngay_het_han", field_value="2026-12-31", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc2.id, field_name="ngay_het_han", field_value="2026-11-30", confidence=0.9))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {
+                    "field_name": "ngay_het_han", "doc_hint": None,
+                    "value_contains": None, "party_filter": None,
+                    "doc_type_filter": "lao_dong",
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("Hết hạn 2026-11-30."))
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ lao động hết hạn khi nào"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "term"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-11-30"
+        assert sources[0]["file_name"] == "labor.pdf"
+
+    def test_search_obligations_doc_type_filter(self, auth_client, db, monkeypatch):
+        """search_obligations(doc_type_filter='thuong_mai') returns only obligations on thuong_mai docs."""
+        # Clean up any obligations from prior tests to avoid isolation issues
+        db.query(Obligation).filter(Obligation.tenant_id == "chat-tenant").delete()
+        db.query(Term).filter(Term.tenant_id == "chat-tenant", Term.field_name == "doc_type_group").delete()
+        db.commit()
+
+        doc1 = _seed(db)
+        doc2 = Document(tenant_id="chat-tenant", file_name="commerce.pdf", file_path="x/y.pdf", status="extracted")
+        db.add(doc2)
+        db.commit()
+        db.refresh(doc2)
+
+        db.add(Term(tenant_id="chat-tenant", document_id=doc1.id, field_name="doc_type_group", field_value="bat_dong_san", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc2.id, field_name="doc_type_group", field_value="thuong_mai", confidence=0.9))
+        db.add_all([
+            Obligation(tenant_id="chat-tenant", document_id=doc1.id, description="BDS expiry",
+                       recurrence="once", obligation_type="expiration", due_date="2026-09-01", status="pending"),
+            Obligation(tenant_id="chat-tenant", document_id=doc2.id, description="TM expiry",
+                       recurrence="once", obligation_type="expiration", due_date="2026-10-01", status="pending"),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": "pending", "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": None,
+                    "doc_type_filter": "thuong_mai",
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("TM expiry 2026-10-01."))
+
+        r = auth_client.post("/chat/query", json={"question": "obligations thương mại"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] == "2026-10-01"
+
+    def test_doc_type_filter_no_match_d08(self, auth_client, db, monkeypatch):
+        """doc_type_filter with no matching docs → D-08 not-found, no crash."""
+        doc = _seed(db)
+        db.add(Term(tenant_id="chat-tenant", document_id=doc.id, field_name="doc_type_group", field_value="lao_dong", confidence=0.9))
+        db.add(Term(tenant_id="chat-tenant", document_id=doc.id, field_name="ngay_het_han", field_value="2026-12-31", confidence=0.9))
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_terms",
+                "args": {
+                    "field_name": "ngay_het_han", "doc_hint": None,
+                    "value_contains": None, "party_filter": None,
+                    "doc_type_filter": "xay_dung",
+                },
+            }]),
+        )
+
+        r = auth_client.post("/chat/query", json={"question": "HĐ xây dựng hết hạn"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+        assert r.json()["sources"] == []
+
+    def test_prompt_includes_doc_type_examples(self):
+        """Router prompt must include doc_type_filter examples."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        assert "doc_type_filter" in prompt
+        assert "lao_dong" in prompt
+
+
+class TestSeriesFilter:
+    """#153 Part 5 — series_id + waiting_trigger filters for search_obligations."""
+
+    def test_search_obligations_series_id_filter(self, auth_client, db, monkeypatch):
+        """search_obligations(series_id=...) returns only obligations in that series."""
+        # Clean up prior test data
+        db.query(Obligation).filter(Obligation.tenant_id == "chat-tenant").delete()
+        db.commit()
+
+        doc = _seed(db)
+        db.add_all([
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Installment 1", recurrence="once", obligation_type="payment",
+                       due_date="2026-07-01", status="pending",
+                       milestone_series_id="series-abc", milestone_index=1, milestone_total=3),
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Installment 2", recurrence="once", obligation_type="payment",
+                       due_date="2026-08-01", status="pending",
+                       milestone_series_id="series-abc", milestone_index=2, milestone_total=3),
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Standalone", recurrence="once", obligation_type="expiration",
+                       due_date="2026-12-31", status="pending"),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": None, "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": None,
+                    "doc_type_filter": None,
+                    "series_id": "series-abc", "waiting_trigger": False,
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("2 installments."))
+
+        r = auth_client.post("/chat/query", json={"question": "còn bao nhiêu đợt thanh toán"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 2
+        values = sorted(s["value"] for s in sources)
+        assert values == ["2026-07-01", "2026-08-01"]
+
+    def test_search_obligations_waiting_trigger_filter(self, auth_client, db, monkeypatch):
+        """search_obligations(waiting_trigger=True) returns only waiting_trigger obligations."""
+        db.query(Obligation).filter(Obligation.tenant_id == "chat-tenant").delete()
+        db.commit()
+
+        doc = _seed(db)
+        db.add_all([
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Pending", recurrence="once", obligation_type="payment",
+                       due_date="2026-07-01", status="pending"),
+            Obligation(tenant_id="chat-tenant", document_id=doc.id,
+                       description="Waiting", recurrence="once", obligation_type="delivery",
+                       due_date="2026-09-01", status="waiting_trigger", milestone_trigger="event"),
+        ])
+        db.commit()
+
+        monkeypatch.setattr(
+            chat_query,
+            "_select_tools",
+            _mock_select_tools([{
+                "name": "search_obligations",
+                "args": {
+                    "due_within_days": None, "status": None, "doc_hint": None,
+                    "due_from": None, "due_to": None,
+                    "obligation_type": None, "direction": None,
+                    "doc_type_filter": None,
+                    "series_id": None, "waiting_trigger": True,
+                },
+            }]),
+        )
+        monkeypatch.setattr(chat_query, "_format_answer", _mock_format_answer("1 waiting."))
+
+        r = auth_client.post("/chat/query", json={"question": "chờ sự kiện gì"})
+        assert r.status_code == 200
+        sources = [s for s in r.json()["sources"] if s["type"] == "obligation"]
+        assert len(sources) == 1
+        assert sources[0]["value"] is not None  # description-based
+
+    def test_prompt_includes_series_and_trigger_rules(self):
+        """Router prompt must include series_id + waiting_trigger examples."""
+        from app.services.chat_query import _build_router_system_prompt
+        prompt = _build_router_system_prompt(date.today())
+        assert "series_id" in prompt
+        assert "waiting_trigger" in prompt
+
+
+class TestChatTokenomics:
+    """Token usage + cost tracking on ChatQueryLog (#164)."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_tenant(self):
+        init_master_db()
+        init_tenant_db("tokenomics-tenant")
+        db = MasterSessionLocal()
+        tenant = db.query(Tenant).filter(Tenant.id == "tokenomics-tenant").first()
+        if not tenant:
+            db.add(Tenant(id="tokenomics-tenant", name="Tokenomics Tenant", db_path="tenants/tokenomics-tenant.db"))
+            db.commit()
+        db.close()
+
+        # Seed a doc + term so search_terms can return data
+        tdb = get_tenant_session("tokenomics-tenant")
+        doc = Document(tenant_id="tokenomics-tenant", file_name="tok_test.pdf", file_path="x/tok_test.pdf", status="extracted")
+        tdb.add(doc)
+        tdb.commit()
+        tdb.refresh(doc)
+        term = Term(tenant_id="tokenomics-tenant", document_id=doc.id, field_name="ngay_het_han", field_value="2026-12-31", confidence=0.9)
+        tdb.add(term)
+        tdb.commit()
+        tdb.close()
+
+        from app.core.security import get_password_hash
+        db = MasterSessionLocal()
+        user = db.query(TenantUser).filter(TenantUser.tenant_id == "tokenomics-tenant", TenantUser.username == "tokadmin").first()
+        if not user:
+            db.add(TenantUser(tenant_id="tokenomics-tenant", username="tokadmin", hashed_password=get_password_hash("test123"), role="admin"))
+            db.commit()
+        db.close()
+
+        yield
+
+    def _auth(self):
+        client = TestClient(app)
+        r = client.post("/auth/login", json={"tenant_id": "tokenomics-tenant", "username": "tokadmin", "password": "test123"})
+        assert r.status_code == 200
+        return client
+
+    def test_normal_2_call_tokens_persisted(self, monkeypatch):
+        """Normal 2-call path: input/output/cost/llm_calls=2 persisted."""
+        routing_usage = {"in": 1500, "out": 30}
+        format_usage = {"in": 3000, "out": 80}
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([{"name": "search_terms", "args": {"field_name": "ngay_het_han", "doc_hint": "tok_test"}}], usage=routing_usage),
+        )
+        monkeypatch.setattr(
+            chat_query, "_format_answer",
+            _mock_format_answer("Hết hạn 2026-12-31.", usage=format_usage),
+        )
+
+        client = self._auth()
+        r = client.post("/chat/query", json={"question": "tok_test hết hạn khi nào?"})
+        assert r.status_code == 200
+        assert r.json()["found"] is True
+
+        tdb = get_tenant_session("tokenomics-tenant")
+        log = tdb.query(ChatQueryLog).filter(ChatQueryLog.tenant_id == "tokenomics-tenant").order_by(ChatQueryLog.id.desc()).first()
+        assert log is not None
+        assert log.llm_calls == 2
+        assert log.input_tokens == 4500  # 1500 + 3000
+        assert log.output_tokens == 110   # 30 + 80
+        assert log.cost_vnd > 0
+        tdb.close()
+
+    def test_d_08_no_results_routing_tokens_captured(self, monkeypatch):
+        """D-08 no-results path: routing call tokens captured, llm_calls=1."""
+        routing_usage = {"in": 1800, "out": 25}
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([], usage=routing_usage),
+        )
+
+        client = self._auth()
+        r = client.post("/chat/query", json={"question": "notfound doc hết hạn?"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+        tdb = get_tenant_session("tokenomics-tenant")
+        log = tdb.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "tokenomics-tenant",
+            ChatQueryLog.question == "notfound doc hết hạn?",
+        ).first()
+        assert log is not None
+        assert log.llm_calls == 1
+        assert log.input_tokens == 1800
+        assert log.output_tokens == 25
+        assert log.cost_vnd > 0
+        tdb.close()
+
+    def test_no_llm_zero_cost(self, monkeypatch):
+        """When LLM client is None: llm_calls=0, cost=0."""
+        monkeypatch.setattr(chat_query, "_get_llm_client", lambda: None)
+
+        client = self._auth()
+        r = client.post("/chat/query", json={"question": "any question here"})
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+        tdb = get_tenant_session("tokenomics-tenant")
+        log = tdb.query(ChatQueryLog).filter(
+            ChatQueryLog.tenant_id == "tokenomics-tenant",
+            ChatQueryLog.question == "any question here",
+        ).first()
+        assert log is not None
+        assert log.llm_calls == 0
+        assert log.input_tokens == 0
+        assert log.output_tokens == 0
+        assert log.cost_vnd == 0.0
+        tdb.close()
+
+    def test_stats_endpoint_tenant_isolated(self, monkeypatch):
+        """Stats endpoint: tenant sees only its own data (cross-tenant isolation)."""
+        # Seed a query for tokenomics-tenant
+        monkeypatch.setattr(
+            chat_query, "_select_tools",
+            _mock_select_tools([], usage={"in": 500, "out": 10}),
+        )
+        client = self._auth()
+        client.post("/chat/query", json={"question": "isolation test query"})
+
+        # Create a second tenant and seed data
+        init_tenant_db("tokenomics-other")
+        db = MasterSessionLocal()
+        other = db.query(Tenant).filter(Tenant.id == "tokenomics-other").first()
+        if not other:
+            db.add(Tenant(id="tokenomics-other", name="Other", db_path="tenants/tokenomics-other.db"))
+            db.commit()
+        user2 = db.query(TenantUser).filter(TenantUser.tenant_id == "tokenomics-other", TenantUser.username == "otheradmin").first()
+        if not user2:
+            db.add(TenantUser(tenant_id="tokenomics-other", username="otheradmin", hashed_password=get_password_hash("test123"), role="admin"))
+            db.commit()
+        db.close()
+
+        # Seed a log row directly in the other tenant
+        odb = get_tenant_session("tokenomics-other")
+        odb.add(ChatQueryLog(tenant_id="tokenomics-other", question="other query", found=False, result_count=0, input_tokens=9999, output_tokens=9999, cost_vnd=999.0, llm_calls=99))
+        odb.commit()
+        odb.close()
+
+        # Login as other tenant and check stats
+        client2 = TestClient(app)
+        r = client2.post("/auth/login", json={"tenant_id": "tokenomics-other", "username": "otheradmin", "password": "test123"})
+        assert r.status_code == 200
+
+        r2 = client2.get("/chat/stats")
+        assert r2.status_code == 200
+        stats2 = r2.json()
+        assert stats2["total_queries"] == 1
+        assert stats2["total_input_tokens"] == 9999
+        assert stats2["total_llm_calls"] == 99
+
+        # Original tenant should NOT see the other tenant's data
+        r1 = client.get("/chat/stats")
+        assert r1.status_code == 200
+        stats1 = r1.json()
+        assert stats1["total_input_tokens"] != 9999
+        assert stats1["total_llm_calls"] != 99

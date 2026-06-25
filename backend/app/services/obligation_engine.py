@@ -107,7 +107,7 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
     duration_value = _winning_term_value(db, tenant_id, chain_docs, _DURATION_FIELD)
 
     due_date: datetime | None = None
-    obligation_type = "once"
+    recurrence = "once"
     skip_reason: str | None = None
 
     if due_value:
@@ -121,7 +121,7 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
             skip_reason = f"Unparseable start date: {start_value!r}"
         elif duration_months is None:
             # Non-numeric duration → open-ended review.
-            obligation_type = "open_ended_review"
+            recurrence = "open_ended_review"
             due_date = None
         else:
             due_date = add_months(start_date, duration_months)
@@ -132,7 +132,7 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         return {"created": 0, "skipped": True, "reason": skip_reason}
 
     # Description in Vietnamese.
-    if obligation_type == "open_ended_review":
+    if recurrence == "open_ended_review":
         description = f"Hợp đồng {target_doc.file_name} vô thời hạn — cần review"
     else:
         due_str = due_date.strftime("%Y-%m-%d") if due_date else None
@@ -154,12 +154,13 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         tenant_id=tenant_id,
         document_id=target_doc_id,
         description=description,
-        obligation_type=obligation_type,
+        recurrence=recurrence,
+        obligation_type="expiration",
         due_date=due_str,
         status="pending",
         # DEC-020: open_ended_review = annual review nudge, 365d window.
         # `once` (default) = 30d before a real deadline.
-        remind_before_days=365 if obligation_type == "open_ended_review" else 30,
+        remind_before_days=365 if recurrence == "open_ended_review" else 30,
         source_doc_chain=json.dumps(chain_ids),
         resolution_method="last_writer_wins" if len(chain_ids) > 1 else None,
     )
@@ -174,7 +175,8 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         purpose=None,
         payload=json.dumps(
             {
-                "obligation_type": obligation_type,
+                "recurrence": recurrence,
+                "obligation_type": "expiration",
                 "due_date": due_str,
                 "chain_doc_ids": chain_ids,
                 "resolution_method": ob.resolution_method,

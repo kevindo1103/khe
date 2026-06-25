@@ -3,10 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.database import get_db
+from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
 from app.models.master import TenantUser
 from app.schemas.auth import UserOut
+from app.services import tenant_journey
 from app.services.consent import (
     check_consent,
     record_consent,
@@ -22,6 +23,7 @@ def post_consent(
     payload: dict,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """Record a consent_logged Event."""
     purpose = payload.get("purpose")
@@ -31,6 +33,7 @@ def post_consent(
             detail=f"Invalid purpose. Must be one of: {VALID_PURPOSES}",
         )
 
+    channel_target_ref = payload.get("channel_target_ref")
     event = record_consent(
         db=db,
         tenant_id=user.tenant_id,
@@ -38,9 +41,17 @@ def post_consent(
         actor=user.username,
         consent_text_version=payload.get("consent_text_version", "nd13-v1"),
         channel=payload.get("channel"),
-        channel_target_ref=payload.get("channel_target_ref"),
+        channel_target_ref=channel_target_ref,
         entity_id=user.id,
     )
+
+    # Journey (#213): registering a reminder channel (Telegram OR email) activates
+    # the tenant. Gated to CONFIRMED+ so a stray channel consent can't skip the
+    # extraction spine. ≥1 channel is enough — not hard-blocked on both.
+    if purpose == "reminder_send" and channel_target_ref:
+        tenant_journey.advance_stage(
+            master_db, user.tenant_id, "ACTIVATED", require_current_at_least="CONFIRMED"
+        )
 
     return {
         "purpose": purpose,

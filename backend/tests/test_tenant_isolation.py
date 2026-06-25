@@ -87,7 +87,7 @@ def setup_two_tenants():
         s.add(Term(tenant_id=tid, document_id=did, field_name="ngay_het_han", field_value=cfg["due"], confidence=0.9))
         s.add(Obligation(
             tenant_id=tid, document_id=did, description=f"Hết hạn {cfg['file']}",
-            obligation_type="once", due_date=cfg["due"], status="pending",
+            recurrence="once", due_date=cfg["due"], status="pending",
         ))
         s.commit()
         ids[tid] = did
@@ -139,11 +139,11 @@ def _mock_select_tools(question: str, tenant_id: str, db):
 
 
 async def _select_tools_mock(db, tenant_id, question):
-    return _mock_select_tools(question, tenant_id, db)
+    return _mock_select_tools(question, tenant_id, db), {"in": 100, "out": 20}
 
 
 async def _format_answer_mock(question, results):
-    return results[0]["value"] if results else ""
+    return results[0]["value"] if results else "", {"in": 200, "out": 50}
 
 
 def test_chat_does_not_cross_tenant(setup_two_tenants, monkeypatch):

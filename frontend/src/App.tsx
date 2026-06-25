@@ -1,12 +1,16 @@
 import type { ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { JourneyProvider } from './contexts/JourneyContext';
 import Login from './pages/admin/Login';
 import AdminShell from './pages/admin/AdminShell';
+import Home from './pages/admin/Home';
 import Upload from './pages/admin/Upload';
 import DocumentList from './pages/admin/DocumentList';
 import DocumentDetail from './pages/admin/DocumentDetail';
 import Obligations from './pages/admin/Obligations';
+import Chat from './pages/admin/Chat';
+import Settings from './pages/admin/Settings';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -31,15 +35,19 @@ export default function App() {
         path="/admin"
         element={
           <ProtectedRoute>
-            <AdminShell />
+            <JourneyProvider>
+              <AdminShell />
+            </JourneyProvider>
           </ProtectedRoute>
         }
       >
-        <Route index element={<Upload />} />
+        <Route index element={<Home />} />
         <Route path="upload" element={<Upload />} />
         <Route path="documents" element={<DocumentList />} />
         <Route path="documents/:id" element={<DocumentDetail />} />
         <Route path="obligations" element={<Obligations />} />
+        <Route path="chat" element={<Chat />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin/login" replace />} />
     </Routes>

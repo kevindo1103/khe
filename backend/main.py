@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.database import init_master_db, init_tenant_db
-from app.routers import auth, chat, consent, documents, health, obligations, relationships, reminders
+from app.routers import admin, auth, chat, consent, documents, health, obligations, relationships, reminders, tenants
 from app.services.scheduler import create_scheduler
 
 
@@ -153,6 +153,20 @@ async def lifespan(app: FastAPI):
         scheduler.start()
         app.state.scheduler = scheduler
 
+        # Cross-restart catch-up (#183): if a crash skipped today's 08:00 fire,
+        # run it now. Best-effort — must never block startup.
+        import asyncio
+
+        from app.services.scheduler import catch_up_missed_daily_run
+
+        async def _catch_up():
+            try:
+                await catch_up_missed_daily_run()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[Main] reminder catch-up skipped: {exc}")
+
+        asyncio.create_task(_catch_up())
+
     yield  # Application runs here
 
     # ---------- Shutdown ----------
@@ -185,6 +199,8 @@ app.include_router(relationships.router)
 app.include_router(obligations.router)
 app.include_router(reminders.router)
 app.include_router(chat.router)
+app.include_router(tenants.router)
+app.include_router(admin.router)
 app.include_router(health.router)
 
 

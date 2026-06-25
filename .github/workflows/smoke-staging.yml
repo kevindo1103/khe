@@ -1,0 +1,49 @@
+name: smoke-staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Staging base URL"
+        default: "https://staging.khe.iceflow.cloud"
+        required: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y curl jq
+
+      - name: Decode contract sample → tmpfile
+        env:
+          STAGING_CONTRACT_B64: ${{ secrets.STAGING_CONTRACT_B64 }}
+        run: |
+          if [ -n "$STAGING_CONTRACT_B64" ]; then
+            echo "$STAGING_CONTRACT_B64" | base64 -d > /tmp/khe_contract.pdf
+            echo "KHE_TEST_FILE=/tmp/khe_contract.pdf" >> "$GITHUB_ENV"
+          else
+            echo "::warning::no STAGING_CONTRACT_B64 — #230 anchor gate will SKIP (synthetic PNG)"
+          fi
+
+      - name: Run smoke
+        env:
+          KHE_TENANT: ${{ secrets.STAGING_TENANT }}
+          KHE_USER:   ${{ secrets.STAGING_USER }}
+          KHE_PASS:   ${{ secrets.STAGING_PASS }}
+        run: |
+          bash scripts/smoke_e2e_staging.sh "${{ github.event.inputs.base_url }}" | tee smoke_report.txt
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: smoke_report.txt
+
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/khe_contract.pdf

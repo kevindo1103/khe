@@ -11,6 +11,7 @@ interface InputProps {
   onEdit?: () => void;
   type?: 'text' | 'password';
   className?: string;
+  testId?: string;
 }
 
 export function Input({
@@ -24,6 +25,7 @@ export function Input({
   onEdit,
   type = 'text',
   className = '',
+  testId,
 }: InputProps) {
   const [hover, setHover] = useState(false);
 
@@ -44,6 +46,7 @@ export function Input({
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
+          data-testid={testId}
           className={`
             w-full h-11 box-border px-3 text-sm text-ink bg-surface
             rounded-md outline-none transition-colors
