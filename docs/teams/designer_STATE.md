@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-18 (Phase 1+2 approved; Phase 3 PWA screens built)_
+_Last updated: 2026-06-25 (session wrap-up: #243 firm F-stages merged, #245 confirm-flow merged, #246 FE reviewed)_
 
 ## Decisions in force (design-relevant)
 - **DEC-017** — Design System + mockups MUST land + Kevin-approve BEFORE Frontend
@@ -139,6 +139,29 @@ QC holistic của #200 + #204 surfaced **1 systemic a11y pattern** (interactive 
 - Showcase: "A11y primitives (#206)" section demos cả 5.
 - **Downstream (follow-up, không block):** #200 stages (`LockedNav`, Stage 1 dropzone, Stage 2/8 aria-live) + nav re-import từ corrected primitives khi journey mockups adopt. Gate: trước Frontend nav/journey production build.
 
+## Admin steady-state re-layout + Settings — branch `claude/design-admin-relayout-settings`
+- `mockup_admin_document_detail_v0.2.jsx` — re-layout minimalist (supersedes v0.1): side-by-side D-06 | extracted Terms; per-field confidence + needs_review (FR-EX-05) + edit→Event (D-07) + ref-link; Parties panel + Obligations w/ direction (DEC-030/D-13); sticky original; a11y.
+- `mockup_admin_settings_v0.1.jsx` — NEW (legal_name DEC-030, Telegram/email DEC-006, consent D-10, firm access M2+).
+- Preview: `khe_tong_quan_preview.html` (direction cards + status strip).
+
+## Admin list/upload re-layout + responsive Dashboard — branch `claude/design-admin-list-upload-dashboard`
+- `mockup_admin_upload_v0.2.jsx` — adopt `Dropzone` a11y primitive (#206); queue + quota hint (D-11). Supersedes v0.1.
+- `mockup_admin_document_list_v0.2.jsx` — filter chips + 2 honest empty states. Supersedes v0.1.
+- `mockup_admin_dashboard_v0.2.jsx` — NEW canonical Tổng quan, responsive (AppSidebar/AppMobileHeader/AppBottomTabs + @760px).
+
+## Firm journey (#236, DEC-039) — primitives + F-stages DONE
+Firm portal = lead-generator (J5), read-only (D-09), consent-gated (D-10).
+- `mockup_firm_journey_primitives_v0.1.jsx` — 6 primitives: ConsentStatus, DataRestrictedLabel, FirmEmptyState, RevokeBanner, LeadSignalCard, ClientCard. **#242 MERGED.**
+- ✅ **F-stages MERGED PR #243 → staging** (PM retrospective LGTM). 3 stage files: F0/F1 (dual-path invite), F3/F4 (portfolio + lead signals), F5/F6 (digest + consent settings). FirmShell exported once, reused. DOCS_INBOX filed with 4 forward notes.
+
+## DEC-040 confirm-flow design (#238 ratify) — ✅ MERGED PR #245 (`09d2a61` → staging)
+Option (B) CONFIRMED: nav-lock clears at CONFIRMED (not ACTIVATED). MANDATORY silent-failure mitigation:
+- **A:** Dashboard CONFIRMED-without-channel → ReminderNudge + ProgressChip "N/M bước".
+- **B:** Nav-lock refs ACTIVATED→CONFIRMED in app_nav + journey_primitives headers.
+- **C:** Doc-detail "Xác nhận document này" (disabled while editing, D-02) + confirmed badge + X/Y toast.
+- **ProgressChip → journey primitive (§6b):** promoted from dashboard-local to exported `ProgressChip({ steps })` with `{label,done}[]` prop.
+- **FE follow-up:** #247 — (1) lift ProgressChip when 2nd surface needs it; (2) X/Y from data ✅ done in #246.
+
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
   `terms` table. If a needed field is missing from the ratified schema during
@@ -146,6 +169,33 @@ QC holistic của #200 + #204 surfaced **1 systemic a11y pattern** (interactive 
 - `thoi_han_hd` phi-số ("vô thời hạn") state — BRD FR-OB-01 leaves policy open;
   Sprint 2 "Vô thời hạn" obligation display flagged but NOT designed in M0.
 
+---
+
+## Session wrap-up 2026-06-25
+
+### What happened this session
+1. **PR #243 (firm F-stages)** — PM retrospective review LGTM, merged to staging. DOCS_INBOX filed with 4 forward notes (F1a concierge backend, F4 mailto source, F1 PWA badge, DEC-039 canonical fold).
+2. **PR #245 (DEC-040 confirm-flow design)** — ProgressChip refactored to journey primitive (§6b). PM review LGTM, merged to staging (`09d2a61`). DOCS_INBOX filed (DEC-040 canonical fold pending KHE_Docs).
+3. **PR #246 (FE confirm-flow impl)** — reviewed COMMENT (not our branch). JourneyContext architecture solid. One fix flagged: DocList `needsConfirm` shows unclearable badge on `status=failed` docs → suggest gating on `extracted || needs_review`. Left for PR owner.
+4. **Issue #247 filed** — FE follow-up: (a) lift ProgressChip when reused, (b) X/Y from `confirmed_by_user_at` — (b) already done in #246.
+5. **#238 comment** — notified FE that design refs for confirm button, Home deep-link, mandatory ReminderNudge are in #245 diff.
+
+### Open items for next session
+- **#246 not merged** — reviewed, LGTM with 1 fix (failed-doc badge). Not our branch; waiting for owner.
+- **DEC-040 canonical fold** — DOCS_INBOX filed, awaiting KHE_Docs to fold into BRD/SRS.
+- **#243 forward notes** — 4 items need PM ratify pass (F1a, F4, F1 PWA badge, DEC-039).
+- **#247** — FE follow-up, low priority, note 2 already resolved.
+- **No new design work queued** — check `for:designer` issues on session kickoff.
+
+### Branch status
+| Branch | Status |
+|---|---|
+| `claude/design-confirm-flow-dec040-238` | ✅ Merged (#245) |
+| `claude/design-firm-fstages-236` | ✅ Merged (#243) |
+| `claude/sweet-thompson-jixt9y` | Active (long-lived, assigned by harness) |
+
 ## Inbox
 - issue #24 (`for:designer`, `task-assignment`, GATING #30 + #31) — Sprint 1
   Design System + M0 mockups. Status: Phase 1 done, awaiting Kevin approve.
+- **Kickoff step 0:** list `for:designer` open issues.
+- **Kickoff step 1:** read this file (`docs/teams/designer_STATE.md`).
