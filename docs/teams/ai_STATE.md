@@ -4,7 +4,7 @@
 > `docs/teams/ai_STATE.md`, `docs/benchmark_*.md` (via DOCS_INBOX).
 > Branch: `claude/feat-ai-vision-extraction-3k3gup`.
 
-_Last updated: 2026-06-18 (issue #53 — provider factory for Backend #25 PR-B)_
+_Last updated: 2026-06-25 (Sprint 1 wrap — #230 anchors live, #258 remap shipped, #268 analysis posted)_
 
 ## Decisions in force
 - **DEC-002** — single `VisionExtractionProvider.extract()` interface; NO separate
@@ -14,11 +14,55 @@ _Last updated: 2026-06-18 (issue #53 — provider factory for Backend #25 PR-B)_
 - **D-01 / D-06** — extraction is READ-ONLY; AI never authors/edits legal content.
 
 ## Provider lineup
-| Provider | Role | Model | ~Cost/doc target |
+| Provider | Role | Model | ~Cost/doc |
 |---|---|---|---|
-| GeminiFlashProvider | primary | `gemini-2.5-flash` | 150đ |
-| ClaudeHaikuProvider | fallback (<90% accuracy) | `claude-haiku-4-5` | 300đ |
-| ClaudeSonnetProvider | complex / handwritten | `claude-sonnet-4-6` | — |
+| GeminiFlashProvider | primary (vision) | `gemini-2.5-flash` | ~177đ (measured) |
+| ClaudeHaikuProvider | fallback (<90% accuracy) | `claude-haiku-4-5` | ~560đ |
+| ClaudeSonnetProvider | complex / handwritten | `claude-sonnet-4-6` | ~1,693đ |
+| `remap_type()` | text-only remap (#258) | `gemini-2.5-flash` (text) | ~2-3đ |
+
+> **Cost note:** 177đ measured on staging (vs 59đ on H_MB_6 local). Issue #248
+> filed `for:pm` to ratify canonical figure for docs. `remap_type()` uses
+> provider tag `gemini_flash_text` for cost tracking (#255).
+
+## Done (Sprint 1 — #230 anchors, #258 remap, #268 analysis)
+
+### PR #232 → staging (merged, QC sign-off ✓)
+- [x] `AnchoredField(ExtractedField)` — `page_num` (1-based int) + `ref` (clause label).
+      Gemini Full schema only; Claude lean stays anchor-free (grammar guard).
+- [x] `_ANCHOR_SPEC` prompt rewrite — mandatory + example-driven (11 lines). Live-validated:
+      7/8 valued fields populated by Gemini (`page_num=7/12`, `ref=5/12`).
+- [x] `anchor_probe.py` — isolated #230 validator. Calls provider directly (no HTTP/auth/DB).
+      Per-field table, exit code 0/1 as gate. Provider-conditional expectations.
+- [x] Smoke scripts (`smoke_e2e_staging.py` + `.sh`) — `/api/` prefix fix, anchor gate
+      softened to warning (deployed vs not-deployed ambiguity).
+- [x] Post-deploy integration smoke: 12/12 steps green, `anchored(page_num)=7 with_ref=5`.
+
+### Issue #258 — clause remap (KHE_AI scope shipped)
+- [x] `remap.py` — `async remap_type(clauses, target_type) -> RemapResult`.
+      Text-only Gemini Flash call (~2-3đ vs ~177đ vision). No quota, no file needed.
+- [x] PM-ratified output: `RemapResult(fields, provider, cost_vnd, warnings)`,
+      `RemapFieldResult(value, ref, page_num=None, confidence, needs_review)`.
+- [x] `_to_remap_result()` — row for EVERY target key (D-07), drops invented keys,
+      `page_num` always None (honest, text-only), confidence clamped.
+- [x] No-op guards: empty clauses → `no_clauses`; no type-specific fields → `no_type_specific_fields_for_target`.
+- [x] `build_remap_instruction()` — lists only target's fields from `TYPE_SPECIFIC_FIELDS`.
+- [x] LLM schema: `_RemapExtractionLLM` with `list[_RemapFieldLLM]` — lean, Gemini-safe.
+- [x] 9 unit tests (`test_remap.py`); all passing.
+- [x] Public API exported: `remap_type`, `RemapResult`, `RemapFieldResult` in `__init__.py`.
+- [x] Full #258 stack deployed to staging (Backend endpoint + KHE_AI + FE UI all merged).
+
+### Issue #268 — chat D-08 false-negatives (analysis posted, not AI scope)
+- [x] Root-cause analysis posted on #268:
+      Q2 = SQLite `lower()` ASCII-only on Vietnamese diacritics (unicode-lower bug pattern).
+      Q3 = tool-selection (model picks wrong tool for query type).
+- [x] Not KHE_AI scope — Backend chat router owns the fix.
+
+### DOCS_INBOX posts (×4)
+- [x] AnchoredField schema + prompt (PR #232)
+- [x] Cost figure (177đ staging vs 59đ local — issue #248 filed `for:pm`)
+- [x] Provider/model field on DocumentDetailOut (#233/#235)
+- [x] Remap module (#258 — new `remap.py`, output contract, provider tag)
 
 ## Done (issue #53 — provider factory for Backend #25 PR-B)
 - [x] `get_extraction_provider(prefer="gemini_flash")` exported from
@@ -47,15 +91,22 @@ _Last updated: 2026-06-18 (issue #53 — provider factory for Backend #25 PR-B)_
 - [x] `docs/benchmark_vision_extraction_v0.1.md` (methodology + targets; results pending).
 
 ## Blocked / pending
+- **Haiku-text benchmark for remap (#258 Q2):** PM ratified Gemini Flash text as
+  default remap provider. Benchmark Haiku-text alternative post-ship. Needs PII-scrubbed
+  samples with clauses. Unblocked but not yet run.
+- **Issue #248 — cost figure ratification:** 177đ (staging) vs 59đ (local H_MB_6).
+  Awaiting PM decision on canonical cost figure for docs. `for:pm` label.
+- **Post-remap E2E smoke on staging:** Full #258 stack deployed but the remap endpoint
+  path specifically not yet E2E-tested via smoke.
+- **Key rotation:** Gemini + Claude API keys used in local testing should be rotated.
 - **Live benchmark numbers (full 15-sample run)** — needs:
   1. 15 HĐ thật F&B/bán lẻ (PM decision 2026-06-11: **không dùng synthetic**, chờ
      bộ thật để số liệu có giá trị quyết định).
-  2. Gemini quota — billing đang process (PM screenshot 2026-06-11). Claude OK.
-  3. PII scrub trước khi đưa vào fixtures (NĐ 13/2023).
-  → `blocker:waiting-dependency` (samples + Gemini billing).
+  2. PII scrub trước khi đưa vào fixtures (NĐ 13/2023).
+  → `blocker:waiting-dependency` (samples).
 - **Long PDFs (>~100 trang, >~32MB)** — file FIDIC 193pp/18.8MB vượt Claude inline
-  + Gemini inline limit. Cần File API path (deferred to Sprint 1; F&B SME contracts
-  thường ngắn → low priority).
+  + Gemini inline limit. Cần File API path (deferred; F&B SME contracts thường ngắn
+  → low priority).
 
 ## Live test 2026-06-11 — H_MB_6.pdf (HĐ mua bán BĐS, 59pp scan)
 First end-to-end run with real provider keys. Pipeline verified on a **scanned
@@ -118,11 +169,15 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   nghĩa: skip (no obligation) vs flag-for-human?
 ```
 
-## Next
-- Wait for 15 real F&B/bán lẻ HĐ + Gemini billing → run full 3-provider benchmark.
-- Post DOCS_INBOX note above after Sprint-0 PR merges.
-- Coordinate with KHE_Backend on the ingest call site that invokes `extract()` +
-  logs `consent_reference` (interface change → via PM first).
+## Next (for incoming session)
+- **Haiku-text remap benchmark** — compare Gemini Flash text vs Claude Haiku text on
+  remap accuracy + cost. Needs PII-scrubbed samples with populated clauses[].
+- **Post-remap staging smoke** — hit `POST /documents/{id}/remap-type` end-to-end on
+  staging (upload → extract → remap to different type → verify new terms).
+- **Rotate local API keys** used during anchor_probe + remap testing.
+- **Issue #248 follow-up** — once PM ratifies cost figure, fold into docs (or post
+  DOCS_INBOX for docs-editor).
+- **15-sample benchmark** — still blocked on real HĐ samples + PII scrub.
 
 ## Env / secrets (relay KHE_Infra, 2026-06-11)
 - GitHub Actions secrets set in repo: **`GEMINI_API_KEY`** (primary) and
@@ -133,7 +188,10 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
 
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
-  done; awaiting live run for results.
+  done; awaiting live run for results (blocked on samples).
 - relay KHE_Infra (2026-06-11) — secret names confirmed; provider key lookup aligned to `CLAUDE_API_KEY`.
 - issue #53 (`for:ai`, `from:backend`, `task-assignment`) — export `get_extraction_provider()`
-  factory for #25 PR-B. Status: **done** — factory + typed error + fallback shipped, signature posted.
+  factory for #25 PR-B. Status: **done**.
+- issue #258 — clause remap. Status: **done** (KHE_AI scope shipped, full stack on staging).
+- issue #248 — cost figure ratification. Status: **awaiting PM** (`for:pm`).
+- issue #268 — chat D-08 false-negatives. Status: **analysis posted** (not AI scope).
