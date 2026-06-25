@@ -41,6 +41,36 @@ Nếu "này/đó/kia" resolve sai mà không báo → **im lặng sai** trong do
 
 ---
 
+## ⚓⚓ CORE REPOSITIONING (Kevin 2026-06-25) — Khế = Obligation Management Platform
+
+> **"Khế là nền tảng đảm bảo MỌI nghĩa vụ + quyền lợi pháp lý của một tổ chức được quản trị + thực hiện — khi đã được văn bản hóa qua tài liệu pháp lý. Chat + nhắc việc chỉ là PHÁI SINH của chức năng phân tích hợp đồng (CORE)."**
+
+**Không phải pivot — là SHARPEN của cái đã có** (Obligation = "MVP heart" BRD §6 / DEC-027/030). QC review (Kevin endorsed 2026-06-25) xác nhận: reframe này *focus hơn*, không scatter. Kỷ luật ưu tiên:
+- Đầu tư dồn vào **extraction completeness + obligation model depth**
+- Chat chỉ cần "đủ tin, không bịa" (D-08) — không fancy
+- Reminder chỉ cần "surface đúng cái đã phân tích"
+
+**Tài liệu pháp lý** = bất kỳ văn bản tạo ràng buộc pháp lý (HĐ, MoU, thỏa thuận, quyết định tòa án, quyết định bên sở hữu...). **MVP = CHỈ HĐ trước**, mở rộng qua document type (Kevin confirm).
+
+**Nghĩa vụ + Quyền lợi = cùng obligation model, khác CHIỀU** (direction axis DEC-030 — không phải 2 concept). Cả tài chính (thanh toán, phạt, cọc, bảo lãnh) + phi tài chính (bảo mật, độc quyền, không cạnh tranh, báo cáo định kỳ, tuân thủ, bảo hành).
+
+### Hệ quả ưu tiên (re-prioritize — KHÔNG hủy việc đang chạy)
+- **extraction depth > chat polish**
+- #268 (chat trace) redefine: không phải "chat hay hơn" mà "**chứng minh Khế không bỏ sót cái nó đã phân tích**" — proof of the core promise
+- #259/#251 (journey/confirm) = nền D-02, càng critical (mọi obligation phải human-verify)
+- **HOLD start feature mới.** Firm portal #65/#237 vẫn pre-pilot (DEC-042) nhưng XẾP SAU core BA. Việc đang chạy dở (#268/#251/#259) tiếp tục, không hủy.
+
+### 3 gap — VERIFIED vs shipped staging code (fold vào #272)
+1. **🔴 Standing/continuous obligations KHÔNG managed (gap lớn nhất).** Verified: `extraction_runner` chỉ tạo obligation từ `obligation_schedule[]` (= "nghĩa vụ CÓ LỊCH/ĐỢT") + 1 `expiration`. Nghĩa vụ liên tục phi-lịch (bảo mật/không cạnh tranh/độc quyền/báo cáo/tuân thủ) → chỉ thành Term field, KHÔNG thành managed obligation. Đây chính là "tool nhắc hạn ≠ nền tảng đảm bảo MỌI nghĩa vụ". → mở enum + temporal T5 standing + StandingObligationDeriver.
+2. **🟠 Rights chưa first-class.** Verified: `reminders.py` KHÔNG filter direction → quyền lợi CÓ due_date *được* nhắc ✅, nhưng dùng `ob.description` thô (không phân biệt "bạn trả" vs "đối tác trả cho bạn"), không có rights surface riêng, direction=NULL mơ hồ. → direction-aware copy + rights tab + MVP chỉ quyền lợi có due_date.
+3. **🟡 Completeness/recall.** Verified: benchmark chỉ chấm 4 field per-field accuracy. `clauses[]` (toàn văn, đã có trong DB) = backstop chưa dùng. → completeness pass text-only trên clauses (pattern #258) + runtime flag + obligation-recall metric hạng mới (D-08 mở rộng field→obligation level).
+
+**Architecture (DEC-044):** Modular monolith + Protocol contracts (KHÔNG microservice). Extractable "Contract Analysis Core" = ExtractionProvider → ObligationDeriver pipeline (Protocol mới, tách inline schedule loop) → Obligation+Rights model → CompletenessVerifier. Refactor reversible, rẻ.
+
+**Core BA issue:** **#272** (filed 2026-06-25). 3-phase plan (P1 core pre-pilot / P2 depth / P3 recall metric). 4 open Q (top-N standing types, labeled samples, schedule-vs-new-list, P1 timing). Đề xuất DEC-043/044/045.
+
+---
+
 ## Active Sprint Context
 
 **Current phase:** **Sprint 1 IN PROGRESS** — Backend M1+ vertical slice complete on staging. Frontend wiring + QC smoke = critical path to pilot.
@@ -195,6 +225,9 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 
 | DEC-041 | **Flash-lite benchmark — CANCELLED (Kevin 2026-06-24).** Economics acceptable at 177đ/call + 100k VND/client/month. No re-measurement needed. Gemini 2.5 Flash stays as primary provider (DEC-002 unchanged). Issue #248 closed. | **Closed — not proceeding** | 2026-06-24 |
 
+| DEC-043 | **Core repositioning: Khế = Obligation & Rights Management Platform (Kevin 2026-06-25).** Khế đảm bảo MỌI nghĩa vụ + quyền lợi pháp lý của tổ chức (đã văn bản hóa) được quản trị + thực hiện — tài chính + phi tài chính, nghĩa vụ + quyền lợi (cùng model khác direction). Chat + reminder = PHÁI SINH của Contract Analysis Core. Không pivot — sharpen Obligation "MVP heart". Ưu tiên: extraction completeness + obligation depth > chat/reminder polish. Tài liệu MVP = HĐ, mở rộng qua document type. Engineering BA #272. | **Ratified** (Kevin 2026-06-25) | 2026-06-25 |
+| DEC-044 | **Architecture = Modular Monolith + Protocol contracts (Kevin endorse QC 2026-06-25). NOT microservice deploy.** "Dễ extend + reuse" đạt qua module boundary sạch + Protocol (precedent VisionExtractionProvider) trong monolith; giữ multi-tenant SQLite + atomic transaction + D-07. Extractable "Contract Analysis Core" = ExtractionProvider→ObligationDeriver pipeline→Obligation+Rights model→CompletenessVerifier. Tách microservice CHỈ khi scale thật. Platform/reuse play = DEC riêng nếu Kevin muốn sau. Rationale QC: microservice ≠ modularity; team 2-dev + pre-PMF → 5× ops cost, phá get_tenant_session, mất atomicity. | **Ratified** (Kevin 2026-06-25, QC review) | 2026-06-25 |
+| DEC-045 | **Completeness = mission-critical metric (Kevin endorse QC 2026-06-25).** Bỏ sót 1 obligation (vd điều khoản phạt) = top-severity failure ≠ sai 1 field. Tách obligation-recall metric riêng khỏi per-field accuracy (M-3 ≥90%). `clauses[]` = completeness backstop (completeness pass text-only, pattern #258). D-rule mới D-COMPLETENESS (KHE_Docs gán số — D-11/D-13 đã dùng): tối ưu recall, flag clause sinh-nghĩa-vụ chưa-capture, thà flag thiếu hơn silent miss (D-08 mở rộng field→obligation). Metric def trong BA #272. | **Ratified** (principle) (Kevin 2026-06-25) | 2026-06-25 |
 | DEC-042 | **Firm Portal vào pre-pilot scope (Kevin 2026-06-24). Amends DEC-037** (chỉ clause "firm journey deferred to Phase 2 entirely"; PWA-vs-Admin stage split giữ nguyên). Rationale: DEC-013 pilot firm-paid → firm cần portfolio surface ngày 1 ("firm-pays, firm operates"). Engineering BA = #270 (cross-tenant fan-out + consent state machine + DEC-039 visibility). Build sequence: #65 scaffold (unblocked, dep #63 merged) → #237 handshake+feed. KHE_AI `contains_personal_data` flag = dep #237 Phase C. Priority HIGH. | **Ratified** (Kevin 2026-06-24) | 2026-06-24 |
 
 | DEC-031 | **Chat context = Result-seeded Progressive State (v2). Anchor: Khế giải multi-turn chat bằng structured data, KHÔNG phải conversation memory.** Model: mỗi query result tự động seeds `chat_sessions.state_json` cho turn tiếp theo — "conversational computation" (Excel filter→SUM; shell pipe; SQL cursor). Generic chatbot không có structured data → buộc dùng prose history (5K tok). Khế có obligations/parties/amounts với ID → maintain 50-token JSON state. **5 invariants (tất cả mandatory):** (1) **State model** — server maintain `chat_sessions.state_json = {active_doc_ids[], active_obligation_ids[], working_set_label, last_tool_call}` per conversation thread, KHÔNG phải prose; (2) **Visibility invariant (mandatory — không drop)** — scope chip hiển thị trong mỗi response bubble "📌 Đang trong context: HĐ Penfield ▾"; tap để widen/reset/switch. Excel/Shell work vì operator explicit — chat không có → chip là operator; (3) **Ambiguity guard** — multi-doc results → ask-clarify KHÔNG auto-narrow silent ("Ý bạn là HĐ nào trong 3 HĐ vừa tìm?"); (4) **Cold-start** — turn 1 deictic ("HĐ này?" khi chưa có context) → ask-clarify ("Bạn muốn hỏi về HĐ nào? [list]"); (5) **Invalidation** — time decay 30-min session timeout + explicit "🔄 Hỏi mới" button + intent-shift detection high threshold → ask trước khi switch. **Spec debt (file cùng engineering task):** result content schema chi tiết; alias resolution rules parties[]; NĐ 13 audit log cho state_json (pointer tới PII data → compliance debt tương tự DEC-028, KHE_Compliance track). **Frontend impact:** scope chip + reset button = mandatory change (không phải zero-frontend). **Engineering hold:** assign sau khi #155 (parties[]) + #156 (type sync) ship. Ref: #178 (KHE_QC BA × 3 rounds). | **Ratified v2** (Kevin 2026-06-20) | 2026-06-20 |
