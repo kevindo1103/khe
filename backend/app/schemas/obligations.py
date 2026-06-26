@@ -32,6 +32,9 @@ class ObligationOut(BaseModel):
     fulfilled_at: datetime | None = None
     fulfilled_by: str | None = None
     evidence_doc_ids: list[int] | None = None   # deserialized from JSON Text column
+    # Clause provenance (#303, DEC-048 §13)
+    source_clause_num: str | None = None
+    derived_from: str | None = None
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
