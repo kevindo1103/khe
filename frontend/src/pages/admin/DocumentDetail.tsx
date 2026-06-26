@@ -8,6 +8,7 @@ import type { ObligationOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
 import {
+  DOC_TYPE_LABELS,
   DOC_TYPE_GROUP_LABELS,
   OBLIGATION_TYPE_LABELS,
   DIRECTION_LABELS,
@@ -312,7 +313,7 @@ export default function DocumentDetail() {
                 <Badge kind={STATUS_BADGE[doc.status] || 'neutral'}>
                   {STATUS_LABEL[doc.status] || doc.status}
                 </Badge>
-                {doc.doc_type && <span>· {doc.doc_type}</span>}
+                {doc.doc_type && <span>· {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}</span>}
                 {docTypeGroupTerm?.field_value && (
                   <span>
                     ·{' '}
