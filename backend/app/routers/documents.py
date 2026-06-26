@@ -881,10 +881,25 @@ async def remap_document_type(
     # 5. Cost on the doc (#255) — remap spend tracked like extraction.
     doc.extraction_cost_vnd = (doc.extraction_cost_vnd or 0.0) + result.cost_vnd
 
-    # 6. Old obligations may carry the wrong obligation_type → rebuild (PM Q4).
-    db.query(Obligation).filter(
-        Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id
-    ).delete(synchronize_session=False)
+    # 6. Source-aware merge (#301, DEC-048 P1): keep user-manual / user-touched
+    #    obligations; only replace AI-derived pending ones.
+    all_obs = (
+        db.query(Obligation)
+        .filter(Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id)
+        .all()
+    )
+    kept_manual = 0
+    replaced_ai = 0
+    for ob in all_obs:
+        is_user_touched = (
+            ob.source == "user_manual"
+            or ob.status in ("done", "cancelled")
+        )
+        if is_user_touched:
+            kept_manual += 1
+        else:
+            db.delete(ob)
+            replaced_ai += 1
 
     # 7. Audit (D-07) — commits the whole transaction above.
     _log_event(
@@ -896,11 +911,12 @@ async def remap_document_type(
         payload={"from": old_type, "to": target, "provider": result.provider,
                  "remap_cost_vnd": result.cost_vnd,
                  "fields_remapped": remapped, "fields_null": nulls,
+                 "kept_manual": kept_manual, "replaced_ai": replaced_ai,
                  "warnings": result.warnings},
     )
 
     # 8. Re-derive date-based obligations from the (now-current) Terms.
-    derive_obligations(db, user.tenant_id, doc_id)
+    derive_obligations(db, user.tenant_id, doc_id, source_label="ai_re_derived")
     # 9. Tenant cost aggregate (#255) — master.db, only on a real remap spend.
     quota.add_extraction_cost_standalone(user.tenant_id, result.cost_vnd)
 
