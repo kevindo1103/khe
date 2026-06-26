@@ -4,6 +4,20 @@
  * Source: backend/modules/extraction/schemas.py
  */
 
+// Legacy doc_type field (DocumentListItem.doc_type) — snake_case NEVER rendered (G8)
+export const DOC_TYPE_LABELS: Record<string, string> = {
+  hd_nha_cung_cap:       'Nhà cung cấp',
+  hd_thue_mat_bang:      'Thuê mặt bằng',
+  hd_lao_dong:           'Lao động',
+  hd_dan_su:             'Dân sự',
+  hd_bat_dong_san:       'Bất động sản',
+  hd_van_tai_logistics:  'Vận tải & Logistics',
+  hd_xay_dung:           'Xây dựng',
+  hd_cong_nghe_ip:       'Công nghệ & IP',
+  hd_tai_chinh:          'Tài chính',
+  hd_hanh_chinh:         'Hành chính',
+};
+
 // DEC-029 doc_type_group — 10 groups + "other" fallback
 export const DOC_TYPE_GROUP_LABELS: Record<string, string> = {
   dan_su: 'Dân sự',
