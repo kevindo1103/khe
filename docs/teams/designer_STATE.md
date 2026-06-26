@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-18 (Phase 1+2 approved; Phase 3 PWA screens built)_
+_Last updated: 2026-06-25 (session wrap-up: #243 firm F-stages merged, #245 confirm-flow merged, #246 FE reviewed)_
 
 ## Decisions in force (design-relevant)
 - **DEC-017** — Design System + mockups MUST land + Kevin-approve BEFORE Frontend
@@ -175,18 +175,23 @@ Firm = economic buyer (Chị Hằng, B2B2B). Portal = lead-generator (J5), KHÔN
 - Primitives **#242 MERGED** (PM approved; ConsentStatus granted → `done` kind per PM note; urgencyOf tokens verified).
 - ⚠ DEC-039 chưa fold canonical — PM post DOCS_INBOX sau Kevin ratify. Firm digest = email-only MVP; no chat/export/push (PM items 4/5/8).
 
-### F-stages DONE — branch `claude/design-firm-fstages-236` (chờ PM final review)
+### F-stages DONE — ✅ MERGED PR #243 → staging (PM retrospective LGTM)
 - `mockup_firm_stage_F0_F1_v0.1.jsx` — F0 cold-start (Mời client) + F1 **dual path** (F1a concierge: tạo tenant + activation link / F1b invite: SME đã có account) + sent-confirm + pending list. **Exports `FirmShell`** (desktop sidebar, reused). NavItem #206.
 - `mockup_firm_stage_F3_F4_v0.1.jsx` — F3 portfolio (ClientCard grid, sort due/name/count + filter 30/60/90, all-clear empty) + F4 lead signals (grouped Khẩn cấp/Sắp tới/Theo dõi, mailto CTA, LiveRegion count, all-clear).
 - `mockup_firm_stage_F5_F6_v0.1.jsx` — F5 digest (stat cards + bản tin tháng + **email-only toggle**, all-clear) + F6 consent settings (active consents list + RevokeBanner transition; **no firm-side revoke** — D-10/PM #9).
 - All read-only (D-09), consent-gated (D-10), desktop-first, inherit #206. Built to #237 contract.
 
-## DEC-040 confirm-flow design (#238 ratify) — branch `claude/design-confirm-flow-dec040-238`
+## DEC-040 confirm-flow design (#238 ratify) — ✅ MERGED PR #245 (`09d2a61` → staging)
 Kevin ratified #238: `POST /documents/{id}/confirm` + nav-unlock = **Option (B) CONFIRMED** (is_first_session clears tại CONFIRMED, không phải ACTIVATED). Option B ⇒ user có thể tới steady WITHOUT reminder channel → "silent product failure" → MANDATORY nudge. Designer A+B+C:
-- **A (MANDATORY):** `mockup_admin_dashboard_v0.2.jsx` thêm state **CONFIRMED-without-channel** → `ReminderNudge` (#198 primitive) + chip **"2/3 bước"** (doc ✅ · nhắc Telegram ⬜ · steady ⬜) + nút Bật nhắc. Showcase toggle 2 state.
+- **A (MANDATORY):** `mockup_admin_dashboard_v0.2.jsx` thêm state **CONFIRMED-without-channel** → `ReminderNudge` (#198 primitive) + chip **"N/M bước"** (doc ✅ · nhắc Telegram ⬜ · steady ⬜) + nút Bật nhắc. Showcase toggle 2 state.
 - **B:** DEC-040 fix nav-lock refs **ACTIVATED → CONFIRMED** trong `mockup_app_nav_v0.2.jsx` + `mockup_journey_primitives_v0.1.jsx` (header + LockedNav note). Giữ nguyên ACTIVATED ở chỗ = stage enum + reminder-channel gate (vẫn đúng).
-- **C:** `mockup_admin_document_detail_v0.2.jsx` thêm footer **"Xác nhận document này"** (disabled khi đang sửa field) + confirmed badge + toast (3/16) — design ref cho FE item 1/2 (#238).
+- **C:** `mockup_admin_document_detail_v0.2.jsx` thêm footer **"Xác nhận document này"** (disabled khi đang sửa field) + confirmed badge + toast (X/Y) — design ref cho FE item 1/2 (#238).
+- **ProgressChip → journey primitive (§6b):** promoted từ dashboard-local sang exported `ProgressChip({ steps })` trong `mockup_journey_primitives_v0.1.jsx` (generalized `{label,done}[]` prop, cùng shape `SetupProgress` §3). Reusable trên doc-detail/doc-list.
 - ⚠ DEC-040 = clarification của #213, KHE_Docs fold DOCS_INBOX (PM note). Mockup-scope, no BRD/SRS edit by me.
+- **FE follow-up #247:** (1) lift ProgressChip lên shared component khi surface thứ 2 cần; (2) X/Y từ `confirmed_by_user_at` — ✅ đã có trong FE #246.
+
+### #246 FE impl review (2026-06-25, COMMENT — not our branch)
+FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge). Architecture solid (one fetch, atomic sidebar unlock via refetch). **1 fix flagged:** DocList `needsConfirm = status !== 'processing' && !confirmed_by_user_at` shows unclearable "Cần xác nhận" badge trên `status=failed` docs (no terms → no confirm card). Suggest gate trên `extracted || needs_review`. Left for PR owner. Non-blocking notes: `/consent` fail-open cuts against DEC-040 intent; StepsChip/ReminderNudge local (= #247).
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
@@ -194,6 +199,18 @@ Kevin ratified #238: `POST /documents/{id}/confirm` + nav-unlock = **Option (B) 
   Phase 2 detail design, flag via DOCS_INBOX (do not self-resolve).
 - `thoi_han_hd` phi-số ("vô thời hạn") state — BRD FR-OB-01 leaves policy open;
   Sprint 2 "Vô thời hạn" obligation display flagged but NOT designed in M0.
+
+## Session wrap-up 2026-06-25
+- **#243 firm F-stages** — PM retrospective LGTM, merged to staging. DOCS_INBOX filed (4 forward notes: F1a concierge backend, F4 mailto source, F1 PWA badge, DEC-039 fold).
+- **#245 DEC-040 confirm-flow** — ProgressChip → §6b primitive. PM LGTM, merged staging (`09d2a61`). DOCS_INBOX filed (DEC-040 canonical fold pending KHE_Docs).
+- **#246 FE impl** — reviewed (LGTM + 1 fix: failed-doc badge). Not our branch.
+- **#247** — FE follow-up filed (note 2 already done in #246).
+
+### Open for next session
+- **#246 not merged** — waiting on owner (failed-doc badge fix flagged).
+- **DEC-040 canonical fold** — awaiting KHE_Docs → BRD/SRS.
+- **#243 forward notes** — 4 items need PM ratify pass.
+- **No new design work queued** — kickoff: list `for:designer` issues, read this file.
 
 ## Inbox
 - issue #24 (`for:designer`, `task-assignment`, GATING #30 + #31) — Sprint 1
