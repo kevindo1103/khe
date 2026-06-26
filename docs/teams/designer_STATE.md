@@ -5,9 +5,9 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-26 (#281 — /admin/documents/:id doc-detail v2 revamp: obligation-centric, self-party-gated, B&W minimalist)_
+_Last updated: 2026-06-26 (#305 — DEC-048 §13 re-read surfaces, QC D1–D4 fixes)_
 
-> Branch (current task): `claude/spawn-khe-designer-role-pdvitc` (issue #281).
+> Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
 ## Decisions in force (design-relevant)
 - **DEC-017** — Design System + mockups MUST land + Kevin-approve BEFORE Frontend
@@ -88,7 +88,7 @@ Built in `mockup_design_system_v0.1.jsx`:
 - **✅ APPROVED by Kevin 2026-06-26.** → open PR `claude/design-documents-list-v2` + file FE-build task.
 
 ## Issue #281 — /admin/documents/:id doc-detail v2 revamp (DEC-043 + QC doc-detail report) — IN PROGRESS
-- Branch `claude/spawn-khe-designer-role-pdvitc`. Full redesign of document-detail page, sibling to #278.
+- Branch `claude/design-doc-detail-reread-305`. Full redesign of document-detail page, sibling to #278.
 - **IA inverted (DEC-043):** derived title → self-party gate (BLOCKING) → Nghĩa vụ & Quyền lợi → Terms (demoted).
 - **3-tab structure (Kevin comment 2026-06-26):**
   1. Tổng quan — snapshot, self-party gate, completeness banner, term-fields (⚠ only, no raw %)

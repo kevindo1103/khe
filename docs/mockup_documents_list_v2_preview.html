@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Khế — Hồ sơ hợp đồng v2 · Preview #278</title>
+<style>
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #fff; color: #1a1a1a; font-size: 14px; }
+
+/* ── Tab bar ── */
+#tab-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+  background: #fff; border-bottom: 1px solid #e5e7eb;
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+#tab-bar .brand { font-size: 13px; font-weight: 700; color: #0F7A56; margin-right: 4px; }
+.tab-btn {
+  padding: 5px 14px; border-radius: 999px; border: 1px solid #e5e7eb;
+  background: #fff; color: #1a1a1a; font-size: 13px; cursor: pointer;
+  font-family: inherit; font-weight: 500; transition: all .15s;
+}
+.tab-btn.active { background: #0F7A56; color: #fff; border-color: #0F7A56; }
+
+/* ── Note bar ── */
+#note-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 999;
+  background: #fef3e2; border-top: 1px solid #D97706; color: #92400e;
+  font-size: 11px; padding: 5px 16px; text-align: center;
+}
+
+/* ── Layout ── */
+#root { padding-top: 44px; padding-bottom: 28px; }
+.screen { display: none; }
+.screen.active { display: flex; min-height: calc(100vh - 72px); }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 220px; min-width: 220px; border-right: 1px solid #e5e7eb;
+  padding: 16px; background: #fff; flex-shrink: 0;
+}
+.sidebar-brand { font-size: 20px; font-weight: 700; color: #0F7A56; padding: 8px 12px 20px; }
+.nav-group { font-size: 11px; font-weight: 600; color: #9CA3AF; letter-spacing: .5px;
+  text-transform: uppercase; padding: 8px 12px 4px; }
+.nav-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-radius: 8px; cursor: pointer; font-size: 14px; color: #1a1a1a;
+  font-weight: 400; transition: background .1s;
+}
+.nav-item:hover { background: #f3f4f6; }
+.nav-item.active { background: #E7F3EE; color: #0F7A56; font-weight: 600; }
+.nav-item .icon { width: 16px; text-align: center; color: #9CA3AF; }
+.nav-item.active .icon { color: #0F7A56; }
+.nav-item .lbl { flex: 1; }
+.nav-badge {
+  font-size: 11px; font-weight: 600; color: #fff; background: #D97706;
+  min-width: 18px; text-align: center; padding: 0 5px; border-radius: 999px; line-height: 18px;
+}
+.beta-chip {
+  font-size: 10px; font-weight: 600; color: #D97706; background: #FEF3E2;
+  padding: 1px 6px; border-radius: 999px;
+}
+
+/* ── Main ── */
+.main { flex: 1; padding: 32px; min-width: 0; }
+
+/* ── Page header ── */
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.page-title { font-size: 24px; font-weight: 700; color: #1a1a1a; }
+.page-sub { font-size: 14px; color: #6B7280; margin-top: 8px; }
+.cta-btn {
+  background: #0F7A56; color: #fff; border: none; padding: 8px 20px;
+  border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  white-space: nowrap; flex-shrink: 0;
+}
+.cta-btn:hover { background: #0d6648; }
+
+/* ── Counter chips ── */
+.counter-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.counter-chip {
+  border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 500;
+  cursor: pointer; font-family: inherit; transition: opacity .1s;
+}
+.counter-chip:hover { opacity: .8; }
+.counter-chip.amber { border: 1px solid #D97706; background: #FEF3E2; color: #D97706; }
+.counter-chip.red   { border: 1px solid #DC2626; background: #FDECEC; color: #DC2626; }
+.counter-chip.muted { border: 1px solid #e5e7eb; background: transparent; color: #6B7280; cursor: default; }
+
+/* ── Search + filter chips ── */
+.search-row { margin-top: 20px; }
+.search-input {
+  width: 100%; max-width: 360px; height: 40px; padding: 0 12px;
+  font-size: 14px; font-family: inherit; border: 1px solid #e5e7eb;
+  border-radius: 8px; outline: none; color: #1a1a1a;
+}
+.search-input:focus { border-color: #0F7A56; }
+.filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px;
+  border-radius: 999px; font-size: 13px; font-weight: 500; cursor: pointer;
+  border: 1px solid #e5e7eb; background: #fff; color: #1a1a1a;
+  font-family: inherit; transition: all .15s;
+}
+.filter-chip:hover { border-color: #D1D5DB; }
+.filter-chip.active { background: #0F7A56; color: #fff; border-color: #0F7A56; }
+.filter-chip.muted { color: #6B7280; }
+.filter-chip .count { font-size: 11px; font-weight: 600; }
+.filter-chip.active .count { color: rgba(255,255,255,.8); }
+.toggle-pipeline {
+  border: none; background: transparent; color: #6B7280; cursor: pointer;
+  font-size: 13px; font-family: inherit; padding: 4px 8px;
+}
+.pipeline-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+/* ── Legend ── */
+.legend { font-size: 12px; color: #6B7280; margin-top: 16px; }
+.legend strong { color: #1a1a1a; }
+
+/* ── Table ── */
+.table-wrap {
+  margin-top: 12px; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; }
+colgroup .c1 { width: 34%; }
+colgroup .c2 { width: 11%; }
+colgroup .c3 { width: 18%; }
+colgroup .c4 { width: 19%; }
+colgroup .c5 { width: 18%; }
+thead th {
+  text-align: left; padding: 8px 12px; color: #6B7280; font-weight: 600;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .3px;
+  border-bottom: 1px solid #D1D5DB; background: #fafafa; white-space: nowrap;
+}
+tbody tr { cursor: pointer; transition: background .1s; }
+tbody tr:hover { background: #F9FAFB; }
+tbody tr:hover .doc-title { text-decoration: underline; }
+tbody tr:last-child td { border-bottom: none; }
+tbody td { padding: 12px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
+
+/* ── Cell types ── */
+.doc-title { font-size: 14px; font-weight: 500; color: #1a1a1a; }
+.doc-filename { font-size: 11px; color: #6B7280; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+.doc-dup { color: #D97706; font-weight: 700; font-size: 13px; cursor: help; margin-left: 6px; }
+.col-type { font-size: 13px; color: #6B7280; }
+.dir-cell { font-size: 13px; }
+.dir-nv   { color: #1a1a1a; }
+.dir-ql   { color: #1a1a1a; }
+.dir-glyph { color: #6B7280; }
+.dir-null { color: #6B7280; }
+.dir-dash { color: #9CA3AF; }
+.due-date { font-size: 13px; }
+.due-normal { color: #1a1a1a; }
+.due-soon   { color: #D97706; font-weight: 500; }
+.due-overdue{ color: #DC2626; font-weight: 600; }
+.due-standing { font-size: 13px; color: #6B7280; font-style: italic; }
+.due-dash   { color: #9CA3AF; }
+
+/* ── Status pill ── */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;
+  border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.pill-confirmed { background: #E7F3EE; color: #0F7A56; }
+.pill-pending   { background: #FEF3E2; color: #D97706; }
+.pill-process   { background: #F3F4F6; color: #6B7280; }
+.completeness   { font-size: 13px; font-weight: 700; margin-left: 8px; cursor: help; }
+.comp-warn  { color: #D97706; }
+.comp-null  { color: #6B7280; }
+
+/* ── Annotation box ── */
+.annotation {
+  margin-top: 24px; padding: 16px; background: #F3F4F6; border-radius: 12px;
+  font-size: 11px; color: #6B7280; line-height: 1.8;
+}
+.annotation strong { color: #1a1a1a; }
+.annotation-title { font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+
+/* ── Empty state ── */
+.empty-box {
+  margin-top: 32px; border: 1.5px dashed #D1D5DB; border-radius: 12px;
+  padding: 64px 32px; text-align: center;
+}
+.empty-icon { font-size: 52px; line-height: 1; }
+.empty-title { font-size: 20px; font-weight: 700; color: #1a1a1a; margin-top: 16px; }
+.empty-desc { font-size: 14px; color: #6B7280; max-width: 480px; margin: 12px auto 0; line-height: 1.65; }
+.empty-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+.cta-secondary {
+  background: #fff; color: #1a1a1a; border: 1px solid #D1D5DB; padding: 12px 24px;
+  border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit;
+}
+.empty-concierge { font-size: 13px; color: #9CA3AF; margin-top: 24px; }
+
+/* ── No results ── */
+.no-results { text-align: center; color: #6B7280; padding: 48px; }
+</style>
+</head>
+<body>
+
+<!-- Tab bar -->
+<div id="tab-bar">
+  <span class="brand">Khế Preview</span>
+  <button class="tab-btn active" onclick="switchTab('populated')" id="btn-populated">📄 Có dữ liệu (8 hợp đồng)</button>
+  <button class="tab-btn"        onclick="switchTab('empty')"     id="btn-empty">🗂 Trống (Day-1 concierge)</button>
+</div>
+
+<div id="root">
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN 1 — Populated (8 docs, all 7 row states)
+       ══════════════════════════════════════════════════════ -->
+  <div class="screen active" id="screen-populated">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">Khế</div>
+      <div class="nav-group">Theo dõi</div>
+      <div class="nav-item"><span class="icon">○</span><span class="lbl">Tổng quan</span></div>
+      <div class="nav-item"><span class="icon">◇</span><span class="lbl">Nghĩa vụ &amp; Quyền lợi</span></div>
+      <div class="nav-group">Tài liệu</div>
+      <div class="nav-item active"><span class="icon">■</span><span class="lbl">Hồ sơ hợp đồng</span><span class="nav-badge" id="sidebar-badge">3</span></div>
+      <div class="nav-item"><span class="icon">↑</span><span class="lbl">Tải lên</span></div>
+      <div class="nav-group">Trợ lý</div>
+      <div class="nav-item"><span class="icon">✦</span><span class="lbl">Hỏi-đáp</span><span class="beta-chip">Beta</span></div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+      <!-- Header -->
+      <div class="page-header">
+        <div>
+          <div class="page-title">Hồ sơ hợp đồng</div>
+          <div class="page-sub" id="page-subtitle">— cần xác nhận · — nghĩa vụ tới hạn · — hợp đồng</div>
+        </div>
+        <button class="cta-btn">+ Tải hợp đồng</button>
+      </div>
+
+      <!-- Counter chips -->
+      <div class="counter-chips">
+        <button class="counter-chip amber" id="chip-pending" onclick="setFilter('pending')">— cần xác nhận</button>
+        <button class="counter-chip red"   id="chip-due"    onclick="setFilter('due7')">— NV tới hạn 7 ngày</button>
+        <button class="counter-chip muted" id="chip-total">— hợp đồng</button>
+      </div>
+
+      <!-- Search + filters -->
+      <div class="search-row">
+        <input class="search-input" type="text" id="search-input" placeholder="🔍  Tìm theo tên hoặc đối tác..." oninput="renderTable()" />
+
+        <!-- Row 1: commitment-state -->
+        <div class="filter-row" id="filter-row-1">
+          <button class="filter-chip active" data-filter="all"     onclick="setFilter('all')">Tất cả <span class="count" id="cnt-all"></span></button>
+          <button class="filter-chip"        data-filter="due7"    onclick="setFilter('due7')">Tới hạn 7 ngày <span class="count" id="cnt-due7"></span></button>
+          <button class="filter-chip"        data-filter="overdue" onclick="setFilter('overdue')">Quá hạn <span class="count" id="cnt-overdue"></span></button>
+          <button class="filter-chip"        data-filter="pending" onclick="setFilter('pending')">Cần xác nhận <span class="count" id="cnt-pending"></span></button>
+          <button class="filter-chip"        data-filter="rights"  onclick="setFilter('rights')">Quyền lợi cần thu <span class="count" id="cnt-rights"></span></button>
+          <button class="toggle-pipeline" onclick="togglePipeline()">Trạng thái xử lý ▾</button>
+        </div>
+
+        <!-- Row 2: pipeline-state (hidden by default) -->
+        <div class="pipeline-row" id="pipeline-row" style="display:none">
+          <button class="filter-chip muted" data-filter="processing" onclick="setFilter('processing')">Đang xử lý</button>
+          <button class="filter-chip muted" data-filter="extracted"  onclick="setFilter('extracted')">Đã bóc tách</button>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <strong>↑ NV</strong> = nghĩa vụ (mình phải làm) &nbsp;·&nbsp;
+        <strong>↓ QL</strong> = quyền lợi (mình được nhận) &nbsp;·&nbsp;
+        <strong>?</strong> = chưa xác định
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrap">
+        <table>
+          <colgroup><col class="c1"/><col class="c2"/><col class="c3"/><col class="c4"/><col class="c5"/></colgroup>
+          <thead>
+            <tr>
+              <th>Hợp đồng</th>
+              <th>Loại</th>
+              <th>Nghĩa vụ · Quyền lợi</th>
+              <th>Hạn gần nhất</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <tr><td colspan="5" class="no-results">Đang tải…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Annotation -->
+      <div class="annotation">
+        <div class="annotation-title">📐 7 trạng thái hàng (Designer annotation — không render trong production)</div>
+        <div>
+          <strong>① Đã xác nhận</strong> — nền trắng &nbsp;·&nbsp;
+          <strong style="color:#DC2626">② Quá hạn</strong> — "quá hạn N ngày" đỏ Cột 4 &nbsp;·&nbsp;
+          <strong style="color:#D97706">③ Cần xác nhận</strong> — pill amber Cột 5 (NO viền hàng — G6) &nbsp;·&nbsp;
+          <strong>④ Standing-only</strong> — "Cam kết đang hiệu lực" Cột 4 (G3) &nbsp;·&nbsp;
+          <strong style="color:#D97706">⑤ Completeness ⚠/?</strong> — Cột 5 (DEC-045) &nbsp;·&nbsp;
+          <strong>⑥ Hover</strong> — #F9FAFB + gạch chân &nbsp;·&nbsp;
+          <strong style="color:#D97706">⑦ Nghi trùng</strong> — "!" Cột 1
+        </div>
+        <div style="margin-top:4px">
+          <strong>Sort (G2):</strong> cần xác nhận/quá hạn → hạn gần nhất tăng dần → đã xác nhận+yên tĩnh &nbsp;·&nbsp;
+          <strong>Direction (G4):</strong> hàng #1 mixed · #5 all-NULL · #6 zero "—" · "?" không bao giờ ẩn (D-13) &nbsp;·&nbsp;
+          <strong>CTA (G5):</strong> cố định "Tải hợp đồng" · chip đếm gánh nudge
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN 2 — Empty (Day-1 concierge)
+       ══════════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-empty">
+    <aside class="sidebar">
+      <div class="sidebar-brand">Khế</div>
+      <div class="nav-group">Theo dõi</div>
+      <div class="nav-item"><span class="icon">○</span><span class="lbl">Tổng quan</span></div>
+      <div class="nav-item"><span class="icon">◇</span><span class="lbl">Nghĩa vụ &amp; Quyền lợi</span></div>
+      <div class="nav-group">Tài liệu</div>
+      <div class="nav-item active"><span class="icon">■</span><span class="lbl">Hồ sơ hợp đồng</span></div>
+      <div class="nav-item"><span class="icon">↑</span><span class="lbl">Tải lên</span></div>
+      <div class="nav-group">Trợ lý</div>
+      <div class="nav-item"><span class="icon">✦</span><span class="lbl">Hỏi-đáp</span><span class="beta-chip">Beta</span></div>
+    </aside>
+    <main class="main">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Hồ sơ hợp đồng</div>
+          <div class="page-sub">Chưa có hợp đồng nào — tải lên để Khế bắt đầu theo dõi nghĩa vụ &amp; quyền lợi.</div>
+        </div>
+        <button class="cta-btn">+ Tải hợp đồng</button>
+      </div>
+
+      <div class="empty-box">
+        <div class="empty-icon">📄</div>
+        <div class="empty-title">Tải hợp đồng đầu tiên</div>
+        <div class="empty-desc">
+          Khế đọc hợp đồng, bóc tách <strong>nghĩa vụ</strong> (mình phải làm) và
+          <strong>quyền lợi</strong> (mình được nhận), rồi nhắc bạn trước khi tới hạn.
+          Bắt đầu chỉ với một file PDF hoặc ảnh chụp.
+        </div>
+        <div class="empty-actions">
+          <button class="cta-btn" style="padding:12px 24px">+ Tải hợp đồng</button>
+          <button class="cta-secondary">Tải nhiều file (≤20)</button>
+        </div>
+        <div class="empty-concierge">
+          Được onboard theo diện concierge? Đại lý / luật sư của bạn có thể số hóa giúp tận nơi.
+        </div>
+      </div>
+
+      <div class="annotation">
+        <strong>📐 Ghi chú:</strong>
+        Header skeleton giữ nguyên layout. CTA cố định "Tải hợp đồng" (G5). Bulk ≤20 = concierge DEC-012. Không bịa số liệu ở 0 hợp đồng.
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="note-bar">📐 STATIC PROTOTYPE — Mockup #278 · KHE_Designer · Branch claude/design-documents-list-v2 · Không phải production code</div>
+
+<script>
+/* ============================================================
+   DATA — 8 contracts exercising all 7 row states
+   ============================================================ */
+const DOC_TYPE_LABELS = {
+  hd_nha_cung_cap:      "Nhà cung cấp",
+  hd_thue_mat_bang:     "Thuê mặt bằng",
+  hd_lao_dong:          "Lao động",
+  hd_dan_su:            "Dân sự",
+  hd_bat_dong_san:      "Bất động sản",
+  hd_van_tai_logistics: "Vận tải & Logistics",
+  hd_xay_dung:          "Xây dựng",
+  hd_cong_nghe_ip:      "Công nghệ & IP",
+  hd_tai_chinh:         "Tài chính",
+  hd_hanh_chinh:        "Hành chính",
+};
+const docLabel = (dt) => DOC_TYPE_LABELS[dt] || "Chưa phân loại";
+
+const TODAY = new Date("2026-06-26");
+
+const DOCS = [
+  // ① cần xác nhận + gần hạn → sort lên đầu. Mixed direction (G4 case 1).
+  { id:1, doc_type:"hd_thue_mat_bang",     party:"Cty TNHH Hải Đăng",
+    file:"223692#FCV_thue_matbang_Q7_signed.pdf",
+    nv:5, ql:2, nullDir:3, oblCount:10, nextDue:"2026-07-08",
+    confirmed:false, pipeline:"extracted", completeness:false, dup:false },
+  // ② đã xác nhận + OVERDUE (đỏ). All-classified direction.
+  { id:2, doc_type:"hd_nha_cung_cap",      party:"Cty CP Bao Bì Việt",
+    file:"hopdong_baobi_2026.pdf",
+    nv:4, ql:0, nullDir:0, oblCount:4, nextDue:"2026-06-23",
+    confirmed:true, pipeline:"extracted", completeness:false, dup:false },
+  // ③ STANDING-ONLY (G3): có NV nhưng tất cả không có ngày.
+  { id:3, doc_type:"hd_lao_dong",           party:"Nguyễn Văn An",
+    file:"HDLD_NguyenVanAn_2026.pdf",
+    nv:2, ql:1, nullDir:0, oblCount:3, nextDue:null,
+    confirmed:true, pipeline:"extracted", completeness:false, dup:false },
+  // ④ cần xác nhận + completeness ⚠. Quyền lợi heavy.
+  { id:4, doc_type:"hd_xay_dung",           party:"Cty Xây Dựng Trường Sơn",
+    file:"thau_xaydung_kho_BinhTan.pdf",
+    nv:3, ql:6, nullDir:0, oblCount:9, nextDue:"2026-07-15",
+    confirmed:false, pipeline:"extracted", completeness:true, dup:false },
+  // ⑤ legacy — completeness NULL "?" + ALL-NULL direction "3?" (G4 case 3).
+  { id:5, doc_type:"hd_dan_su",             party:"Ông Trần Văn B",
+    file:"phuluc_dansu_cu.pdf",
+    nv:0, ql:0, nullDir:3, oblCount:3, nextDue:"2026-08-01",
+    confirmed:true, pipeline:"extracted", completeness:null, dup:false },
+  // ⑥ DUPLICATE "!" + zero obligations → em dash.
+  { id:6, doc_type:"hd_nha_cung_cap",      party:"Cty CP Bao Bì Việt",
+    file:"hopdong_baobi_2026 (1).pdf",
+    nv:0, ql:0, nullDir:0, oblCount:0, nextDue:null,
+    confirmed:false, pipeline:"extracted", completeness:false, dup:true },
+  // ⑦ ĐANG XỬ LÝ — pipeline state, no obligations yet.
+  { id:7, doc_type:"hd_van_tai_logistics",  party:"Cty Vận Tải Phương Nam",
+    file:"vantai_logistics_Q3.pdf",
+    nv:0, ql:0, nullDir:0, oblCount:0, nextDue:null,
+    confirmed:false, pipeline:"processing", completeness:null, dup:false },
+  // ⑧ đã xác nhận + xa hạn → bottom of sort.
+  { id:8, doc_type:"hd_cong_nghe_ip",       party:"Cty Phần Mềm FSoft",
+    file:"license_phanmem_IP.pdf",
+    nv:2, ql:1, nullDir:0, oblCount:3, nextDue:"2026-11-30",
+    confirmed:true, pipeline:"extracted", completeness:false, dup:false },
+];
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function isOverdue(d)  { return d.nextDue && new Date(d.nextDue) < TODAY; }
+function isDueSoon(d)  {
+  if (!d.nextDue) return false;
+  const diff = Math.round((new Date(d.nextDue) - TODAY) / 86400000);
+  return diff >= 0 && diff <= 7;
+}
+function daysDiff(iso) { return Math.round((new Date(iso) - TODAY) / 86400000); }
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
+}
+function isActionReq(d) { return (!d.confirmed && d.pipeline !== "processing") || isOverdue(d); }
+
+function sortDocs(arr) {
+  return [...arr].sort((a, b) => {
+    const ak = isActionReq(a) ? 0 : 1, bk = isActionReq(b) ? 0 : 1;
+    if (ak !== bk) return ak - bk;
+    const da = a.nextDue ? new Date(a.nextDue).getTime() : Infinity;
+    const db = b.nextDue ? new Date(b.nextDue).getTime() : Infinity;
+    return da - db;
+  });
+}
+
+/* ============================================================
+   RENDER CELLS
+   ============================================================ */
+function renderDirCell(d) {
+  if (d.oblCount === 0) return `<span class="dir-dash">—</span>`;
+  const parts = [];
+  if (d.nv > 0) parts.push(`<span class="dir-nv"><strong>${d.nv}</strong><span class="dir-glyph">↑</span> NV</span>`);
+  if (d.ql > 0) parts.push(`<span class="dir-ql"><strong>${d.ql}</strong><span class="dir-glyph">↓</span> QL</span>`);
+  if (d.nullDir > 0) parts.push(`<span class="dir-null" title="Chưa xác định loại nghĩa vụ">${d.nullDir}?</span>`);
+  return parts.join(' <span style="color:#e5e7eb">·</span> ');
+}
+
+function renderDueCell(d) {
+  if (d.nextDue) {
+    const diff = daysDiff(d.nextDue);
+    const dm = fmtDate(d.nextDue);
+    if (diff < 0) return `<span class="due-date"><span class="due-normal">${dm}</span> <span style="color:#e5e7eb">·</span> <span class="due-overdue">quá hạn ${-diff} ngày</span></span>`;
+    if (diff === 0) return `<span class="due-date"><span class="due-normal">${dm}</span> <span style="color:#e5e7eb">·</span> <span class="due-soon">hôm nay</span></span>`;
+    const cls = diff <= 7 ? "due-soon" : "due-normal";
+    return `<span class="due-date"><span class="due-normal">${dm}</span> <span style="color:#e5e7eb">·</span> <span class="${cls}">còn ${diff} ngày</span></span>`;
+  }
+  if (d.oblCount > 0) return `<span class="due-standing">Cam kết đang hiệu lực</span>`;
+  return `<span class="due-dash">—</span>`;
+}
+
+function renderStatusCell(d) {
+  let pill;
+  if (d.pipeline === "processing")
+    pill = `<span class="pill pill-process">Đang xử lý</span>`;
+  else if (!d.confirmed)
+    pill = `<span class="pill pill-pending">Cần xác nhận</span>`;
+  else
+    pill = `<span class="pill pill-confirmed">Đã xác nhận</span>`;
+
+  let comp = "";
+  if (d.completeness === true)
+    comp = `<span class="completeness comp-warn" title="Có thể còn nghĩa vụ chưa bóc — xem chi tiết điều khoản">⚠</span>`;
+  else if (d.completeness === null)
+    comp = `<span class="completeness comp-null" title="Chưa kiểm tra toàn bộ điều khoản">?</span>`;
+
+  return pill + comp;
+}
+
+/* ============================================================
+   STATE + FILTER
+   ============================================================ */
+let currentFilter = "all";
+let pipelineVisible = false;
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll(".filter-chip").forEach(el => {
+    el.classList.toggle("active", el.dataset.filter === f);
+  });
+  renderTable();
+}
+
+function togglePipeline() {
+  pipelineVisible = !pipelineVisible;
+  document.getElementById("pipeline-row").style.display = pipelineVisible ? "flex" : "none";
+  document.querySelector(".toggle-pipeline").textContent =
+    pipelineVisible ? "Ẩn trạng thái xử lý ▴" : "Trạng thái xử lý ▾";
+}
+
+function filterDocs() {
+  const q = document.getElementById("search-input").value.toLowerCase().trim();
+  return DOCS.filter(d => {
+    if (q) {
+      const hay = `${docLabel(d.doc_type)} ${d.party} ${d.file}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    switch (currentFilter) {
+      case "all":        return true;
+      case "due7":       return isDueSoon(d);
+      case "overdue":    return isOverdue(d);
+      case "pending":    return !d.confirmed && d.pipeline !== "processing";
+      case "rights":     return d.ql > 0;
+      case "processing": return d.pipeline === "processing";
+      case "extracted":  return d.pipeline === "extracted";
+      default:           return true;
+    }
+  });
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function updateCounts() {
+  const total   = DOCS.length;
+  const pending = DOCS.filter(d => !d.confirmed && d.pipeline !== "processing").length;
+  const due7    = DOCS.filter(isDueSoon).length;
+  const overdue = DOCS.filter(isOverdue).length;
+  const rights  = DOCS.filter(d => d.ql > 0).length;
+
+  document.getElementById("page-subtitle").textContent =
+    `${pending} cần xác nhận · ${due7} nghĩa vụ tới hạn · ${total} hợp đồng`;
+  document.getElementById("chip-pending").textContent  = `${pending}/${total} cần xác nhận`;
+  document.getElementById("chip-due").textContent      = due7 + " NV tới hạn 7 ngày" + (overdue > 0 ? ` · ${overdue} quá hạn` : "");
+  document.getElementById("chip-total").textContent    = `${total} hợp đồng`;
+  document.getElementById("sidebar-badge").textContent = pending;
+
+  // chip tone
+  const chipDue = document.getElementById("chip-due");
+  chipDue.className = "counter-chip " + (overdue > 0 ? "red" : "muted");
+
+  document.getElementById("cnt-all").textContent     = total;
+  document.getElementById("cnt-due7").textContent    = due7;
+  document.getElementById("cnt-overdue").textContent = overdue;
+  document.getElementById("cnt-pending").textContent = pending;
+  document.getElementById("cnt-rights").textContent  = rights;
+}
+
+function renderTable() {
+  const rows = sortDocs(filterDocs());
+  const tbody = document.getElementById("table-body");
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="no-results">Không có hợp đồng phù hợp bộ lọc.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(d => `
+    <tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="doc-title">HĐ ${docLabel(d.doc_type)} với ${d.party}</span>
+          ${d.dup ? `<span class="doc-dup" title="Tệp trùng — kiểm tra">!</span>` : ""}
+        </div>
+        <div class="doc-filename">${d.file}</div>
+      </td>
+      <td class="col-type">${docLabel(d.doc_type)}</td>
+      <td>${renderDirCell(d)}</td>
+      <td>${renderDueCell(d)}</td>
+      <td>${renderStatusCell(d)}</td>
+    </tr>
+  `).join("");
+}
+
+/* ============================================================
+   TAB SWITCH
+   ============================================================ */
+function switchTab(tab) {
+  document.getElementById("screen-populated").classList.toggle("active", tab === "populated");
+  document.getElementById("screen-empty").classList.toggle("active", tab === "empty");
+  document.getElementById("btn-populated").classList.toggle("active", tab === "populated");
+  document.getElementById("btn-empty").classList.toggle("active", tab === "empty");
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+updateCounts();
+renderTable();
+</script>
+</body>
+</html>
