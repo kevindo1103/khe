@@ -158,7 +158,6 @@ def patch_obligation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obligation not found")
 
     old_status = ob.status
-    ob.status = payload.status
 
     activated_count = 0
     if payload.status == "done":
@@ -168,6 +167,22 @@ def patch_obligation(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="fulfilled_at is required when marking an obligation done.",
             )
+        # F2: validate evidence_doc_ids belong to this tenant.
+        if payload.evidence_doc_ids:
+            existing = {
+                d.id for d in db.query(Document.id)
+                .filter(Document.id.in_(payload.evidence_doc_ids),
+                        Document.tenant_id == user.tenant_id)
+                .all()
+            }
+            invalid = set(payload.evidence_doc_ids) - existing
+            if invalid:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Evidence doc IDs not found in this tenant: {sorted(invalid)}",
+                )
+
+        ob.status = payload.status
         ob.fulfilled_at = payload.fulfilled_at
         ob.fulfilled_by = payload.fulfilled_by or user.username
         ob.evidence_doc_ids = (
@@ -191,6 +206,13 @@ def patch_obligation(
                         "obligation_id": ob.id,
                     }),
                 ))
+    else:
+        ob.status = payload.status
+        # F1: clear stale fulfillment data when reverting away from "done".
+        if old_status == "done":
+            ob.fulfilled_at = None
+            ob.fulfilled_by = None
+            ob.evidence_doc_ids = None
 
     _log_event(
         db,

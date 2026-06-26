@@ -376,6 +376,49 @@ def test_reminder_window_excludes_fulfilled_obligations(tdb, tenant_id):
     assert ob_due.id in ids
 
 
+# ── F1 review fix: status revert clears fulfillment ─────────────────────────
+
+def test_status_revert_from_done_clears_fulfillment(client, tdb, tenant_id):
+    """Reverting status from done→pending clears fulfilled_at/by/evidence (F1)."""
+    doc = _make_doc(tdb, tenant_id)
+    ob = _make_obligation(tdb, tenant_id, doc.id)
+    ev_doc = _make_doc(tdb, tenant_id, file_name="evidence.pdf")
+    tdb.commit()
+
+    r = client.patch(f"/obligations/{ob.id}", json={
+        "status": "done",
+        "fulfilled_at": "2025-05-20T10:00:00",
+        "fulfilled_by": "tuser",
+        "evidence_doc_ids": [ev_doc.id],
+    })
+    assert r.status_code == 200
+    assert r.json()["obligation"]["fulfilled_at"] is not None
+
+    r2 = client.patch(f"/obligations/{ob.id}", json={"status": "pending"})
+    assert r2.status_code == 200
+    body = r2.json()["obligation"]
+    assert body["fulfilled_at"] is None
+    assert body["fulfilled_by"] is None
+    assert body["evidence_doc_ids"] is None
+
+
+# ── F2 review fix: invalid evidence_doc_ids rejected ────────────────────────
+
+def test_invalid_evidence_doc_ids_returns_400(client, tdb, tenant_id):
+    """evidence_doc_ids referencing non-existent docs → 400 (F2)."""
+    doc = _make_doc(tdb, tenant_id)
+    ob = _make_obligation(tdb, tenant_id, doc.id)
+    tdb.commit()
+
+    r = client.patch(f"/obligations/{ob.id}", json={
+        "status": "done",
+        "fulfilled_at": "2025-05-20T10:00:00",
+        "evidence_doc_ids": [99999],
+    })
+    assert r.status_code == 400
+    assert "99999" in r.json()["detail"]
+
+
 def test_backfill_five_past_obligations_no_false_overdue(tdb, tenant_id):
     """Backfill 5 past obligations with fulfilled_at → 0 flipped to overdue (P5)."""
     doc = _make_doc(tdb, tenant_id, confirmed=True)
