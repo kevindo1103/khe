@@ -50,6 +50,13 @@ class DocumentListItem(BaseModel):
     clause_count: int = 0
     confirmed_by_user_at: datetime | None = None   # #238 — null = "Cần xác nhận"
     created_at: datetime | None = None
+    # Obligation-centric redesign (#279, mockup #278/#283)
+    primary_party: str | None = None
+    next_due_date: str | None = None          # ISO date string; due_date is stored as String
+    nghia_vu_count: int = 0
+    quyen_loi_count: int = 0
+    direction_null_count: int = 0
+    may_have_unextracted_obligations: bool | None = None   # #276 column — NULL until that migration lands
     model_config = ConfigDict(from_attributes=True)
 
 
