@@ -26,7 +26,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -361,6 +361,7 @@ def list_documents(
     page_size: int = Query(20, ge=1, le=100),
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """List documents for the tenant with pagination and filters.
 
@@ -396,6 +397,30 @@ def list_documents(
         .subquery()
     )
 
+    # Direction rollup (#279): active obligations only (status NOT IN done/cancelled).
+    # standing obligations (due_date NULL) count in direction tallies but not next_due_date.
+    _ACTIVE = Obligation.status.notin_(("done", "cancelled"))
+    dir_subq = (
+        db.query(
+            Obligation.document_id.label("doc_id"),
+            func.sum(
+                case((Obligation.direction == "nghĩa_vụ", 1), else_=0)
+            ).label("nghia_vu_count"),
+            func.sum(
+                case((Obligation.direction == "quyền_lợi", 1), else_=0)
+            ).label("quyen_loi_count"),
+            func.sum(
+                case((Obligation.direction.is_(None), 1), else_=0)
+            ).label("direction_null_count"),
+            func.min(
+                case((Obligation.due_date.isnot(None), Obligation.due_date))
+            ).label("next_due_date"),
+        )
+        .filter(_ACTIVE)
+        .group_by(Obligation.document_id)
+        .subquery()
+    )
+
     query = (
         db.query(
             Document,
@@ -403,17 +428,28 @@ def list_documents(
             term_subq.c.has_needs_review,
             obligation_subq.c.obligation_count,
             clause_subq.c.clause_count,
+            dir_subq.c.nghia_vu_count,
+            dir_subq.c.quyen_loi_count,
+            dir_subq.c.direction_null_count,
+            dir_subq.c.next_due_date,
         )
         .outerjoin(term_subq, term_subq.c.doc_id == Document.id)
         .outerjoin(obligation_subq, obligation_subq.c.doc_id == Document.id)
         .outerjoin(clause_subq, clause_subq.c.doc_id == Document.id)
+        .outerjoin(dir_subq, dir_subq.c.doc_id == Document.id)
         .filter(Document.tenant_id == user.tenant_id)
     )
 
     if status_filter:
         query = query.filter(Document.status == status_filter)
     if q:
-        query = query.filter(Document.file_name.ilike(f"%{q}%"))
+        like = f"%{q}%"
+        party_match = (
+            db.query(Party.id)
+            .filter(Party.document_id == Document.id, Party.name.ilike(like))
+            .exists()
+        )
+        query = query.filter(or_(Document.file_name.ilike(like), party_match))
     if needs_review is not None:
         if needs_review:
             query = query.filter(term_subq.c.has_needs_review == True)
@@ -430,24 +466,54 @@ def list_documents(
         .all()
     )
 
+    # primary_party: fetch tenant legal_name once, then one bounded query for all page docs.
+    # ≤1 extra query per page — not N+1.
+    profile = (
+        master_db.query(TenantProfile)
+        .filter(TenantProfile.tenant_id == user.tenant_id)
+        .first()
+    )
+    legal_name = (profile.legal_name or "").lower() if profile and profile.legal_name else ""
+
+    page_doc_ids = [row[0].id for row in rows]
+    # Fetch all parties for this page in one query, ordered by id ASC (deterministic).
+    page_parties = (
+        db.query(Party)
+        .filter(Party.tenant_id == user.tenant_id, Party.document_id.in_(page_doc_ids))
+        .order_by(Party.document_id, Party.id)
+        .all()
+    ) if page_doc_ids else []
+
+    # Build doc_id → first non-self party name map.
+    primary_party_map: dict[int, str | None] = {}
+    for p in page_parties:
+        if p.document_id in primary_party_map:
+            continue
+        nm = (p.name or "").lower()
+        is_self = bool(legal_name and nm and (legal_name in nm or nm in legal_name))
+        if not is_self:
+            primary_party_map[p.document_id] = p.name
+
     items: list[DocumentListItem] = []
-    for doc, term_count, has_needs_review, obligation_count, clause_count in rows:
-        term_count = term_count or 0
-        obligation_count = obligation_count or 0
-        clause_count = clause_count or 0
-        needs_rev = bool(has_needs_review)
+    for doc, term_count, has_needs_review, obligation_count, clause_count, nghia_vu, quyen_loi, dir_null, next_due in rows:
         items.append(
             DocumentListItem(
                 id=doc.id,
                 file_name=doc.file_name,
                 doc_type=doc.doc_type,
                 status=doc.status,
-                needs_review=needs_rev,
-                term_count=term_count,
-                obligation_count=obligation_count,
-                clause_count=clause_count,
+                needs_review=bool(has_needs_review),
+                term_count=term_count or 0,
+                obligation_count=obligation_count or 0,
+                clause_count=clause_count or 0,
                 confirmed_by_user_at=doc.confirmed_by_user_at,
                 created_at=doc.created_at,
+                primary_party=primary_party_map.get(doc.id),
+                next_due_date=next_due,
+                nghia_vu_count=nghia_vu or 0,
+                quyen_loi_count=quyen_loi or 0,
+                direction_null_count=dir_null or 0,
+                may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
             )
         )
 
