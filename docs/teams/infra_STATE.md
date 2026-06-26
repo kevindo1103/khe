@@ -299,11 +299,6 @@ server {
         add_header Cache-Control "no-store";
     }
 
-    location /pwa {
-        alias /opt/khe/pwa-staging/;
-        try_files $uri $uri/ /pwa/index.html;
-    }
-
     location / {
         root /opt/khe/frontend-staging;
         try_files $uri /index.html;
