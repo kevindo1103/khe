@@ -111,6 +111,9 @@ class Obligation(TenantBase):
     fulfilled_at = Column(DateTime, nullable=True)     # authoritative completion date (T2)
     fulfilled_by = Column(String, nullable=True)       # username or "operator-for-<username>" (P3)
     evidence_doc_ids = Column(Text, nullable=True)     # JSON list[int] of evidence document IDs
+    # Clause provenance (#303, DEC-048 §13): links obligation to the clause that drove it.
+    source_clause_num = Column(String, nullable=True)  # FK-ish to Clause.clause_num in same doc
+    derived_from = Column(String, nullable=True)       # "original" | "user_edit"
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

@@ -37,6 +37,8 @@ from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
     ConfirmDocumentOut,
+    ReDeriveClauseIn,
+    ReDeriveClauseOut,
     RemapTypeIn,
     RemapTypeOut,
     DocumentDetailOut,
@@ -51,7 +53,7 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
-from app.services.obligation_engine import derive_obligations
+from app.services.obligation_engine import derive_obligation_from_clause, derive_obligations
 from app.services import directions, quota, tenant_journey
 from modules.extraction import ALL_TYPE_SPECIFIC_FIELDS, ClauseItem, DOC_TYPE_GROUPS, remap_type
 
@@ -941,6 +943,158 @@ async def remap_document_type(
 
     return RemapTypeOut(
         success=True, fields_remapped=remapped, fields_null=nulls, cost_vnd=result.cost_vnd,
+    )
+
+
+# ── Clause-scoped re-derive (#303) ──
+
+
+@docs_router.post("/{doc_id}/re-derive-clause", response_model=ReDeriveClauseOut)
+async def re_derive_clause(
+    doc_id: int,
+    body: ReDeriveClauseIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Clause-scoped obligation re-derive (#303, DEC-048 §13).
+
+    Accepts a ``clause_num`` (e.g. "Điều 8"), re-reads its text via a text-only
+    remap call (~2-3đ), updates Terms anchored to that clause, then re-derives
+    only the obligations that were sourced from that clause.
+
+    Source-aware merge (AC3): obligations with ``source=user_manual``,
+    ``status in (done, cancelled)``, or ``fulfilled_at IS NOT NULL`` are protected.
+    All other obligations tagged ``source_clause_num == clause_num`` are replaced.
+    Other clauses' obligations are UNTOUCHED (AC2 — no churn).
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    clause_row = (
+        db.query(Clause)
+        .filter(
+            Clause.document_id == doc_id,
+            Clause.tenant_id == user.tenant_id,
+            Clause.clause_num == body.clause_num,
+        )
+        .first()
+    )
+    if clause_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Clause '{body.clause_num}' not found in document {doc_id}",
+        )
+
+    # Source-aware merge: catalogue obligations linked to this clause.
+    existing_obs = (
+        db.query(Obligation)
+        .filter(
+            Obligation.document_id == doc_id,
+            Obligation.tenant_id == user.tenant_id,
+            Obligation.source_clause_num == body.clause_num,
+        )
+        .all()
+    )
+    protected_manual = 0
+    deleted = 0
+    for ob in existing_obs:
+        is_protected = (
+            ob.source == "user_manual"
+            or ob.status in ("done", "cancelled")
+            or ob.fulfilled_at is not None
+        )
+        if is_protected:
+            protected_manual += 1
+        else:
+            db.delete(ob)
+            deleted += 1
+    db.flush()
+
+    # Text-only remap on this single clause (~2-3đ, no vision call).
+    cost_vnd = 0.0
+    dtg_term = (
+        db.query(Term)
+        .filter(
+            Term.document_id == doc_id,
+            Term.tenant_id == user.tenant_id,
+            Term.field_name == "doc_type_group",
+        )
+        .first()
+    )
+    doc_type_group = dtg_term.field_value if dtg_term else None
+
+    if doc_type_group and doc_type_group in DOC_TYPE_GROUPS:
+        clauses = [ClauseItem(num=clause_row.clause_num, title=clause_row.title, content=clause_row.content or "")]
+        result = await remap_type(clauses, doc_type_group)
+        cost_vnd = result.cost_vnd
+
+        # Update Terms anchored to this clause with the new values.
+        for key, f in result.fields.items():
+            existing_term = (
+                db.query(Term)
+                .filter(
+                    Term.document_id == doc_id,
+                    Term.tenant_id == user.tenant_id,
+                    Term.field_name == key,
+                    Term.ref == body.clause_num,
+                )
+                .first()
+            )
+            if existing_term is not None:
+                existing_term.field_value = f.value
+                existing_term.confidence = f.confidence
+                existing_term.needs_review = f.needs_review
+                existing_term.source = "remap"
+            elif f.value is not None:
+                db.add(Term(
+                    tenant_id=user.tenant_id,
+                    document_id=doc_id,
+                    field_name=key,
+                    field_value=f.value,
+                    ref=body.clause_num,
+                    confidence=f.confidence,
+                    needs_review=f.needs_review,
+                    source="remap",
+                ))
+
+        doc.extraction_cost_vnd = (doc.extraction_cost_vnd or 0.0) + cost_vnd
+        db.flush()
+
+    # Re-derive obligation from Terms scoped to this clause.
+    derive_result = derive_obligation_from_clause(
+        db, user.tenant_id, doc_id, body.clause_num, source_label="ai_re_derived",
+    )
+
+    _log_event(
+        db, user.tenant_id,
+        event_type="clause_re_derived",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={
+            "clause_num": body.clause_num,
+            "deleted": deleted,
+            "created": derive_result["created"],
+            "protected_manual": protected_manual,
+            "cost_vnd": cost_vnd,
+        },
+    )
+
+    if cost_vnd:
+        quota.add_extraction_cost_standalone(user.tenant_id, cost_vnd)
+
+    return ReDeriveClauseOut(
+        ok=True,
+        created=derive_result["created"],
+        skipped=derive_result["skipped"],
+        protected_manual=protected_manual,
+        deleted=deleted,
+        cost_vnd=cost_vnd,
     )
 
 
