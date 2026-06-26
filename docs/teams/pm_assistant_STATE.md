@@ -2,7 +2,7 @@
 
 *Branch: `claude/pm-assistant` | Last updated: 2026-06-26 | v3.5*
 
-> **2026-06-26 (b):** Kevin approved **"Nội dung hợp đồng" tab** on doc-detail page (promote `clauses[]` to a peer tab). Drafted (1) #281 addendum spec + (2) new Backend issue (DETAIL clauses API delta `GET /documents/{id}/clauses`). **⚠️ GitHub MCP disconnected at draft time** — full drafts parked in §"PENDING GITHUB POSTS" below; post on MCP reconnect.
+> **2026-06-26 (b):** Kevin approved **"Nội dung hợp đồng" tab** on doc-detail page. Posted: #281 addendum spec ([comment](https://github.com/kevindo1103/khe/issues/281#issuecomment-4810615167)) + **#284** new Backend issue (`GET /documents/{id}/clauses`). Doc-detail IA = 3 tabs: Tổng quan / Nghĩa vụ & Quyền lợi / Nội dung hợp đồng. Clause↔obligation cross-nav = fast-follow (no `source_clause_num` on Obligation today, verified staging `05f20bd`).
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
@@ -94,100 +94,6 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 **QC offers accepted:** (a) post review on DEC thread, (b) draft §FR-OB completeness AC block → PM folds when received.
 **Standing obligations surface:** doc-detail "Cam kết đang hiệu lực" section — PM default. Kevin confirm needed before Designer mockup.
 
----
-
-## ⏳ PENDING GITHUB POSTS — MCP down 2026-06-26
-
-> GitHub MCP server disconnected mid-session. These two posts are READY — post verbatim on reconnect, then delete this section. Both serve Kevin's approved "Nội dung hợp đồng" tab (doc-detail). Verified against `origin/staging` code (commit `05f20bd`): `Clause` model has `clause_num/title/content/page_num` ✅; `DocumentDetailOut` returns only `clause_count` (no clause array) → Backend delta needed ✅; `Obligation` has NO `source_clause_num` → clause↔obligation cross-nav is fast-follow ✅; Claude-fallback returns `clauses=[]` → empty-state must be honest ✅.
-
-### POST 1 — comment/update on **#281** (/admin/documents/:id DETAIL redesign)
-
-```
-## 📑 ADD: Tab "Nội dung hợp đồng" (Kevin approved 2026-06-26)
-
-Promote `clauses[]` out of the collapsed "Dữ liệu nguồn" section → a **peer tab**. Additive to existing #281 spec.
-
-### Why (PM)
-- **DEC-043 provenance:** clauses[] are the SOURCE of derived obligations. A first-class surface lets user trace "7 nghĩa vụ này từ đâu ra" → trust in the core promise.
-- **DEC-045 completeness, made tangible:** turns the abstract `may_have_unextracted_obligations` flag (#276) into a VISIBLE artifact — user reads the clause list and self-spots a missing/truncated điều khoản. Human-in-the-loop (D-01: AI không là system of record; user verifies).
-- **J1 "tìm nhanh":** reference contract content without downloading + opening the original file. ~2min → ~5s.
-- **Zero new AI cost:** data already exists (DEC-026 single vision call). Only a read endpoint + render component.
-
-### IA — doc-detail now 3 tabs
-1. **Tổng quan** — snapshot (doc type, parties, key dates), status pill, self-party gate, completeness banner, nghĩa vụ/quyền lợi counts. Extracted term-fields (⚠ confidence, editable per D-07) live here.
-2. **Nghĩa vụ & Quyền lợi** — the CORE output (DEC-043), direction-split, review/confirm.
-3. **Nội dung hợp đồng** — NEW (spec below).
-
-The old "Dữ liệu nguồn" collapse is removed: clauses → tab 3; term-fields → tab 1.
-
-### Tab 3 spec — "Nội dung hợp đồng"
-| Element | Spec |
-|---|---|
-| Header summary | "{N} điều khoản · trang {min}–{max}" (page range from `page_num`). If all page_num null → omit range. |
-| Clause list | Vertical accordion. Item heading = **{clause_num} — {title}** (bold), body = `content`. Short doc (<8 clauses) → all expanded; long → expand-on-tap. Designer choose. |
-| Page ref | Small "Tr. {page_num}" right-aligned per clause (link to source file mental map). |
-| Completeness footer | "Khế đọc được {N} điều khoản từ tài liệu này." + if #276 flag=True → amber: "Có thể còn nội dung Khế chưa bóc hết — đối chiếu file gốc nếu cần." (D-08 honest, no guess). |
-| CTA | "Tải hợp đồng gốc" (consistent w/ G5 always-available download). Optional "Báo nội dung thiếu/sai" → writes Event (D-07), no edit. |
-
-### Empty-clauses state (CRITICAL — D-08)
-Claude-fallback docs return `clauses=[]` (architectural note 2026-06-19, deterministic). Tab MUST render honest empty state:
-> "Khế chưa bóc được nội dung chi tiết cho tài liệu này. Vui lòng mở file gốc để tham chiếu." + [Tải hợp đồng gốc]
-
-NEVER show "0 điều khoản" as if the contract has none — that's a false-negative read. The empty state IS the completeness signal.
-
-### Out of scope (D-01/D-06)
-- ❌ No inline edit of clause content (read-only surface of extracted text).
-- ❌ No AI summary / interpretation / "important clause" highlight (bias risk — user judges).
-- ❌ No legal-validity verdict (DEC-019 spirit — Khế surfaces facts, not verdicts).
-
-### Fast-follow (NOT pre-pilot)
-- Clause ↔ obligation cross-nav: Obligation model has **no** `source_clause_num` today (verified staging). Add field + per-clause badge "→ 2 nghĩa vụ" later. Don't block pilot.
-
-### Backend dependency
-New issue "DETAIL clauses API delta" (POST 2): `GET /documents/{id}/clauses` → `ClauseOut[]`. Detail endpoint returns only `clause_count` today.
-
-**Scope: PRE-PILOT** (low cost, high trust). Designer mockup this tab alongside the other two.
-```
-
-### POST 2 — NEW issue: **[Backend] DETAIL clauses API delta**
-
-```
-Title: [Backend] GET /documents/{id}/clauses — clause content API for doc-detail "Nội dung hợp đồng" tab
-Labels: from:pm · for:backend · task-assignment · status:planned · (pre-pilot)
-
-## Plan
-Read-only endpoint serving full clause content for the new doc-detail "Nội dung hợp đồng" tab (#281). Data already exists (`Clause` model, populated DEC-026). `GET /documents/{id}` returns only `clause_count` today — no array. This exposes the array. Mirrors #278/#279 pattern (Designer redesign + Backend API delta).
-
-## Endpoint
-`GET /documents/{doc_id}/clauses` → `ClauseListOut`
-- Auth `Depends(get_current_user)`; verify `doc.tenant_id == user.tenant_id` (tenant isolation).
-- Query `Clause` filter `document_id==doc_id AND tenant_id==user.tenant_id`, order `page_num` (nulls last) then `id` (extraction order).
-- 404 if doc not in tenant.
-
-## Schema (new)
-class ClauseOut(BaseModel):
-    clause_num: str | None
-    title: str | None
-    content: str
-    page_num: int | None
-    model_config = ConfigDict(from_attributes=True)   # per nested-config bug pattern
-
-class ClauseListOut(BaseModel):
-    document_id: int
-    clause_count: int
-    page_min: int | None
-    page_max: int | None
-    clauses: list[ClauseOut]
-
-## Notes
-- Read-only — no D-02/D-06 write path. Pure surface of existing extracted data.
-- Empty result is VALID (Claude-fallback `clauses=[]`) → return `{clause_count:0, clauses:[]}`, NOT 404. FE renders honest empty state (D-08).
-- No new vision/LLM cost.
-- PM recommends SEPARATE endpoint (above) over embedding `clauses[]` in `DocumentDetailOut` — keeps detail payload light, tab fetches on demand. Backend lead may override if embed is simpler.
-- DOCS_INBOX: new endpoint = API change → post after merge.
-```
-
----
 
 ## Active Sprint Context
 
@@ -232,7 +138,7 @@ class ClauseListOut(BaseModel):
 | **Backend** | **#279** | GET /documents/ list API delta — 6 new fields for #278 | **Pre-pilot, parallel with #278** |
 | **Designer** | **#281** | /admin/documents/:id DETAIL full revamp — inverted IA, self-party-gated, rights surface (QC doc-detail report + PM adversarial verify 2026-06-26). **+ "Nội dung hợp đồng" tab** (Kevin approved 2026-06-26, addendum in §PENDING POSTS — promote clauses[] to peer tab) | **Pre-pilot, gates FE** |
 | **Backend+AI** | **#282** | Doc-detail data/logic correctness — party separation (root cause), due-date resolution, per-obligation direction, event-trigger activation, counter integrity | **Pre-pilot 🔴 (B1-B5 blockers)** |
-| **Backend** | **#283** (to-file) | DETAIL clauses API delta — `GET /documents/{id}/clauses` + `ClauseOut`. Read-only surface of existing clause data for "Nội dung hợp đồng" tab. Draft in §PENDING POSTS | **Pre-pilot, parallel with #281** |
+| **Backend** | **#284** ✅ filed | DETAIL clauses API delta — `GET /documents/{id}/clauses` + `ClauseOut`/`ClauseListOut`. Read-only surface of existing clause data for "Nội dung hợp đồng" tab | **Pre-pilot, parallel with #281** |
 | ~~Backend~~ | #270/#65/#237 | **Firm portal ⏸️ DEFERRED post-pilot (DEC-046).** BA #270 frozen as Phase 2 spec. Build resumes post-pilot. | — (out of pilot) |
 | **QC** | #187 | Playwright e2e — upload→extract→confirm→assert nav unlock + Event ledger | Pre-pilot gate |
 | **QC** | #75/#175 | UAT smoke M0/M1 + E2E script (needs uat-demo-b + uat-demo-noconsent) | Pre-pilot gate |
