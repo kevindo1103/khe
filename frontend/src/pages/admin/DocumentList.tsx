@@ -36,13 +36,12 @@ function sortDocs(docs: DocumentListItem[]): DocumentListItem[] {
   });
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Shared cell sub-components ───────────────────────────────────────────────
 
 function DirectionCell({ doc }: { doc: DocumentListItem }) {
   if (doc.obligation_count === 0) {
     return <span className="text-ink-subtle text-2xs">—</span>;
   }
-  // #279 fields not yet available — show total with ? until backend ships
   if (doc.nghia_vu_count === undefined) {
     return (
       <span className="text-2xs text-ink-muted" title="Chưa xác định nghĩa vụ hay quyền lợi">
@@ -107,7 +106,7 @@ function DueCell({ doc }: { doc: DocumentListItem }) {
   // N3 — standing obligation: ink weight + "Liên tục" pill (not muted italic)
   if (doc.obligation_count > 0) {
     return (
-      <span className="text-2xs flex items-center gap-1.5">
+      <span className="text-2xs flex items-center gap-1.5 flex-wrap">
         <span className="text-ink font-medium">Cam kết đang hiệu lực</span>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded-pill bg-surface-alt text-ink-muted text-[10px] font-medium border border-border leading-none">
           Liên tục
@@ -157,6 +156,8 @@ function StatusPill({ doc }: { doc: DocumentListItem }) {
   );
 }
 
+// ─── Filter / counter chips ───────────────────────────────────────────────────
+
 function FilterChip({
   label, count, active, muted, onClick,
 }: {
@@ -170,7 +171,7 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1 px-3 py-1 rounded-pill text-2xs font-medium border transition-colors focus-visible:shadow-ring focus-visible:outline-none
+      className={`inline-flex items-center gap-1 px-3 py-1 rounded-pill text-2xs font-medium border transition-colors focus-visible:shadow-ring focus-visible:outline-none whitespace-nowrap
         ${active
           ? 'bg-primary border-primary text-white'
           : muted
@@ -203,10 +204,44 @@ function CounterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`border px-3 py-1 rounded-pill text-2xs font-medium focus-visible:shadow-ring focus-visible:outline-none ${cls}`}
+      className={`border px-3 py-1 rounded-pill text-2xs font-medium whitespace-nowrap focus-visible:shadow-ring focus-visible:outline-none ${cls}`}
     >
       {children}
     </button>
+  );
+}
+
+// ─── Mobile card row ──────────────────────────────────────────────────────────
+
+function DocCard({ doc, onClick }: { doc: DocumentListItem; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      className="px-4 py-3 border-b border-border last:border-0 cursor-pointer hover:bg-surface-alt active:bg-surface-alt transition-colors"
+    >
+      {/* Title + status pill */}
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-xs font-medium text-ink truncate">
+            HĐ {docTypeLabel(doc.doc_type)} với {doc.primary_party ?? doc.file_name}
+          </span>
+          {doc.duplicate && (
+            <span className="shrink-0 text-warning font-bold text-xs" title="Tệp trùng — kiểm tra">!</span>
+          )}
+        </div>
+        <div className="shrink-0">
+          <StatusPill doc={doc} />
+        </div>
+      </div>
+      {/* Filename */}
+      <div className="text-2xs text-ink-muted mt-0.5 truncate">{doc.file_name}</div>
+      {/* Due + direction */}
+      <div className="flex items-center gap-3 mt-2 flex-wrap">
+        <DueCell doc={doc} />
+        <span className="text-ink-subtle text-2xs">·</span>
+        <DirectionCell doc={doc} />
+      </div>
+    </div>
   );
 }
 
@@ -222,17 +257,17 @@ function DocListEmpty({ onUpload }: { onUpload: () => void }) {
             Chưa có hợp đồng nào — tải lên để Khế bắt đầu theo dõi nghĩa vụ &amp; quyền lợi.
           </p>
         </div>
-        <Button onClick={onUpload}>+ Tải hợp đồng</Button>
+        <Button onClick={onUpload} size="sm">+ Tải hợp đồng</Button>
       </div>
 
-      <div className="border border-dashed border-border-strong rounded-lg bg-surface px-6 py-16 text-center">
+      <div className="border border-dashed border-border-strong rounded-lg bg-surface px-4 py-10 md:px-6 md:py-16 text-center">
         <div className="text-5xl leading-none" aria-hidden="true">📄</div>
         <div className="text-lg font-bold text-ink mt-4">Tải hợp đồng đầu tiên</div>
         <p className="text-xs text-ink-muted max-w-md mx-auto mt-3 leading-relaxed">
           Khế đọc hợp đồng, bóc tách nghĩa vụ (mình phải làm) và quyền lợi (mình được nhận),
           rồi nhắc bạn trước khi tới hạn. Bắt đầu chỉ với một file PDF hoặc ảnh chụp.
         </p>
-        <div className="flex gap-3 justify-center mt-6 flex-wrap">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
           <Button onClick={onUpload}>+ Tải hợp đồng</Button>
           <Button variant="secondary" onClick={onUpload}>Tải nhiều file (≤20)</Button>
         </div>
@@ -323,7 +358,7 @@ export default function DocumentList() {
   const counts = useMemo(() => {
     const items = data?.items ?? [];
     return {
-      total: data?.total ?? 0,
+      total:   data?.total ?? 0,
       pending: items.filter(d => !d.confirmed_by_user_at && d.status !== 'processing').length,
       dueSoon: items.filter(isDueSoon).length,
       overdue: items.filter(isOverdue).length,
@@ -332,11 +367,11 @@ export default function DocumentList() {
   }, [data, isDueSoon, isOverdue]);
 
   const commitmentFilters = useMemo(() => [
-    { key: 'all'     as const, label: 'Tất cả',           count: counts.total   },
-    { key: 'due7'    as const, label: 'Tới hạn 7 ngày',   count: counts.dueSoon },
-    { key: 'overdue' as const, label: 'Quá hạn',           count: counts.overdue },
-    { key: 'pending' as const, label: 'Cần xác nhận',      count: counts.pending },
-    { key: 'rights'  as const, label: 'Quyền lợi cần thu', count: counts.rights  },
+    { key: 'all'     as const, label: 'Tất cả',            count: counts.total   },
+    { key: 'due7'    as const, label: 'Tới hạn 7 ngày',    count: counts.dueSoon },
+    { key: 'overdue' as const, label: 'Quá hạn',            count: counts.overdue },
+    { key: 'pending' as const, label: 'Cần xác nhận',       count: counts.pending },
+    { key: 'rights'  as const, label: 'Quyền lợi cần thu',  count: counts.rights  },
   ], [counts]);
 
   const rows = useMemo(
@@ -360,7 +395,7 @@ export default function DocumentList() {
   return (
     <div>
       {/* Header */}
-      <div className="flex justify-between items-start gap-4 flex-wrap mb-4">
+      <div className="flex justify-between items-start gap-3 flex-wrap mb-4">
         <div>
           <h1 className="text-xl font-bold text-ink">Hồ sơ hợp đồng</h1>
           <p
@@ -375,76 +410,90 @@ export default function DocumentList() {
         </Link>
       </div>
 
-      {/* Counter chips — F2: opacity-0 until hydrated to prevent flash */}
+      {/* Counter chips — F2: opacity-0 until hydrated, horizontal scroll on mobile */}
       <div
-        className="flex gap-2 flex-wrap mb-5 transition-opacity duration-fast"
+        className="-mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto transition-opacity duration-fast mb-4"
         style={{ opacity: hydrated ? 1 : 0 }}
         aria-live="polite"
         aria-label="Tóm tắt danh mục"
       >
-        <CounterChip tone="amber" onClick={() => setFilter('pending')}>
-          {counts.pending}/{counts.total} cần xác nhận
-        </CounterChip>
-        <CounterChip
-          tone={counts.overdue > 0 ? 'red' : 'muted'}
-          onClick={() => setFilter(counts.overdue > 0 ? 'overdue' : 'due7')}
-        >
-          {counts.dueSoon} NV tới hạn 7 ngày
-          {counts.overdue > 0 ? ` · ${counts.overdue} quá hạn` : ''}
-        </CounterChip>
-        <CounterChip tone="muted">
-          {counts.total} hợp đồng
-        </CounterChip>
+        <div className="flex gap-2 pb-1 md:flex-wrap">
+          <CounterChip tone="amber" onClick={() => setFilter('pending')}>
+            {counts.pending}/{counts.total} cần xác nhận
+          </CounterChip>
+          <CounterChip
+            tone={counts.overdue > 0 ? 'red' : 'muted'}
+            onClick={() => setFilter(counts.overdue > 0 ? 'overdue' : 'due7')}
+          >
+            {counts.dueSoon} NV tới hạn 7 ngày
+            {counts.overdue > 0 ? ` · ${counts.overdue} quá hạn` : ''}
+          </CounterChip>
+          <CounterChip tone="muted">
+            {counts.total} hợp đồng
+          </CounterChip>
+        </div>
       </div>
 
-      {/* Search */}
+      {/* Search — full width on mobile */}
       <div className="mb-3">
         <input
           value={q}
           onChange={e => setQ(e.target.value)}
           placeholder="🔍  Tìm theo tên hoặc đối tác..."
           aria-label="Tìm kiếm hợp đồng"
-          className="w-full max-w-sm h-10 px-3 text-xs border border-border rounded-md bg-surface text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-primary/30"
+          className="w-full md:max-w-sm h-10 px-3 text-xs border border-border rounded-md bg-surface text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
       </div>
 
-      {/* Filter row 1 — commitment (always visible) */}
-      <div className="flex gap-2 flex-wrap mb-2" role="group" aria-label="Lọc theo cam kết">
-        {commitmentFilters.map(f => (
-          <FilterChip
-            key={f.key}
-            label={f.label}
-            count={f.count}
-            active={filter === f.key}
-            onClick={() => setFilter(f.key)}
-          />
-        ))}
-        <button
-          type="button"
-          onClick={() => setShowPipeline(s => !s)}
-          className="text-2xs text-ink-muted hover:text-ink px-2 py-1 focus-visible:shadow-ring focus-visible:outline-none rounded"
+      {/* Filter row 1 — commitment, horizontal scroll on mobile */}
+      <div className="-mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto mb-2">
+        <div
+          className="flex gap-2 pb-1 md:flex-wrap"
+          role="group"
+          aria-label="Lọc theo cam kết"
         >
-          {showPipeline ? 'Ẩn trạng thái xử lý ▴' : 'Trạng thái xử lý ▾'}
-        </button>
-      </div>
-
-      {/* Filter row 2 — pipeline (collapsible) — F1: 3 chips */}
-      {showPipeline && (
-        <div className="flex gap-2 flex-wrap mb-2" role="group" aria-label="Lọc theo trạng thái xử lý">
-          {PIPELINE_FILTERS.map(f => (
+          {commitmentFilters.map(f => (
             <FilterChip
               key={f.key}
               label={f.label}
+              count={f.count}
               active={filter === f.key}
-              muted
               onClick={() => setFilter(f.key)}
             />
           ))}
+          <button
+            type="button"
+            onClick={() => setShowPipeline(s => !s)}
+            className="text-2xs text-ink-muted hover:text-ink px-2 py-1 whitespace-nowrap focus-visible:shadow-ring focus-visible:outline-none rounded"
+          >
+            {showPipeline ? 'Ẩn xử lý ▴' : 'Xử lý ▾'}
+          </button>
+        </div>
+      </div>
+
+      {/* Filter row 2 — pipeline, horizontal scroll on mobile */}
+      {showPipeline && (
+        <div className="-mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto mb-2">
+          <div
+            className="flex gap-2 pb-1 md:flex-wrap"
+            role="group"
+            aria-label="Lọc theo trạng thái xử lý"
+          >
+            {PIPELINE_FILTERS.map(f => (
+              <FilterChip
+                key={f.key}
+                label={f.label}
+                active={filter === f.key}
+                muted
+                onClick={() => setFilter(f.key)}
+              />
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Glyph legend (G7) */}
-      <p className="text-2xs text-ink-muted mb-3 mt-1">
+      {/* Glyph legend (G7) — desktop only; cards show labels inline */}
+      <p className="hidden md:block text-2xs text-ink-muted mb-3 mt-1">
         <strong className="text-ink font-semibold">↑ NV</strong> = nghĩa vụ (mình phải làm) ·{' '}
         <strong className="text-ink font-semibold">↓ QL</strong> = quyền lợi (mình được nhận) ·{' '}
         <strong className="text-ink font-semibold">?</strong> = chưa xác định
@@ -452,8 +501,23 @@ export default function DocumentList() {
 
       {error && <div className="mb-3 text-xs text-danger">{error}</div>}
 
-      {/* 5-column table */}
-      <div className="border border-border rounded-lg overflow-hidden">
+      {/* ── Mobile: card list (< md) ── */}
+      <div className="md:hidden border border-border rounded-lg overflow-hidden">
+        {rows.length === 0 ? (
+          <div className="px-4 py-10 text-center text-xs text-ink-muted">
+            Không có hợp đồng phù hợp bộ lọc.
+          </div>
+        ) : rows.map(doc => (
+          <DocCard
+            key={doc.id}
+            doc={doc}
+            onClick={() => navigate(`/admin/documents/${doc.id}`)}
+          />
+        ))}
+      </div>
+
+      {/* ── Desktop: 5-column table (≥ md) ── */}
+      <div className="hidden md:block border border-border rounded-lg overflow-hidden">
         <table className="w-full border-collapse">
           <colgroup>
             <col style={{ width: '34%' }} />
