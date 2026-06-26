@@ -14,21 +14,57 @@ CI `python -c "import ..."` and the benchmark scaffold work without keys install
 """
 
 from .schemas import (
+    ALL_TYPE_SPECIFIC_FIELDS,
+    BASE_CANONICAL_FIELDS,
     CANONICAL_FIELDS,
     BENCHMARK_TARGET_FIELDS,
+    DOC_TYPE_GROUPS,
+    TYPE_SPECIFIC_FIELDS,
+    V2_UNIVERSAL_FIELDS,
+    AnchoredField,
+    ClauseItem,
+    ContractExtractionLLM,
+    ContractExtractionLLMFull,
     DocType,
     ExtractedField,
     ExtractionResult,
+    NamedExtractedField,
+    ObligationScheduleItem,
+    PartyItem,
+    PaymentScheduleItem,
     TokenUsage,
 )
+from .providers.base import USD_TO_VND, cost_vnd
 from .provider import VisionExtractionProvider
+from .factory import ExtractionUnavailable, get_extraction_provider
+from .remap import RemapFieldResult, RemapResult, remap_type
 
 __all__ = [
     "VisionExtractionProvider",
+    "get_extraction_provider",
+    "ExtractionUnavailable",
+    "remap_type",
+    "RemapResult",
+    "RemapFieldResult",
     "ExtractionResult",
     "ExtractedField",
+    "AnchoredField",
+    "NamedExtractedField",
+    "ClauseItem",
+    "ObligationScheduleItem",
+    "PartyItem",
+    "PaymentScheduleItem",
+    "ContractExtractionLLM",
+    "ContractExtractionLLMFull",
     "TokenUsage",
     "DocType",
     "CANONICAL_FIELDS",
+    "BASE_CANONICAL_FIELDS",
+    "V2_UNIVERSAL_FIELDS",
     "BENCHMARK_TARGET_FIELDS",
+    "DOC_TYPE_GROUPS",
+    "TYPE_SPECIFIC_FIELDS",
+    "ALL_TYPE_SPECIFIC_FIELDS",
+    "cost_vnd",
+    "USD_TO_VND",
 ]

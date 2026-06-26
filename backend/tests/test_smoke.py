@@ -59,8 +59,12 @@ def test_login_success():
     )
     assert response.status_code == 200
     data = response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
+    assert "access_token" not in data
+    assert "user" in data
+    assert data["user"]["username"] == "testuser"
+    assert data["tenant_id"] == "test-tenant"
+    assert "khe_session" in response.cookies
+    assert response.cookies["khe_session"] is not None
 
 
 def test_login_failure():
@@ -69,6 +73,41 @@ def test_login_failure():
         json={"tenant_id": "test-tenant", "username": "testuser", "password": "wrongpass"},
     )
     assert response.status_code == 401
+
+
+def test_me_authenticated():
+    """login → /me 200 → logout → /me 401"""
+    # Use separate TestClient instances so cookies are isolated per scenario
+    from fastapi.testclient import TestClient
+    from main import app
+
+    # 1. Login
+    client_auth = TestClient(app)
+    login = client_auth.post(
+        "/auth/login",
+        json={"tenant_id": "test-tenant", "username": "testuser", "password": "testpass"},
+    )
+    assert login.status_code == 200
+    assert "khe_session" in client_auth.cookies
+
+    # 2. /me returns user info from cookie
+    me = client_auth.get("/auth/me")
+    assert me.status_code == 200
+    assert me.json()["username"] == "testuser"
+    assert me.json()["tenant_id"] == "test-tenant"
+
+    # 3. /me 401 without cookie (fresh client = no cookie)
+    client_anon = TestClient(app)
+    me_no_cookie = client_anon.get("/auth/me")
+    assert me_no_cookie.status_code == 401
+
+    # 4. Logout clears cookie
+    logout = client_auth.post("/auth/logout")
+    assert logout.status_code == 200
+
+    # 5. /me 401 after logout (cookie cleared)
+    me_after = client_auth.get("/auth/me")
+    assert me_after.status_code == 401
 
 
 def test_get_tenant_session():
