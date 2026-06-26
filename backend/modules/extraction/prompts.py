@@ -129,6 +129,12 @@ Ngoài ra, bóc MỌI nghĩa vụ có lịch/đợt thành danh sách "obligatio
   đặt trigger = "event", due_date = null, trigger_condition = NGUYÊN VĂN điều kiện,
   trigger_delay_days = số ngày nếu nêu rõ ("30 ngày sau nghiệm thu" → 30). TUYỆT ĐỐI không bịa ngày (D-08).
 - Đến hạn theo ngày cụ thể: trigger = "date".
+- NGUỒN ĐIỀU KHOẢN (BẮT BUỘC): source_clause_num = số hiệu điều/khoản/mục SINH ra nghĩa vụ,
+  lấy đúng từ nhãn [..] trong clauses (vd "Điều 5", "Khoản 3.2"). null CHỈ khi nghĩa vụ
+  không nằm trong điều khoản đánh số nào. Ví dụ:
+  {"obligation_type": "payment", "description": "Đợt 1 — 50% giá trị HĐ", "due_date": "2026-04-01",
+   "source_clause_num": "Điều 5", "derived_from": "original", ...}
+- derived_from: luôn đặt "original" (bóc từ tài liệu gốc). Chỉ hệ thống đặt "user_edit" khi re-derive.
 - Chỉ thêm phần tử khi nghĩa vụ RÕ RÀNG. Phi cấu trúc ("theo từng đợt theo thông báo") → bỏ qua,
   giữ dieu_khoan_thanh_toan ở dạng văn bản. KHÔNG bịa lịch (D-06).
 """

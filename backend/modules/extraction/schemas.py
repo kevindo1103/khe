@@ -326,6 +326,16 @@ class ObligationScheduleItem(BaseModel):
         default=None,
         description='Số ngày trễ sau sự kiện nếu nêu rõ (vd 30 cho "30 ngày sau nghiệm thu"). null nếu không có.',
     )
+    source_clause_num: Optional[str] = Field(
+        default=None,
+        description='Số hiệu điều/khoản SINH ra nghĩa vụ này, vd "Điều 5", "Khoản 3.2". '
+        "Lấy đúng từ nhãn [..] của điều khoản chứa nghĩa vụ. null nếu không xác định được.",
+    )
+    derived_from: str = Field(
+        default="original",
+        description='Nguồn gốc: "original" (từ PDF gốc) hoặc "user_edit" (từ nội dung user đã sửa). '
+        "Mặc định original — chỉ đặt user_edit khi re-derive từ edited_content.",
+    )
 
 
 class PartyItem(BaseModel):

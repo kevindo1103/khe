@@ -38,6 +38,7 @@ from .providers.base import USD_TO_VND, cost_vnd
 from .provider import VisionExtractionProvider
 from .factory import ExtractionUnavailable, get_extraction_provider
 from .remap import RemapFieldResult, RemapResult, remap_type
+from .rederive import RederiveResult, rederive_obligations
 
 __all__ = [
     "VisionExtractionProvider",
@@ -46,6 +47,8 @@ __all__ = [
     "remap_type",
     "RemapResult",
     "RemapFieldResult",
+    "rederive_obligations",
+    "RederiveResult",
     "ExtractionResult",
     "ExtractedField",
     "AnchoredField",
