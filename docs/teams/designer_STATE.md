@@ -5,7 +5,9 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-25 (session wrap-up: #243 firm F-stages merged, #245 confirm-flow merged, #246 FE reviewed)_
+_Last updated: 2026-06-26 (#305 — DEC-048 §13 re-read surfaces, QC D1–D4 fixes)_
+
+> Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
 ## Decisions in force (design-relevant)
 - **DEC-017** — Design System + mockups MUST land + Kevin-approve BEFORE Frontend
@@ -192,6 +194,50 @@ Kevin ratified #238: `POST /documents/{id}/confirm` + nav-unlock = **Option (B) 
 
 ### #246 FE impl review (2026-06-25, COMMENT — not our branch)
 FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge). Architecture solid (one fetch, atomic sidebar unlock via refetch). **1 fix flagged:** DocList `needsConfirm = status !== 'processing' && !confirmed_by_user_at` shows unclearable "Cần xác nhận" badge trên `status=failed` docs (no terms → no confirm card). Suggest gate trên `extracted || needs_review`. Left for PR owner. Non-blocking notes: `/consent` fail-open cuts against DEC-040 intent; StepsChip/ReminderNudge local (= #247).
+
+## Issue #278 — /admin/documents v2 revamp (DEC-043, B&W minimalist) — DELIVERED, awaiting Kevin
+- Branch `claude/design-documents-list-v2`. From file-warehouse view → obligation & rights portfolio.
+- **Design direction (Kevin 2026-06-25):** B&W base — body text #1A1A1A, white bg, borders #E5E7EB.
+  Color rationed to CTA / active chip / status badges / completeness icons only. primary emerald
+  `#0F7A56`, amber `#D97706`, red `#DC2626`, muted `#6B7280`. (Departs from DS v0.1 `#1F6F5C` — aligns
+  with DS v0.2 #197, which is NOT yet in this branch → v2 mockups carry their own token block per #278 spec.)
+- Delivered:
+  - `mockup_documents_list_v2.jsx` — sidebar IA (REP-07, "Tải lên" typo fix) + header (action-first
+    subtitle, counter chips, fixed "Tải hợp đồng" CTA) + commitment/pipeline filter rows + 5-col table
+    (Hợp đồng / Loại / Nghĩa vụ·Quyền lợi / Hạn gần nhất / Trạng thái) + DEC-029 doc_type label map +
+    all 7 row states + ↑NV/↓QL legend + on-page sort/scope annotations.
+  - `mockup_documents_list_v2_empty.jsx` — Day-1 concierge empty state (DEC-012).
+  - Token update folded inline: direction glyphs ↑↓, completeness ⚠/?, removable Beta chip flag.
+- **PM decisions baked (QC G1–G10):** G1 classifier=for:ai out-of-scope · G2 sort order · G3 standing-only
+  "Cam kết đang hiệu lực" · G4 honest NULL `?` (D-13) · G5 CTA fixed (no conditional) · G6 status pill carries
+  color, NO amber row border · G7 glyph+text+legend · G8 snake_case lint = FE-impl AC · G10 Beta chip removable post-#277.
+- Sequencing: mockup unblocked; FE-impl blocks on Backend API delta #279 (6 new fields) merged to staging.
+- Both files esbuild-transpile clean. Browser preview `mockup_documents_list_v2_preview.html` (self-contained vanilla, no CDN).
+- **✅ APPROVED by Kevin 2026-06-26.** → open PR `claude/design-documents-list-v2` + file FE-build task.
+
+## Issue #281 — /admin/documents/:id doc-detail v2 revamp (DEC-043 + QC doc-detail report) — IN PROGRESS
+- Branch `claude/design-doc-detail-reread-305`. Full redesign of document-detail page, sibling to #278.
+- **IA inverted (DEC-043):** derived title → self-party gate (BLOCKING) → Nghĩa vụ & Quyền lợi → Terms (demoted).
+- **3-tab structure (Kevin comment 2026-06-26):**
+  1. Tổng quan — snapshot, self-party gate, completeness banner, term-fields (⚠ only, no raw %)
+  2. Nghĩa vụ & Quyền lợi — THE CORE. Direction badges per-row (NV/QL/NULL). Event-anchored CTAs. Standing commitments. DEC-020 review row.
+  3. Nội dung hợp đồng — clauses accordion (backend #283). ≤8 expanded. Empty state honest (D-08).
+- **PM corrections baked:** DRL-09 rejected (no X/N counter on detail). DEC-020 review row kept, type="Review", excluded from tally. FR-EX-05 = ⚠ badge only.
+- **Sample data:** Công nghệ & IP contract with ALPHATECH — exercises all obligation types, direction cases, event-anchored dates, standing commitments, overdue, completeness=amber.
+- **Issue #305 — DEC-048 §13 (re-read surfaces):** 3 new mockup surfaces added:
+  1. ReReadBanner (§13-D2) — Tab 3: "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] disabled pre-P1 (#309) + [Bỏ qua]
+  2. DiffConfirmModal (§G2, D-02) — per-obligation diff. Manual-precedence: [Giữ của bạn ✓] pre-selected. 3 sample diffs (2 AI + 1 manual-source "🔒 Thủ công").
+  3. StaleEditBanner (§G3, D-08) — Tab 2: "⚠️ N điều khoản đã sửa chưa đọc lại — nghĩa vụ có thể chưa cập nhật."
+- **QC review fixes (D1–D4):**
+  - D1: separated `rereadPromptDismissed` from `editedNotReread` — "Bỏ qua" hides prompt only, stale banner persists until actual re-read (apply diff)
+  - D2: added 3rd manual-source diff sample with "🔒 Thủ công" badge (§G2 manual-source protection)
+  - D3: tooltip now cites P1 (#309) as hard-blocker, not just source_clause_num
+  - D4: relabeled "§G1" → "§13-D2" (§G1 is QC's re-read scope concern, not the banner)
+- Delivered:
+  - `mockup_document_detail_v2.jsx` — full page, 3 tabs, all states + 3 DEC-048 surfaces
+  - `mockup_document_detail_v2_preview.html` — self-contained vanilla HTML/CSS/JS preview (no CDN), toggle controls for stale/diff-modal
+  - `docs/teams/designer_STATE.md` updated
+- Awaiting Kevin review.
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
