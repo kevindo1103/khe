@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-20 (v0.7 — DEC-047 PR scope-lock enforcement + session kickoff checklist + scope-sprawl bug pattern) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.7 reference*
+*Last updated: 2026-06-20 (v0.8 — ERP_→KHE_ rename in topology + add Claude_Backend_Dev / Claude_Frontend_Dev parallel to Windsurf + Telegram fix row 8) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.7 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -61,31 +61,31 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 ### Pair table
 
-| # | Lead (Claude Code) | Middle Dev (Windsurf) | Scope |
+| # | Lead (Claude Code) | Middle Dev (Windsurf / Claude_*_Dev) | Scope |
 |---|---|---|---|
-| 1 | **ERP_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
-| 2 | **ERP_PM_Assistant** | — *(single-owner, long-lived)* | Branch `claude/pm-assistant`. Read-only mọi nơi. WRITE: GitHub issue comments + `docs/teams/pm_assistant_STATE.md` only. Cross-team triage, draft PM decisions, coordinate sessions. KHÔNG phải PM thật — draft + user ratify. |
-| 3 | **ERP_Backend** | **Windsurf_Backend** | TOÀN BỘ `backend/**` — FastAPI, modules (ingest, extraction, obligation, reminders, firm_portal, auth, audit), alembic, scheduler. Multi-tenant: master.db + per-tenant pattern (reuse SpurX A-1). |
-| 4 | **ERP_Frontend_Admin** | **Windsurf_Frontend** | `frontend/src/pages/{admin,firm,public}/**` — SME admin web UI + firm partner portal. |
-| 5 | **ERP_PWA_Chat** | **Windsurf_PWA** | **`frontend/pwa/**`** — Standalone Vite project (own `package.json` + `vite.config` + service worker) — DEC-025 LOCKED. KHÔNG shared với Admin. Chat-first SME UI, mobile-first PWA. Nginx: Admin `/` + PWA `/pwa/` (Option A — FE PR #95). |
-| 6 | **ERP_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
-| 7 | **ERP_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
-| 8 | **ERP_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Zalo ZNS OA integration, env secrets, OCR/LLM API key rotation, monitoring. |
-| 9 | **ERP_AI** (Khế-specific) | — *(single-owner Phase 1)* | OCR + LLM extraction tuning, prompt engineering, model selection per Term/Field, accuracy monitoring (M-3 ≥90%). |
-| 10 | **ERP_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
+| 1 | **KHE_Docs** | — *(single-owner)* | `docs/**` + root `*.md`. Canonical owner, fold DOCS_INBOX. Cascade BRD → SRS → Glossary → CLAUDE.md → PROJECT_PLAN. |
+| 2 | **KHE_PM_Assistant** | — *(single-owner, long-lived)* | Branch `claude/pm-assistant`. Read-only mọi nơi. WRITE: GitHub issue comments + `docs/teams/pm_assistant_STATE.md` only. Cross-team triage, draft PM decisions, coordinate sessions. KHÔNG phải PM thật — draft + user ratify. |
+| 3 | **KHE_Backend** | **Windsurf_Backend** + **Claude_Backend_Dev** | TOÀN BỘ `backend/**` — FastAPI, modules (ingest, extraction, obligation, reminders, firm_portal, auth, audit), alembic, scheduler. Multi-tenant: master.db + per-tenant pattern (reuse SpurX A-1). |
+| 4 | **KHE_Frontend_Admin** | **Windsurf_Frontend** + **Claude_Frontend_Dev** | `frontend/src/pages/{admin,firm,public}/**` — SME admin web UI + firm partner portal. |
+| 5 | **KHE_PWA_Chat** | **Windsurf_PWA** + **Claude_Frontend_Dev** | **`frontend/pwa/**`** — Standalone Vite project (own `package.json` + `vite.config` + service worker) — DEC-025 LOCKED. KHÔNG shared với Admin. Chat-first SME UI, mobile-first PWA. Nginx: Admin `/` + PWA `/pwa/` (Option A — FE PR #95). |
+| 6 | **KHE_QC** | **Windsurf_QC** | `backend/tests/**`, `frontend/tests/**`, Playwright e2e, fixtures, smoke automation. |
+| 7 | **KHE_Designer** | — *(single-owner)* | `docs/mockup_*.jsx`. Read-only on BRD/SRS. KHÔNG sửa canonical docs — report DOCS_INBOX nếu design ảnh hưởng spec. |
+| 8 | **KHE_Infra** | — *(low-touch)* | `.github/workflows/**`, deploy scripts, VPS, CI/CD, Telegram bot integration (DEC-006), env secrets, OCR/LLM API key rotation, monitoring. |
+| 9 | **KHE_AI** (Khế-specific) | — *(single-owner Phase 1)* | OCR + LLM extraction tuning, prompt engineering, model selection per Term/Field, accuracy monitoring (M-3 ≥90%). |
+| 10 | **KHE_Compliance** (Khế-specific) | — *(low-touch)* | NĐ 13/2023 / NĐ 337/2025 / NĐ 70/2025 tracking, consent flows, data residency, retention policies, audit log requirements. |
 
 ### Lead/Dev workflow (BẮT BUỘC)
 
 | Vai trò | Trách nhiệm |
 |---|---|
-| **Claude Code (lead)** | (1) Đọc spec + plan task → assign cho Windsurf (qua user). (2) Review Windsurf PR trước merge. (3) **Viết DOCS_INBOX report** sau merge nếu task chạm business rule / schema / API / UI / deploy / known bug. (4) Bug pattern + refactor lớn. (5) Coordinate session khác qua PM. **KHÔNG tự implement code** — exception duy nhất: hotfix khẩn cấp khi không có Windsurf available + PM đồng ý. |
-| **Windsurf (dev)** | (1) Code feature/fix theo task assignment từ lead. (2) Tuân thủ scope file. (3) Đẩy branch `windsurf/...`. (4) Mở PR với lead listed reviewer. (5) **KHÔNG tự merge** — chờ lead approve. (6) **KHÔNG viết DOCS_INBOX trực tiếp** — báo lead. (7) **Local-first** dev (~70-80% fix): `npm run dev` verify local TRƯỚC khi push PR. |
+| **Claude Code (lead)** | (1) Đọc spec + plan task → assign cho **dev** (Windsurf hoặc Claude_*_Dev) qua user. (2) Review dev PR trước merge. (3) **Viết DOCS_INBOX report** sau merge nếu task chạm business rule / schema / API / UI / deploy / known bug. (4) Bug pattern + refactor lớn. (5) Coordinate session khác qua PM. **KHÔNG tự implement code** — exception duy nhất: hotfix khẩn cấp khi không có dev available + PM đồng ý. |
+| **Dev** (Windsurf_* / Claude_Backend_Dev / Claude_Frontend_Dev) | (1) Code feature/fix theo task assignment từ lead. (2) Tuân thủ scope file (xem §PR Scope-Lock Enforcement DEC-047). (3) Đẩy branch theo prefix: `windsurf/...` (Windsurf) hoặc `claude/<dev-role>-...` (Claude_*_Dev). (4) Mở PR với lead listed reviewer. (5) **KHÔNG tự merge** — chờ lead approve. (6) **KHÔNG viết DOCS_INBOX trực tiếp** — báo lead. (7) **Local-first** dev (~70-80% fix): `npm run dev` verify local TRƯỚC khi push PR. |
 
 ### Cross-session rules
 
 - **Trùng file giữa 2 session** → coordinate qua PM, KHÔNG tự merge.
-- **Infra-only files** — `.github/workflows/**`, deploy scripts: CHỈ ERP_Infra được sửa.
-- **Backend schema change** → ERP_Backend lead MUST comment DOCS_INBOX để frontend sessions biết.
+- **Infra-only files** — `.github/workflows/**`, deploy scripts: CHỈ KHE_Infra được sửa.
+- **Backend schema change** → KHE_Backend lead MUST comment DOCS_INBOX để frontend sessions biết.
 - **Deploy** chỉ qua GitHub Actions CI/CD. KHÔNG SSH/SFTP trực tiếp VPS bypass quality gate. Exception: documented hotpatch playbook.
 - **PR phải qua quality gate** (`pr-quality-gate.yml`): `npm run build` (frontend), `python -c "import main"` (backend), schema diff check.
 
@@ -390,6 +390,8 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.8 — Topology cleanup + Claude_*_Dev roles. (1) ERP_*→KHE_* rename rows 1-10 + §Cross-session rules (Infra-only files, Backend schema change). (2) Topology header "Middle Dev (Windsurf)" → "Middle Dev (Windsurf / Claude_*_Dev)". (3) Rows 3/4/5 dev column adds Claude_Backend_Dev (#3) + Claude_Frontend_Dev (#4 + #5). Row 6 QC unchanged. (4) §Lead/Dev workflow row "Windsurf" → "Dev" generic, lists all dev types, branch prefix `windsurf/...` or `claude/<dev-role>-...`. (5) Row 8 KHE_Infra: stale "Zalo ZNS OA" → "Telegram bot (DEC-006)". Operational note — không change cascade upstream docs.*
 
 *v0.7 — DEC-047 PR Scope-Lock Enforcement section (full lane table + trigger pattern + CI TODO + cross-lane workflow). §Cross-session communication Bước 0 kickoff checklist BẮT BUỘC (CLAUDE.md trước tiên → STATE.md → inbox → verify branch). §Common Bug Patterns +1: "PR scope sprawl từ stale branch" (PR #288 incident). Operational notes — không change cascade upstream docs.*
 
