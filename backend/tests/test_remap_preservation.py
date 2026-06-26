@@ -261,10 +261,19 @@ def test_done_obligation_no_duplicate_after_remap(auth_client, db, monkeypatch):
 
 def test_fulfilled_pending_survives_remap(auth_client, db, monkeypatch):
     """#302 landed: a pending obligation with fulfilled_at must survive remap
-    (QC F1 — fulfilled_at marks user-touched data)."""
+    (QC F1 — fulfilled_at marks user-touched data).
+
+    Uses a doc WITH date terms so derive_obligations runs through the delete
+    path (path 2), not early-returning on skip_reason. Without this, the test
+    is false-green — derive never exercises the delete filter."""
     from datetime import datetime
     _wipe(db)
     doc = _doc(db)
+    # Add date term so derive_obligations passes the skip gate and hits delete.
+    db.add(Term(tenant_id=TENANT, document_id=doc.id, field_name="ngay_het_han",
+                field_value="2027-12-31", source="extracted"))
+    db.commit()
+
     ob = Obligation(tenant_id=TENANT, document_id=doc.id,
                     description="Partially fulfilled", status="pending",
                     source="ai_extracted", obligation_type="payment",
