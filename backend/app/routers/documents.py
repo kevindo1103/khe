@@ -883,6 +883,9 @@ async def remap_document_type(
 
     # 6. Source-aware merge (#301, DEC-048 P1): keep user-manual / user-touched
     #    obligations; only replace AI-derived pending ones.
+    #    FORWARD-GAP (QC F1): when fulfilled_at / evidence columns land (#302),
+    #    MUST add `or ob.fulfilled_at is not None` here — otherwise P1 silently
+    #    fails for fulfillment-pending obligations.
     all_obs = (
         db.query(Obligation)
         .filter(Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id)
@@ -894,6 +897,7 @@ async def remap_document_type(
         is_user_touched = (
             ob.source == "user_manual"
             or ob.status in ("done", "cancelled")
+            or getattr(ob, "fulfilled_at", None) is not None
         )
         if is_user_touched:
             kept_manual += 1
@@ -915,7 +919,10 @@ async def remap_document_type(
                  "warnings": result.warnings},
     )
 
-    # 8. Re-derive date-based obligations from the (now-current) Terms.
+    # 8. Re-derive from new Terms. Step 6 already deleted AI-derived obligations
+    #    for THIS doc; derive_obligations also deletes pending non-user_manual
+    #    across the chain (sibling docs). Two-pass is intentional: step 6 handles
+    #    the remap-specific preservation predicate, step 8 handles chain cleanup.
     derive_obligations(db, user.tenant_id, doc_id, source_label="ai_re_derived")
     # 9. Tenant cost aggregate (#255) — master.db, only on a real remap spend.
     quota.add_extraction_cost_standalone(user.tenant_id, result.cost_vnd)
