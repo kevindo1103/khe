@@ -28,6 +28,14 @@ export interface DocumentListItem {
   clause_count: number;
   confirmed_by_user_at: string | null;   // #238 — null = "Cần xác nhận"
   created_at: string | null;
+  // #279 — new fields (optional until backend ships)
+  primary_party?: string | null;
+  next_due_date?: string | null;
+  nghia_vu_count?: number;
+  quyen_loi_count?: number;
+  direction_null_count?: number;
+  may_have_unextracted_obligations?: boolean | null;
+  duplicate?: boolean;
 }
 
 export interface DocumentListOut {
