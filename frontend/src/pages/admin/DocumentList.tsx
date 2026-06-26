@@ -302,7 +302,7 @@ export default function DocumentList() {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ page: '1', page_size: '200' });
+      const params = new URLSearchParams({ page: '1', page_size: '100' });
       const res = await apiFetch<DocumentListOut>(`/documents/?${params}`);
       setData(res);
       setHydrated(true);
@@ -512,9 +512,9 @@ export default function DocumentList() {
       {error && <div className="mb-3 text-xs text-danger">{error}</div>}
 
       {/* CR1: warn when total > fetch cap so counter vs list don't silently disagree */}
-      {data && data.total > 200 && (
+      {data && data.total > 100 && (
         <div className="mb-3 text-2xs text-ink-muted border border-border rounded px-3 py-2 bg-surface-alt">
-          Hiển thị 200/{data.total} hợp đồng — thu hẹp bộ lọc hoặc tìm kiếm để xem thêm.
+          Hiển thị 100/{data.total} hợp đồng — thu hẹp bộ lọc hoặc tìm kiếm để xem thêm.
         </div>
       )}
 
