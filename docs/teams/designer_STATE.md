@@ -96,9 +96,13 @@ Built in `mockup_design_system_v0.1.jsx`:
   3. Nội dung hợp đồng — clauses accordion (backend #283). ≤8 expanded. Empty state honest (D-08).
 - **PM corrections baked:** DRL-09 rejected (no X/N counter on detail). DEC-020 review row kept, type="Review", excluded from tally. FR-EX-05 = ⚠ badge only.
 - **Sample data:** Công nghệ & IP contract with ALPHATECH — exercises all obligation types, direction cases, event-anchored dates, standing commitments, overdue, completeness=amber.
+- **Issue #305 — DEC-048 §13 (re-read surfaces):** 3 new mockup surfaces added:
+  1. ReReadBanner (§G1) — Tab 3: "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] disabled pre-P1 + [Bỏ qua]
+  2. DiffConfirmModal (§G2, D-02) — per-obligation diff. Manual-precedence: [Giữ của bạn ✓] pre-selected. 2 sample diffs.
+  3. StaleEditBanner (§G3, D-08) — Tab 2: "⚠️ N điều khoản đã sửa chưa đọc lại — nghĩa vụ có thể chưa cập nhật."
 - Delivered:
-  - `mockup_document_detail_v2.jsx` — full page, 3 tabs, all states
-  - `mockup_document_detail_v2_preview.html` — self-contained vanilla HTML/CSS/JS preview (no CDN)
+  - `mockup_document_detail_v2.jsx` — full page, 3 tabs, all states + 3 DEC-048 surfaces
+  - `mockup_document_detail_v2_preview.html` — self-contained vanilla HTML/CSS/JS preview (no CDN), toggle controls for stale/diff-modal
   - `docs/teams/designer_STATE.md` updated
 - Awaiting Kevin review.
 

@@ -169,6 +169,25 @@ const CLAUSES = [
 ];
 
 /* ===========================================================================
+ * DIFF SAMPLE DATA — DEC-048 §G2 (re-read diff-confirm)
+ * 2 obligations changed after clause re-read. Exercises date + text diffs.
+ * ========================================================================= */
+const DIFF_SAMPLE = [
+  {
+    id: 1, title: "Thanh toán phí license tháng 7/2026",
+    field: "due_date", label: "Hạn thanh toán",
+    oldValue: "05/07/2026",
+    newValue: "10/07/2026",
+  },
+  {
+    id: 8, title: "Thông báo gia hạn / chấm dứt HĐ",
+    field: "notice_period", label: "Thời hạn thông báo",
+    oldValue: "Trước 60 ngày",
+    newValue: "Trước 45 ngày",
+  },
+];
+
+/* ===========================================================================
  * SIDEBAR — shared with #278 list-view mockup
  * ========================================================================= */
 function NavItem({ glyph, label, active, badge, beta }) {
@@ -458,13 +477,16 @@ function TabOverview({ doc, selfParty, onSetSelfParty }) {
 /* ===========================================================================
  * TAB 2 — Nghĩa vụ & Quyền lợi (THE CORE)
  * ========================================================================= */
-function TabObligations({ selfParty }) {
+function TabObligations({ selfParty, editedNotReread }) {
   const obligations = selfParty ? OBLIGATIONS_SELF_PARTY_SET : OBLIGATIONS_SELF_PARTY_UNSET;
   const dated = obligations.filter((o) => !o.standing && o.type !== "review");
   const standing = obligations.filter((o) => o.standing);
 
   return (
     <div style={{ marginTop: t.space[5] }}>
+      {/* Stale-edit banner — DEC-048 §G3 */}
+      <StaleEditBanner editedCount={editedNotReread} />
+
       {/* Unresolved direction warning when self-party unset */}
       {!selfParty && (
         <div style={{ padding: `${t.space[3]}px ${t.space[4]}px`, borderRadius: t.radius.md, background: t.color.amberSoft + "66", border: `1px solid ${t.color.amber}44`, marginBottom: t.space[4], display: "flex", alignItems: "center", gap: t.space[2] }}>
@@ -624,7 +646,160 @@ function ClauseItem({ c, i, expanded, onToggle }) {
   );
 }
 
-function TabClauses({ clauses, mayHaveUnextracted }) {
+/* ===========================================================================
+ * RE-READ TRIGGER BANNER — DEC-048 §13 G1
+ * Shown on Tab 3 after clause edit. "Đọc lại" disabled pre-P1
+ * (source_clause_num from #283 not merged → cannot map clause→obligation).
+ * ========================================================================= */
+function ReReadBanner({ editedCount, onReRead, onDismiss, disabled }) {
+  if (editedCount === 0) return null;
+  return (
+    <div style={{
+      padding: `${t.space[3]}px ${t.space[4]}px`, borderRadius: t.radius.md,
+      background: t.color.primarySoft, border: `1px solid ${t.color.primary}33`,
+      marginBottom: t.space[4], display: "flex", alignItems: "center",
+      justifyContent: "space-between", gap: t.space[3], flexWrap: "wrap",
+    }}>
+      <span style={{ fontSize: t.font.size.md, color: t.color.ink }}>
+        Bạn đã sửa <strong>{editedCount}</strong> điều khoản. Khế đọc lại nghĩa vụ?
+      </span>
+      <div style={{ display: "flex", gap: t.space[2] }}>
+        <button
+          onClick={disabled ? undefined : onReRead}
+          title={disabled ? "Tính năng đọc lại chưa sẵn sàng (cần source_clause_num — đang phát triển)" : "Khế đọc lại nghĩa vụ từ điều khoản đã sửa"}
+          style={{
+            background: disabled ? t.color.graySoft : t.color.primary,
+            color: disabled ? t.color.inkMuted : t.color.surface,
+            border: disabled ? `1px solid ${t.color.border}` : "none",
+            padding: `${t.space[1]}px ${t.space[4]}px`,
+            borderRadius: t.radius.md, fontSize: t.font.size.sm,
+            fontWeight: t.font.weight.semibold, cursor: disabled ? "not-allowed" : "pointer",
+            fontFamily: t.font.family, opacity: disabled ? 0.6 : 1,
+          }}
+        >Đọc lại</button>
+        <button onClick={onDismiss} style={{
+          border: `1px solid ${t.color.border}`, background: t.color.surface,
+          color: t.color.ink, padding: `${t.space[1]}px ${t.space[4]}px`,
+          borderRadius: t.radius.md, fontSize: t.font.size.sm,
+          cursor: "pointer", fontFamily: t.font.family,
+        }}>Bỏ qua</button>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================================================================
+ * STALE-EDIT BANNER — DEC-048 §G3, D-08
+ * Shown on Tab 2 when clauses edited but not re-read.
+ * ========================================================================= */
+function StaleEditBanner({ editedCount }) {
+  if (editedCount === 0) return null;
+  return (
+    <div style={{
+      padding: `${t.space[3]}px ${t.space[4]}px`, borderRadius: t.radius.md,
+      background: t.color.amberSoft, border: `1px solid ${t.color.amber}33`,
+      marginBottom: t.space[4], display: "flex", alignItems: "center", gap: t.space[2],
+    }}>
+      <span style={{ color: t.color.amber, fontWeight: t.font.weight.bold }}>⚠️</span>
+      <span style={{ fontSize: t.font.size.md, color: t.color.ink }}>
+        {editedCount} điều khoản đã sửa chưa đọc lại — nghĩa vụ có thể chưa cập nhật.
+      </span>
+    </div>
+  );
+}
+
+/* ===========================================================================
+ * DIFF-CONFIRM MODAL — DEC-048 §G2, D-02
+ * Per-obligation diff after re-read. Manual-precedence default: user's version
+ * is pre-selected. Khế NEVER silently replaces (D-02).
+ * ========================================================================= */
+function DiffConfirmModal({ diffs, onClose, onApply }) {
+  const [choices, setChoices] = useState(() =>
+    diffs.reduce((acc, d) => ({ ...acc, [d.id]: "manual" }), {})
+  );
+
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.5)", zIndex: 200,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: t.space[4],
+    }}>
+      <div style={{
+        background: t.color.surface, borderRadius: t.radius.lg,
+        maxWidth: 640, width: "100%", maxHeight: "80vh", overflow: "auto",
+        padding: t.space[6], boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+      }}>
+        <h2 style={{ fontSize: t.font.size.xl, fontWeight: t.font.weight.bold, color: t.color.ink, margin: 0 }}>
+          Khế đề xuất thay đổi nghĩa vụ
+        </h2>
+        <p style={{ fontSize: t.font.size.md, color: t.color.inkMuted, marginTop: t.space[2], lineHeight: 1.6 }}>
+          Sau khi đọc lại điều khoản đã sửa, Khế phát hiện {diffs.length} nghĩa vụ có thể cần cập nhật.
+          Chọn giữ bản của bạn hoặc dùng đề xuất của Khế cho từng mục.
+        </p>
+
+        <div style={{ marginTop: t.space[5] }}>
+          {diffs.map((d) => (
+            <div key={d.id} style={{
+              padding: t.space[4], border: `1px solid ${t.color.border}`,
+              borderRadius: t.radius.md, marginBottom: t.space[3],
+            }}>
+              <div style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>{d.title}</div>
+              <div style={{ fontSize: t.font.size.sm, color: t.color.inkMuted, marginTop: t.space[1] }}>{d.label}</div>
+
+              <div style={{ display: "flex", gap: t.space[3], marginTop: t.space[3] }}>
+                <button onClick={() => setChoices((p) => ({ ...p, [d.id]: "manual" }))} style={{
+                  flex: 1, padding: t.space[3], borderRadius: t.radius.md, textAlign: "left",
+                  border: choices[d.id] === "manual" ? `2px solid ${t.color.primary}` : `1px solid ${t.color.border}`,
+                  background: choices[d.id] === "manual" ? t.color.primarySoft : t.color.surface,
+                  cursor: "pointer", fontFamily: t.font.family,
+                }}>
+                  <div style={{ fontSize: t.font.size.xs, color: choices[d.id] === "manual" ? t.color.primary : t.color.inkMuted, fontWeight: t.font.weight.medium }}>
+                    Giữ của bạn {choices[d.id] === "manual" ? "✓" : ""}
+                  </div>
+                  <div style={{ fontSize: t.font.size.md, color: t.color.ink, marginTop: 2 }}>{d.oldValue}</div>
+                </button>
+
+                <button onClick={() => setChoices((p) => ({ ...p, [d.id]: "ai" }))} style={{
+                  flex: 1, padding: t.space[3], borderRadius: t.radius.md, textAlign: "left",
+                  border: choices[d.id] === "ai" ? `2px solid ${t.color.primary}` : `1px solid ${t.color.border}`,
+                  background: choices[d.id] === "ai" ? t.color.primarySoft : t.color.surface,
+                  cursor: "pointer", fontFamily: t.font.family,
+                }}>
+                  <div style={{ fontSize: t.font.size.xs, color: choices[d.id] === "ai" ? t.color.primary : t.color.inkMuted, fontWeight: t.font.weight.medium }}>
+                    Dùng đề xuất Khế {choices[d.id] === "ai" ? "✓" : ""}
+                  </div>
+                  <div style={{ fontSize: t.font.size.md, color: t.color.ink, marginTop: 2 }}>{d.newValue}</div>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space[3], marginTop: t.space[5] }}>
+          <button onClick={onClose} style={{
+            border: `1px solid ${t.color.border}`, background: t.color.surface,
+            color: t.color.ink, padding: `${t.space[2]}px ${t.space[5]}px`,
+            borderRadius: t.radius.md, fontSize: t.font.size.md,
+            cursor: "pointer", fontFamily: t.font.family,
+          }}>Hủy</button>
+          <button onClick={() => onApply(choices)} style={{
+            background: t.color.primary, color: t.color.surface, border: "none",
+            padding: `${t.space[2]}px ${t.space[5]}px`, borderRadius: t.radius.md,
+            fontSize: t.font.size.md, fontWeight: t.font.weight.semibold,
+            cursor: "pointer", fontFamily: t.font.family,
+          }}>Áp dụng thay đổi</button>
+        </div>
+
+        <div style={{ marginTop: t.space[3], fontSize: t.font.size.xs, color: t.color.inkSubtle }}>
+          D-02: mọi thay đổi nghĩa vụ phải qua xác nhận người dùng. Khế không tự động thay thế.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabClauses({ clauses, mayHaveUnextracted, editedNotReread, onReRead, onDismissReRead, rereadDisabled }) {
   const [expanded, setExpanded] = useState(() => {
     if (clauses.length <= 8) return new Set(clauses.map((_, i) => i));
     return new Set();
@@ -675,6 +850,9 @@ function TabClauses({ clauses, mayHaveUnextracted }) {
         </div>
         <button style={{ border: `1px solid ${t.color.borderStrong}`, background: t.color.surface, color: t.color.ink, padding: `${t.space[1]}px ${t.space[3]}px`, borderRadius: t.radius.md, fontSize: t.font.size.sm, cursor: "pointer", fontFamily: t.font.family }}>Tải hợp đồng gốc</button>
       </div>
+
+      {/* Re-read trigger banner — DEC-048 §G1 */}
+      <ReReadBanner editedCount={editedNotReread} onReRead={onReRead} onDismiss={onDismissReRead} disabled={rereadDisabled} />
 
       {/* Clause accordion with inline edit */}
       <div style={{ border: `1px solid ${t.color.border}`, borderRadius: t.radius.lg, overflow: "hidden" }}>
@@ -732,6 +910,8 @@ function Footer({ doc, selfParty }) {
 export default function DocumentDetailV2() {
   const [activeTab, setActiveTab] = useState("overview");
   const [selfParty, setSelfParty] = useState(null);
+  const [editedNotReread, setEditedNotReread] = useState(1);
+  const [showDiffModal, setShowDiffModal] = useState(false);
 
   const doc = DOC;
   const typeLabel = docTypeLabel(doc.doc_type);
@@ -781,8 +961,26 @@ export default function DocumentDetailV2() {
 
         {/* Tab content */}
         {activeTab === "overview" && <TabOverview doc={doc} selfParty={selfParty} onSetSelfParty={setSelfParty} />}
-        {activeTab === "obligations" && <TabObligations selfParty={selfParty} />}
-        {activeTab === "clauses" && <TabClauses clauses={CLAUSES} mayHaveUnextracted={doc.may_have_unextracted} />}
+        {activeTab === "obligations" && <TabObligations selfParty={selfParty} editedNotReread={editedNotReread} />}
+        {activeTab === "clauses" && (
+          <TabClauses
+            clauses={CLAUSES}
+            mayHaveUnextracted={doc.may_have_unextracted}
+            editedNotReread={editedNotReread}
+            onReRead={() => setShowDiffModal(true)}
+            onDismissReRead={() => setEditedNotReread(0)}
+            rereadDisabled={true}
+          />
+        )}
+
+        {/* Diff-confirm modal — DEC-048 §G2 (rendered above page when open) */}
+        {showDiffModal && (
+          <DiffConfirmModal
+            diffs={DIFF_SAMPLE}
+            onClose={() => setShowDiffModal(false)}
+            onApply={(choices) => { setShowDiffModal(false); setEditedNotReread(0); }}
+          />
+        )}
 
         {/* Footer — D-02 split */}
         <Footer doc={doc} selfParty={selfParty} />
@@ -799,6 +997,9 @@ export default function DocumentDetailV2() {
           <div><strong>FR-EX-05:</strong> ⚠ badge ONLY — raw confidence % hidden. DEC-045 completeness banner 3-state (green/amber/unchecked).</div>
           <div><strong>Footer (D-02):</strong> split confirm vs self-party. "Đã xác nhận" ONLY when self-party set + confirmed. No English. No snake_case anywhere.</div>
           <div><strong>Tab 3 (clauses):</strong> accordion; ≤8 = all expanded, &gt;8 = collapsed. Empty state honest (D-08). <strong>Inline edit per clause (D-07)</strong>: edit button on each clause body; save snapshots original + records who edited (system/user + timestamp) → Event. "đã sửa" badge on edited clause headers. "Xem bản gốc (AI)" toggle shows original extraction. Backend #283.</div>
+          <div><strong>DEC-048 §G1 (re-read banner):</strong> after clause edit save → "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] [Bỏ qua]. "Đọc lại" disabled pre-P1 (source_clause_num not merged → tooltip explains). Shown on Tab 3.</div>
+          <div><strong>DEC-048 §G2 (diff-confirm modal):</strong> re-read returns obligation changes → per-item diff. Manual-precedence default: [Giữ của bạn ✓] pre-selected. NOT silent replace (D-02). 2 sample diffs: payment due date + notice period.</div>
+          <div><strong>DEC-048 §G3 (stale-edit banner):</strong> "⚠️ N điều khoản đã sửa chưa đọc lại — nghĩa vụ có thể chưa cập nhật." Shown on Tab 2 (obligations). Honest (D-08).</div>
           <div><strong>Out of scope:</strong> clause↔obligation cross-nav (no source_clause_num today) · AI summary/highlight (bias risk) · DEC-040 X/N counter (DRL-09 rejected).</div>
         </div>
       </main>

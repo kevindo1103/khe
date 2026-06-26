@@ -144,8 +144,37 @@ button{font-family:var(--ff);cursor:pointer}
 .notes{margin-top:24px;padding:16px;background:var(--gray-s);border-radius:8px;font-size:12px;color:var(--ink-m);line-height:1.7}
 .notes .n-hdr{font-weight:600;color:var(--ink);margin-bottom:4px}
 
+/* Re-read trigger banner — DEC-048 §G1 */
+.reread-banner{padding:12px 16px;border-radius:8px;background:var(--pri-s);border:1px solid rgba(15,122,86,.2);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.reread-banner .reread-text{font-size:14px}
+.reread-banner .reread-btns{display:flex;gap:8px}
+.reread-btn-go{background:var(--pri);color:var(--surf);border:none;padding:4px 16px;border-radius:8px;font-size:13px;font-weight:600}
+.reread-btn-go.disabled{background:var(--gray-s);color:var(--ink-m);border:1px solid var(--bdr);opacity:.6;cursor:not-allowed}
+.reread-btn-skip{border:1px solid var(--bdr);background:var(--surf);color:var(--ink);padding:4px 16px;border-radius:8px;font-size:13px}
+
+/* Stale-edit banner — DEC-048 §G3 */
+.stale-banner{padding:12px 16px;border-radius:8px;background:var(--amb-s);border:1px solid rgba(217,119,6,.2);margin-bottom:16px;display:flex;align-items:center;gap:8px;font-size:14px}
+
+/* Diff-confirm modal — DEC-048 §G2 */
+.diff-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.diff-modal{background:var(--surf);border-radius:12px;max-width:640px;width:100%;max-height:80vh;overflow:auto;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.diff-modal h2{font-size:22px;font-weight:700;margin:0}
+.diff-modal .diff-desc{font-size:14px;color:var(--ink-m);margin-top:8px;line-height:1.6}
+.diff-item{padding:16px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:12px}
+.diff-item .diff-title{font-size:15px;font-weight:600}
+.diff-item .diff-label{font-size:13px;color:var(--ink-m);margin-top:4px}
+.diff-options{display:flex;gap:12px;margin-top:12px}
+.diff-option{flex:1;padding:12px;border-radius:8px;text-align:left;cursor:pointer;font-family:var(--ff)}
+.diff-option.sel{border:2px solid var(--pri);background:var(--pri-s)}
+.diff-option.unsel{border:1px solid var(--bdr);background:var(--surf)}
+.diff-option .opt-lbl{font-size:12px;color:var(--ink-m);font-weight:500}
+.diff-option.sel .opt-lbl{color:var(--pri)}
+.diff-option .opt-val{font-size:14px;margin-top:2px}
+.diff-footer{display:flex;justify-content:flex-end;gap:12px;margin-top:20px}
+.diff-note{margin-top:12px;font-size:12px;color:var(--ink-s)}
+
 /* State toggle */
-.toggle-bar{position:fixed;top:0;left:0;right:0;background:var(--ink);color:var(--surf);padding:8px 16px;z-index:100;display:flex;align-items:center;gap:12px;font-size:13px}
+.toggle-bar{position:fixed;top:0;left:0;right:0;background:var(--ink);color:var(--surf);padding:8px 16px;z-index:100;display:flex;align-items:center;gap:12px;font-size:13px;flex-wrap:wrap}
 .toggle-bar label{display:flex;align-items:center;gap:4px;cursor:pointer}
 .toggle-bar select{font-size:13px;padding:2px 8px;border-radius:4px}
 body{padding-top:40px}
@@ -156,6 +185,8 @@ body{padding-top:40px}
 <div class="toggle-bar">
   <strong>Preview controls:</strong>
   <label><input type="checkbox" id="selfPartyToggle"> Đã chọn bên (self-party set)</label>
+  <label><input type="checkbox" id="staleToggle" checked> Sửa chưa đọc lại (stale edit)</label>
+  <label><input type="checkbox" id="diffModalToggle"> Hiện diff-confirm modal</label>
   <label>Tab:
     <select id="tabSelect">
       <option value="overview">Tổng quan</option>
@@ -229,7 +260,8 @@ body{padding-top:40px}
 
     <!-- TAB 2: OBLIGATIONS -->
     <div id="tab-obligations" class="tab-content" style="display:none">
-      <div id="obWarning" style="margin-top:20px"></div>
+      <div id="staleBanner" style="margin-top:20px"></div>
+      <div id="obWarning"></div>
       <div class="legend" style="margin-top:20px">
         <strong>↑ Phải làm</strong> = nghĩa vụ (mình phải thực hiện) ·
         <strong>↓ Được hưởng</strong> = quyền lợi (mình được nhận) ·
@@ -263,6 +295,9 @@ body{padding-top:40px}
       <div class="footer-btns" id="footerBtns"></div>
     </div>
 
+    <!-- Diff-confirm modal (DEC-048 §G2) — rendered above page when toggled -->
+    <div id="diffModalContainer"></div>
+
     <!-- Designer notes -->
     <div class="notes">
       <div class="n-hdr">📐 Ghi chú thiết kế (không render trong production)</div>
@@ -272,6 +307,9 @@ body{padding-top:40px}
       <div><strong>Direction:</strong> "↑ Phải làm" / "↓ Được hưởng" / "? Chưa rõ — chọn bên". Payment rows show payer/payee.</div>
       <div><strong>Due dates:</strong> date → calendar + countdown · event → "Chờ mốc" + capture CTA · standing → "Cam kết đang hiệu lực".</div>
       <div><strong>Tab 3:</strong> accordion ≤8 expanded. <strong>Inline edit per clause (D-07)</strong>: edit → snapshot original + ghi người sửa (system/user + time). "đã sửa" badge. "Xem bản gốc" toggle. Empty = D-08 honest. Backend #283.</div>
+      <div><strong>DEC-048 §G1 (re-read banner):</strong> "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] disabled pre-P1 + [Bỏ qua]. Shown on Tab 3.</div>
+      <div><strong>DEC-048 §G2 (diff modal):</strong> per-obligation diff. Manual-precedence: [Giữ của bạn ✓] pre-selected. D-02: no silent replace.</div>
+      <div><strong>DEC-048 §G3 (stale banner):</strong> "⚠️ N điều khoản đã sửa chưa đọc lại" on Tab 2. D-08 honest.</div>
     </div>
   </div>
 </div>
@@ -317,8 +355,16 @@ const CLAUSES = [
 ];
 var clauseEditing = {};
 
+const DIFF_SAMPLE = [
+  {id:1,title:'Thanh toán phí license tháng 7/2026',field:'due_date',label:'Hạn thanh toán',oldValue:'05/07/2026',newValue:'10/07/2026'},
+  {id:8,title:'Thông báo gia hạn / chấm dứt HĐ',field:'notice_period',label:'Thời hạn thông báo',oldValue:'Trước 60 ngày',newValue:'Trước 45 ngày'},
+];
+var diffChoices = {1:'manual',8:'manual'};
+
 let selfPartySet = false;
 let activeTab = 'overview';
+let staleEditActive = true;
+let diffModalOpen = false;
 
 function dirBadge(dir, spSet) {
   if (!spSet) return '<span class="dir-badge dir-null">? Chưa rõ — chọn bên</span>';
@@ -482,6 +528,85 @@ function saveEditClause(i) {
   document.getElementById('clause-edit-' + i).style.display = 'none';
 }
 
+function renderReReadBanner() {
+  var el = document.getElementById('tab-clauses');
+  var existing = document.getElementById('rereadBannerInner');
+  if (existing) existing.remove();
+  if (!staleEditActive) return;
+  var editedCount = CLAUSES.filter(function(c) { return !!c.editedBy; }).length;
+  if (editedCount === 0) return;
+  var banner = document.createElement('div');
+  banner.id = 'rereadBannerInner';
+  banner.className = 'reread-banner';
+  banner.innerHTML = '<span class="reread-text">Bạn đã sửa <strong>' + editedCount + '</strong> điều khoản. Khế đọc lại nghĩa vụ?</span>' +
+    '<div class="reread-btns">' +
+    '<button class="reread-btn-go disabled" title="Tính năng đọc lại chưa sẵn sàng (cần source_clause_num — đang phát triển)">Đọc lại</button>' +
+    '<button class="reread-btn-skip" onclick="dismissReRead()">Bỏ qua</button></div>';
+  var clauseContent = el.querySelector('.clause-summary-row');
+  if (clauseContent) {
+    clauseContent.parentNode.insertBefore(banner, clauseContent.nextSibling);
+  }
+}
+
+function dismissReRead() {
+  staleEditActive = false;
+  document.getElementById('staleToggle').checked = false;
+  renderAll();
+}
+
+function renderStaleBanner() {
+  var el = document.getElementById('staleBanner');
+  if (!staleEditActive) { el.innerHTML = ''; return; }
+  var editedCount = CLAUSES.filter(function(c) { return !!c.editedBy; }).length;
+  if (editedCount === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="stale-banner"><span style="color:var(--amb);font-weight:700">⚠️</span><span>' + editedCount + ' điều khoản đã sửa chưa đọc lại — nghĩa vụ có thể chưa cập nhật.</span></div>';
+}
+
+function renderDiffModal() {
+  var el = document.getElementById('diffModalContainer');
+  if (!diffModalOpen) { el.innerHTML = ''; return; }
+  var items = '';
+  DIFF_SAMPLE.forEach(function(d) {
+    var manSel = diffChoices[d.id] === 'manual' ? 'sel' : 'unsel';
+    var aiSel = diffChoices[d.id] === 'ai' ? 'sel' : 'unsel';
+    var manCheck = diffChoices[d.id] === 'manual' ? ' ✓' : '';
+    var aiCheck = diffChoices[d.id] === 'ai' ? ' ✓' : '';
+    items += '<div class="diff-item"><div class="diff-title">' + d.title + '</div><div class="diff-label">' + d.label + '</div>' +
+      '<div class="diff-options">' +
+      '<button class="diff-option ' + manSel + '" onclick="pickDiff(' + d.id + ',\'manual\')"><div class="opt-lbl">Giữ của bạn' + manCheck + '</div><div class="opt-val">' + d.oldValue + '</div></button>' +
+      '<button class="diff-option ' + aiSel + '" onclick="pickDiff(' + d.id + ',\'ai\')"><div class="opt-lbl">Dùng đề xuất Khế' + aiCheck + '</div><div class="opt-val">' + d.newValue + '</div></button>' +
+      '</div></div>';
+  });
+  el.innerHTML = '<div class="diff-overlay" onclick="closeDiffModal(event)">' +
+    '<div class="diff-modal" onclick="event.stopPropagation()">' +
+    '<h2>Khế đề xuất thay đổi nghĩa vụ</h2>' +
+    '<p class="diff-desc">Sau khi đọc lại điều khoản đã sửa, Khế phát hiện ' + DIFF_SAMPLE.length + ' nghĩa vụ có thể cần cập nhật. Chọn giữ bản của bạn hoặc dùng đề xuất của Khế cho từng mục.</p>' +
+    '<div style="margin-top:20px">' + items + '</div>' +
+    '<div class="diff-footer"><button class="btn-sec" onclick="closeDiffModal()">Hủy</button><button class="btn-pri" onclick="applyDiff()">Áp dụng thay đổi</button></div>' +
+    '<div class="diff-note">D-02: mọi thay đổi nghĩa vụ phải qua xác nhận người dùng. Khế không tự động thay thế.</div>' +
+    '</div></div>';
+}
+
+function pickDiff(id, choice) {
+  diffChoices[id] = choice;
+  renderDiffModal();
+}
+
+function closeDiffModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  diffModalOpen = false;
+  document.getElementById('diffModalToggle').checked = false;
+  renderDiffModal();
+}
+
+function applyDiff() {
+  diffModalOpen = false;
+  staleEditActive = false;
+  document.getElementById('diffModalToggle').checked = false;
+  document.getElementById('staleToggle').checked = false;
+  renderAll();
+}
+
 function renderFooter() {
   const txt = document.getElementById('footerTxt');
   const btns = document.getElementById('footerBtns');
@@ -519,9 +644,12 @@ function renderAll() {
   renderSummaryChips();
   renderSelfPartyGate();
   renderObligations();
+  renderStaleBanner();
   renderClauses();
+  renderReReadBanner();
   renderTerms();
   renderFooter();
+  renderDiffModal();
 }
 
 // Tab bar clicks
@@ -538,6 +666,14 @@ document.getElementById('selfPartyToggle').addEventListener('change', function()
 });
 document.getElementById('tabSelect').addEventListener('change', function() {
   switchTab(this.value);
+});
+document.getElementById('staleToggle').addEventListener('change', function() {
+  staleEditActive = this.checked;
+  renderAll();
+});
+document.getElementById('diffModalToggle').addEventListener('change', function() {
+  diffModalOpen = this.checked;
+  renderAll();
 });
 
 // Init
