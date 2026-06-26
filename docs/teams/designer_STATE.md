@@ -5,7 +5,9 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-18 (Phase 1+2 approved; Phase 3 PWA screens built)_
+_Last updated: 2026-06-26 (#278 — /admin/documents v2 revamp: obligation-centric, B&W minimalist)_
+
+> Branch (current task): `claude/design-documents-list-v2`.
 
 ## Decisions in force (design-relevant)
 - **DEC-017** — Design System + mockups MUST land + Kevin-approve BEFORE Frontend
@@ -64,6 +66,26 @@ Built in `mockup_design_system_v0.1.jsx`:
 
 ## Status: ALL Phase 1–3 mockups delivered. Awaiting Kevin Phase-3 approval to close #24 → unblock Frontend #30 + PWA #32.
 - Each phase: commit → push → present to Kevin → await approve → next phase.
+
+## Issue #278 — /admin/documents v2 revamp (DEC-043, B&W minimalist) — DELIVERED, awaiting Kevin
+- Branch `claude/design-documents-list-v2`. From file-warehouse view → obligation & rights portfolio.
+- **Design direction (Kevin 2026-06-25):** B&W base — body text #1A1A1A, white bg, borders #E5E7EB.
+  Color rationed to CTA / active chip / status badges / completeness icons only. primary emerald
+  `#0F7A56`, amber `#D97706`, red `#DC2626`, muted `#6B7280`. (Departs from DS v0.1 `#1F6F5C` — aligns
+  with DS v0.2 #197, which is NOT yet in this branch → v2 mockups carry their own token block per #278 spec.)
+- Delivered:
+  - `mockup_documents_list_v2.jsx` — sidebar IA (REP-07, "Tải lên" typo fix) + header (action-first
+    subtitle, counter chips, fixed "Tải hợp đồng" CTA) + commitment/pipeline filter rows + 5-col table
+    (Hợp đồng / Loại / Nghĩa vụ·Quyền lợi / Hạn gần nhất / Trạng thái) + DEC-029 doc_type label map +
+    all 7 row states + ↑NV/↓QL legend + on-page sort/scope annotations.
+  - `mockup_documents_list_v2_empty.jsx` — Day-1 concierge empty state (DEC-012).
+  - Token update folded inline: direction glyphs ↑↓, completeness ⚠/?, removable Beta chip flag.
+- **PM decisions baked (QC G1–G10):** G1 classifier=for:ai out-of-scope · G2 sort order · G3 standing-only
+  "Cam kết đang hiệu lực" · G4 honest NULL `?` (D-13) · G5 CTA fixed (no conditional) · G6 status pill carries
+  color, NO amber row border · G7 glyph+text+legend · G8 snake_case lint = FE-impl AC · G10 Beta chip removable post-#277.
+- Sequencing: mockup unblocked; FE-impl blocks on Backend API delta #279 (6 new fields) merged to staging.
+- Both files esbuild-transpile clean. Browser preview `mockup_documents_list_v2_preview.html` (self-contained vanilla, no CDN).
+- **✅ APPROVED by Kevin 2026-06-26.** → open PR `claude/design-documents-list-v2` + file FE-build task.
 
 ## Spec-gap watch (post DOCS_INBOX #1 if confirmed)
 - Field list for document detail mockup pulled from BRD §6 Term + #23 per-tenant
