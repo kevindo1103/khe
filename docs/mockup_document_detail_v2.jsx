@@ -178,12 +178,21 @@ const DIFF_SAMPLE = [
     field: "due_date", label: "Hạn thanh toán",
     oldValue: "05/07/2026",
     newValue: "10/07/2026",
+    source: "ai",
   },
   {
     id: 8, title: "Thông báo gia hạn / chấm dứt HĐ",
     field: "notice_period", label: "Thời hạn thông báo",
     oldValue: "Trước 60 ngày",
     newValue: "Trước 45 ngày",
+    source: "ai",
+  },
+  {
+    id: 6, title: "Không tiết lộ thông tin kỹ thuật và thương mại",
+    field: "scope", label: "Phạm vi bảo mật",
+    oldValue: "Thông tin kỹ thuật và thương mại",
+    newValue: "Thông tin kỹ thuật, thương mại và dữ liệu khách hàng",
+    source: "manual",
   },
 ];
 
@@ -647,12 +656,12 @@ function ClauseItem({ c, i, expanded, onToggle }) {
 }
 
 /* ===========================================================================
- * RE-READ TRIGGER BANNER — DEC-048 §13 G1
- * Shown on Tab 3 after clause edit. "Đọc lại" disabled pre-P1
- * (source_clause_num from #283 not merged → cannot map clause→obligation).
+ * RE-READ TRIGGER BANNER — DEC-048 §13-D2
+ * Shown on Tab 3 after clause edit. "Đọc lại" disabled pre-P1 (#309).
+ * (P1 merge required → source_clause_num to map clause→obligation).
  * ========================================================================= */
-function ReReadBanner({ editedCount, onReRead, onDismiss, disabled }) {
-  if (editedCount === 0) return null;
+function ReReadBanner({ editedCount, onReRead, onDismiss, disabled, dismissed }) {
+  if (editedCount === 0 || dismissed) return null;
   return (
     <div style={{
       padding: `${t.space[3]}px ${t.space[4]}px`, borderRadius: t.radius.md,
@@ -666,7 +675,7 @@ function ReReadBanner({ editedCount, onReRead, onDismiss, disabled }) {
       <div style={{ display: "flex", gap: t.space[2] }}>
         <button
           onClick={disabled ? undefined : onReRead}
-          title={disabled ? "Tính năng đọc lại chưa sẵn sàng (cần source_clause_num — đang phát triển)" : "Khế đọc lại nghĩa vụ từ điều khoản đã sửa"}
+          title={disabled ? "Tính năng đọc lại chưa sẵn sàng — chờ P1 (#309) merge (cần source_clause_num để map clause→obligation)" : "Khế đọc lại nghĩa vụ từ điều khoản đã sửa"}
           style={{
             background: disabled ? t.color.graySoft : t.color.primary,
             color: disabled ? t.color.inkMuted : t.color.surface,
@@ -744,7 +753,12 @@ function DiffConfirmModal({ diffs, onClose, onApply }) {
               padding: t.space[4], border: `1px solid ${t.color.border}`,
               borderRadius: t.radius.md, marginBottom: t.space[3],
             }}>
-              <div style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>{d.title}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: t.space[2] }}>
+                <span style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>{d.title}</span>
+                {d.source === "manual" && (
+                  <span style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.semibold, color: t.color.ink, background: t.color.graySoft, padding: `1px ${t.space[2]}px`, borderRadius: t.radius.pill }}>🔒 Thủ công</span>
+                )}
+              </div>
               <div style={{ fontSize: t.font.size.sm, color: t.color.inkMuted, marginTop: t.space[1] }}>{d.label}</div>
 
               <div style={{ display: "flex", gap: t.space[3], marginTop: t.space[3] }}>
@@ -799,7 +813,7 @@ function DiffConfirmModal({ diffs, onClose, onApply }) {
   );
 }
 
-function TabClauses({ clauses, mayHaveUnextracted, editedNotReread, onReRead, onDismissReRead, rereadDisabled }) {
+function TabClauses({ clauses, mayHaveUnextracted, editedNotReread, onReRead, onDismissReRead, rereadDisabled, rereadPromptDismissed }) {
   const [expanded, setExpanded] = useState(() => {
     if (clauses.length <= 8) return new Set(clauses.map((_, i) => i));
     return new Set();
@@ -851,8 +865,8 @@ function TabClauses({ clauses, mayHaveUnextracted, editedNotReread, onReRead, on
         <button style={{ border: `1px solid ${t.color.borderStrong}`, background: t.color.surface, color: t.color.ink, padding: `${t.space[1]}px ${t.space[3]}px`, borderRadius: t.radius.md, fontSize: t.font.size.sm, cursor: "pointer", fontFamily: t.font.family }}>Tải hợp đồng gốc</button>
       </div>
 
-      {/* Re-read trigger banner — DEC-048 §G1 */}
-      <ReReadBanner editedCount={editedNotReread} onReRead={onReRead} onDismiss={onDismissReRead} disabled={rereadDisabled} />
+      {/* Re-read trigger banner — DEC-048 §13-D2 */}
+      <ReReadBanner editedCount={editedNotReread} onReRead={onReRead} onDismiss={onDismissReRead} disabled={rereadDisabled} dismissed={rereadPromptDismissed} />
 
       {/* Clause accordion with inline edit */}
       <div style={{ border: `1px solid ${t.color.border}`, borderRadius: t.radius.lg, overflow: "hidden" }}>
@@ -911,6 +925,7 @@ export default function DocumentDetailV2() {
   const [activeTab, setActiveTab] = useState("overview");
   const [selfParty, setSelfParty] = useState(null);
   const [editedNotReread, setEditedNotReread] = useState(1);
+  const [rereadPromptDismissed, setRereadPromptDismissed] = useState(false);
   const [showDiffModal, setShowDiffModal] = useState(false);
 
   const doc = DOC;
@@ -968,8 +983,9 @@ export default function DocumentDetailV2() {
             mayHaveUnextracted={doc.may_have_unextracted}
             editedNotReread={editedNotReread}
             onReRead={() => setShowDiffModal(true)}
-            onDismissReRead={() => setEditedNotReread(0)}
+            onDismissReRead={() => setRereadPromptDismissed(true)}
             rereadDisabled={true}
+            rereadPromptDismissed={rereadPromptDismissed}
           />
         )}
 
@@ -978,7 +994,7 @@ export default function DocumentDetailV2() {
           <DiffConfirmModal
             diffs={DIFF_SAMPLE}
             onClose={() => setShowDiffModal(false)}
-            onApply={(choices) => { setShowDiffModal(false); setEditedNotReread(0); }}
+            onApply={(choices) => { setShowDiffModal(false); setEditedNotReread(0); setRereadPromptDismissed(false); }}
           />
         )}
 
@@ -997,8 +1013,8 @@ export default function DocumentDetailV2() {
           <div><strong>FR-EX-05:</strong> ⚠ badge ONLY — raw confidence % hidden. DEC-045 completeness banner 3-state (green/amber/unchecked).</div>
           <div><strong>Footer (D-02):</strong> split confirm vs self-party. "Đã xác nhận" ONLY when self-party set + confirmed. No English. No snake_case anywhere.</div>
           <div><strong>Tab 3 (clauses):</strong> accordion; ≤8 = all expanded, &gt;8 = collapsed. Empty state honest (D-08). <strong>Inline edit per clause (D-07)</strong>: edit button on each clause body; save snapshots original + records who edited (system/user + timestamp) → Event. "đã sửa" badge on edited clause headers. "Xem bản gốc (AI)" toggle shows original extraction. Backend #283.</div>
-          <div><strong>DEC-048 §G1 (re-read banner):</strong> after clause edit save → "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] [Bỏ qua]. "Đọc lại" disabled pre-P1 (source_clause_num not merged → tooltip explains). Shown on Tab 3.</div>
-          <div><strong>DEC-048 §G2 (diff-confirm modal):</strong> re-read returns obligation changes → per-item diff. Manual-precedence default: [Giữ của bạn ✓] pre-selected. NOT silent replace (D-02). 2 sample diffs: payment due date + notice period.</div>
+          <div><strong>DEC-048 §13-D2 (re-read banner):</strong> after clause edit save → "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] [Bỏ qua]. "Đọc lại" disabled pre-P1 (#309) — tooltip cites P1 gate. "Bỏ qua" hides prompt ONLY; stale banner (Tab 2) persists until actual re-read (apply diff). Shown on Tab 3.</div>
+          <div><strong>DEC-048 §G2 (diff-confirm modal):</strong> re-read returns obligation changes → per-item diff. Manual-precedence default: [Giữ của bạn ✓] pre-selected. NOT silent replace (D-02). 3 sample diffs: 2 AI-source (date + text) + 1 manual-source with "🔒 Thủ công" badge (§G2 manual-source protection).</div>
           <div><strong>DEC-048 §G3 (stale-edit banner):</strong> "⚠️ N điều khoản đã sửa chưa đọc lại — nghĩa vụ có thể chưa cập nhật." Shown on Tab 2 (obligations). Honest (D-08).</div>
           <div><strong>Out of scope:</strong> clause↔obligation cross-nav (no source_clause_num today) · AI summary/highlight (bias risk) · DEC-040 X/N counter (DRL-09 rejected).</div>
         </div>

@@ -307,8 +307,8 @@ body{padding-top:40px}
       <div><strong>Direction:</strong> "↑ Phải làm" / "↓ Được hưởng" / "? Chưa rõ — chọn bên". Payment rows show payer/payee.</div>
       <div><strong>Due dates:</strong> date → calendar + countdown · event → "Chờ mốc" + capture CTA · standing → "Cam kết đang hiệu lực".</div>
       <div><strong>Tab 3:</strong> accordion ≤8 expanded. <strong>Inline edit per clause (D-07)</strong>: edit → snapshot original + ghi người sửa (system/user + time). "đã sửa" badge. "Xem bản gốc" toggle. Empty = D-08 honest. Backend #283.</div>
-      <div><strong>DEC-048 §G1 (re-read banner):</strong> "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] disabled pre-P1 + [Bỏ qua]. Shown on Tab 3.</div>
-      <div><strong>DEC-048 §G2 (diff modal):</strong> per-obligation diff. Manual-precedence: [Giữ của bạn ✓] pre-selected. D-02: no silent replace.</div>
+      <div><strong>DEC-048 §13-D2 (re-read banner):</strong> "Bạn đã sửa N điều khoản. Khế đọc lại nghĩa vụ?" [Đọc lại] disabled pre-P1 (#309) + [Bỏ qua]. "Bỏ qua" hides prompt only; stale banner persists. Shown on Tab 3.</div>
+      <div><strong>DEC-048 §G2 (diff modal):</strong> per-obligation diff. Manual-precedence: [Giữ của bạn ✓] pre-selected. 3 samples: 2 AI + 1 manual-source "🔒 Thủ công". D-02: no silent replace.</div>
       <div><strong>DEC-048 §G3 (stale banner):</strong> "⚠️ N điều khoản đã sửa chưa đọc lại" on Tab 2. D-08 honest.</div>
     </div>
   </div>
@@ -356,14 +356,16 @@ const CLAUSES = [
 var clauseEditing = {};
 
 const DIFF_SAMPLE = [
-  {id:1,title:'Thanh toán phí license tháng 7/2026',field:'due_date',label:'Hạn thanh toán',oldValue:'05/07/2026',newValue:'10/07/2026'},
-  {id:8,title:'Thông báo gia hạn / chấm dứt HĐ',field:'notice_period',label:'Thời hạn thông báo',oldValue:'Trước 60 ngày',newValue:'Trước 45 ngày'},
+  {id:1,title:'Thanh toán phí license tháng 7/2026',field:'due_date',label:'Hạn thanh toán',oldValue:'05/07/2026',newValue:'10/07/2026',source:'ai'},
+  {id:8,title:'Thông báo gia hạn / chấm dứt HĐ',field:'notice_period',label:'Thời hạn thông báo',oldValue:'Trước 60 ngày',newValue:'Trước 45 ngày',source:'ai'},
+  {id:6,title:'Không tiết lộ thông tin kỹ thuật và thương mại',field:'scope',label:'Phạm vi bảo mật',oldValue:'Thông tin kỹ thuật và thương mại',newValue:'Thông tin kỹ thuật, thương mại và dữ liệu khách hàng',source:'manual'},
 ];
-var diffChoices = {1:'manual',8:'manual'};
+var diffChoices = {1:'manual',8:'manual',6:'manual'};
 
 let selfPartySet = false;
 let activeTab = 'overview';
 let staleEditActive = true;
+let rereadPromptDismissed = false;
 let diffModalOpen = false;
 
 function dirBadge(dir, spSet) {
@@ -532,7 +534,7 @@ function renderReReadBanner() {
   var el = document.getElementById('tab-clauses');
   var existing = document.getElementById('rereadBannerInner');
   if (existing) existing.remove();
-  if (!staleEditActive) return;
+  if (!staleEditActive || rereadPromptDismissed) return;
   var editedCount = CLAUSES.filter(function(c) { return !!c.editedBy; }).length;
   if (editedCount === 0) return;
   var banner = document.createElement('div');
@@ -540,7 +542,7 @@ function renderReReadBanner() {
   banner.className = 'reread-banner';
   banner.innerHTML = '<span class="reread-text">Bạn đã sửa <strong>' + editedCount + '</strong> điều khoản. Khế đọc lại nghĩa vụ?</span>' +
     '<div class="reread-btns">' +
-    '<button class="reread-btn-go disabled" title="Tính năng đọc lại chưa sẵn sàng (cần source_clause_num — đang phát triển)">Đọc lại</button>' +
+    '<button class="reread-btn-go disabled" title="Tính năng đọc lại chưa sẵn sàng — chờ P1 (#309) merge (cần source_clause_num để map clause→obligation)">Đọc lại</button>' +
     '<button class="reread-btn-skip" onclick="dismissReRead()">Bỏ qua</button></div>';
   var clauseContent = el.querySelector('.clause-summary-row');
   if (clauseContent) {
@@ -549,8 +551,7 @@ function renderReReadBanner() {
 }
 
 function dismissReRead() {
-  staleEditActive = false;
-  document.getElementById('staleToggle').checked = false;
+  rereadPromptDismissed = true;
   renderAll();
 }
 
@@ -571,7 +572,8 @@ function renderDiffModal() {
     var aiSel = diffChoices[d.id] === 'ai' ? 'sel' : 'unsel';
     var manCheck = diffChoices[d.id] === 'manual' ? ' ✓' : '';
     var aiCheck = diffChoices[d.id] === 'ai' ? ' ✓' : '';
-    items += '<div class="diff-item"><div class="diff-title">' + d.title + '</div><div class="diff-label">' + d.label + '</div>' +
+    var manualBadge = d.source === 'manual' ? ' <span style="font-size:12px;font-weight:600;color:var(--ink);background:var(--gray-s);padding:1px 8px;border-radius:999px">🔒 Thủ công</span>' : '';
+    items += '<div class="diff-item"><div class="diff-title">' + d.title + manualBadge + '</div><div class="diff-label">' + d.label + '</div>' +
       '<div class="diff-options">' +
       '<button class="diff-option ' + manSel + '" onclick="pickDiff(' + d.id + ',\'manual\')"><div class="opt-lbl">Giữ của bạn' + manCheck + '</div><div class="opt-val">' + d.oldValue + '</div></button>' +
       '<button class="diff-option ' + aiSel + '" onclick="pickDiff(' + d.id + ',\'ai\')"><div class="opt-lbl">Dùng đề xuất Khế' + aiCheck + '</div><div class="opt-val">' + d.newValue + '</div></button>' +
@@ -602,6 +604,7 @@ function closeDiffModal(e) {
 function applyDiff() {
   diffModalOpen = false;
   staleEditActive = false;
+  rereadPromptDismissed = false;
   document.getElementById('diffModalToggle').checked = false;
   document.getElementById('staleToggle').checked = false;
   renderAll();
@@ -669,6 +672,7 @@ document.getElementById('tabSelect').addEventListener('change', function() {
 });
 document.getElementById('staleToggle').addEventListener('change', function() {
   staleEditActive = this.checked;
+  if (this.checked) rereadPromptDismissed = false;
   renderAll();
 });
 document.getElementById('diffModalToggle').addEventListener('change', function() {
