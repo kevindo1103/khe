@@ -22,6 +22,51 @@ jobs:
             exit 1
           fi
 
+  scope-lock:
+    name: Scope Lock Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check file ownership scope
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..HEAD)
+          VIOLATIONS=""
+
+          # docs/ only from docs-editor branch (exception: mockup files from designer)
+          if echo "$CHANGED" | grep -qE "^docs/"; then
+            if [[ "$BRANCH" != "claude/edit-git-docs-Khe01" ]]; then
+              if [[ "$BRANCH" == claude/design-* ]]; then
+                NON_MOCKUP=$(echo "$CHANGED" | grep "^docs/" | grep -v "^docs/mockup_.*\.jsx$" || true)
+                if [[ -n "$NON_MOCKUP" ]]; then
+                  VIOLATIONS="${VIOLATIONS}\n❌ Designer branch touching non-mockup docs: ${NON_MOCKUP}"
+                fi
+              else
+                NON_MOCKUP=$(echo "$CHANGED" | grep "^docs/" | grep -v "^docs/mockup_.*\.jsx$" || true)
+                if [[ -n "$NON_MOCKUP" ]]; then
+                  VIOLATIONS="${VIOLATIONS}\n❌ docs/ modified by non-docs-editor branch: ${NON_MOCKUP}"
+                fi
+              fi
+            fi
+          fi
+
+          # .github/workflows/ only from infra branches
+          if echo "$CHANGED" | grep -q "^\.github/workflows/" && [[ "$BRANCH" != claude/infra-* ]]; then
+            VIOLATIONS="${VIOLATIONS}\n❌ .github/workflows/ modified by non-infra branch ($BRANCH)"
+          fi
+
+          if [[ -n "$VIOLATIONS" ]]; then
+            echo -e "SCOPE-LOCK VIOLATIONS:${VIOLATIONS}"
+            echo ""
+            echo "Fix: remove out-of-scope files from this PR."
+            echo "If cross-lane work is needed, file a separate issue (from: + for:)."
+            exit 1
+          fi
+          echo "✅ Scope-lock check passed"
+
   backend-check:
     name: Backend Import Check
     runs-on: ubuntu-latest
