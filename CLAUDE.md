@@ -121,6 +121,20 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **Deploy** chỉ qua GitHub Actions CI/CD. KHÔNG SSH/SFTP trực tiếp VPS bypass quality gate. Exception: documented hotpatch playbook.
 - **PR phải qua quality gate** (`pr-quality-gate.yml`): `npm run build` (frontend), `python -c "import main"` (backend), schema diff check.
 
+### PR Scope-Lock Enforcement (DEC-047 — Kevin ratified 2026-06-26)
+
+**MỌI PR phải chỉ chứa files trong scope của session tạo PR.** CI `pr-quality-gate.yml` sẽ tự động block vi phạm:
+
+| Path pattern | Chỉ branch được sửa | Tất cả branch khác |
+|---|---|---|
+| `docs/**` (trừ mockup) | `claude/edit-git-docs-Khe01` | ❌ CI FAIL |
+| `docs/mockup_*.jsx` | `claude/edit-git-docs-Khe01` + `claude/design-*` | ❌ CI FAIL |
+| `.github/workflows/**` | `claude/infra-*` | ❌ CI FAIL |
+
+**Khi cần cross-lane work:** file issue `from:<my-team>` + `for:<target-team>`, KHÔNG bundle vào cùng PR. Mỗi lane = PR riêng, review riêng.
+
+**Incident reference:** PR #288 — 26 files across 4 lanes từ 1 frontend branch. QC blocked (#289). Pattern: branch không rebase staging, tích lũy commits cross-lane qua merge.
+
 ### Cross-session communication
 
 **Protocol:** GitHub Issues với labels — sessions tự đọc inbox khi spawn, không user relay thủ công.
@@ -131,8 +145,11 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - Spec conflict → PM: `from:X` + `for:pm` + `spec-conflict`
 - **Blocker labels:** `blocker:human-needed` (high priority) vs `blocker:waiting-dependency` (track only)
 - **Status labels:** `status:planned` → `status:in-progress` → `status:review` → `status:done-staging` → close
-- **Bước 0 mỗi session kickoff:** list `for:<my-team>` open issues
-- **Bước 1 mỗi session:** đọc `docs/teams/<myteam>_STATE.md`
+- **Bước 0 mỗi session kickoff (BẮT BUỘC, theo thứ tự):**
+  1. Đọc `CLAUDE.md` — đặc biệt §PR Scope-Lock (DEC-047), §D-rules, §Multi-Tenant DB, §Common Bug Patterns
+  2. Đọc `docs/teams/<myteam>_STATE.md`
+  3. List `for:<my-team>` open issues trên GitHub
+  4. Verify branch name match pattern `claude/<type>-<scope>-<desc>` — rename TRƯỚC khi code
 - **Post-merge:** comment **[DOCS_INBOX #1](https://github.com/kevindo1103/khe/issues/1)** trong 24h
 
 ### Branch Naming (BẮT BUỘC)
@@ -205,6 +222,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | **`pkg[extra]` removal drops transitive import** | `import main` fails on clean env / CI dù pass local; vd gỡ `passlib[bcrypt]` làm mất `bcrypt` mà code dùng `import bcrypt` (PR #12 case) | Declare TRỰC TIẾP mọi package mà code import — không dựa vào `[extra]` của package khác để pull transitive. |
 | **`pull_request` workflow reads HEAD branch YAML, không phải base** | Fix workflow trên `main` không apply ngay cho PR `staging → main`; gate cũ vẫn chạy từ `staging` HEAD | Forward-merge fix workflow vào tất cả long-lived branches (vd `main → staging`) TRƯỚC khi mở promote PR. Tránh hotfix workflow chỉ trên main. |
 | **rsync exit code 11 = target dir chưa tồn tại trên VPS** | Deploy workflow fail với `rsync error: errno 11` | Bootstrap `mkdir -p /opt/khe/backend{,-staging}` trên VPS qua SSH step TRƯỚC rsync. Đã wired in `deploy-*.yml` Sprint 0. |
+| **PR scope sprawl từ stale branch** | PR claim "4 files" nhưng diff = 26 files across 4 ownership lanes; CI branch-name check fail; docs/infra files bị sửa/xóa ngoài scope | Branch PHẢI rebase `staging` thường xuyên. Trước khi push PR: `git diff --name-only origin/staging` — verify CHỈ files trong scope-lock. Nếu thấy `docs/` hoặc `.github/` → strip trước push. DEC-047 CI sẽ auto-block. (PR #288 incident) |
 
 ---
 
