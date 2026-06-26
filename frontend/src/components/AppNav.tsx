@@ -29,13 +29,13 @@ export const NAV_SECTIONS: NavSection[] = [
     group: 'Theo dõi',
     items: [
       { key: 'home', label: 'Tổng quan', icon: '◎', to: '/admin', primary: true },
-      { key: 'obligations', label: 'Nghĩa vụ', icon: '⏰', to: '/admin/obligations', primary: true },
+      { key: 'obligations', label: 'Nghĩa vụ & Quyền lợi', icon: '⏰', to: '/admin/obligations', primary: true },
     ],
   },
   {
     group: 'Tài liệu',
     items: [
-      { key: 'docs', label: 'Kho tài liệu', icon: '▤', to: '/admin/documents', primary: true },
+      { key: 'docs', label: 'Hồ sơ hợp đồng', icon: '▤', to: '/admin/documents', primary: true },
       { key: 'upload', label: 'Tải lên', icon: '↑', to: '/admin/upload', primary: true, action: true },
     ],
   },
