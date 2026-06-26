@@ -142,21 +142,30 @@ const REVIEW_ITEM = {
 
 const CLAUSES = [
   { num: "Điều 1", title: "Phạm vi cung cấp", page: 1,
-    content: "Bên A cấp cho Bên B quyền sử dụng không độc quyền Phần mềm Quản lý Kho ALPHATECH v3.2, bao gồm các module: Quản lý tồn kho, Xuất nhập kho, Báo cáo thống kê. Quyền sử dụng giới hạn trong phạm vi hoạt động kinh doanh của Bên B tại Việt Nam." },
+    content: "Bên A cấp cho Bên B quyền sử dụng không độc quyền Phần mềm Quản lý Kho ALPHATECH v3.2, bao gồm các module: Quản lý tồn kho, Xuất nhập kho, Báo cáo thống kê. Quyền sử dụng giới hạn trong phạm vi hoạt động kinh doanh của Bên B tại Việt Nam.",
+    editedBy: null },
   { num: "Điều 2", title: "Thời hạn và hiệu lực", page: 1,
-    content: "Hợp đồng có hiệu lực từ ngày 01/04/2026 đến ngày 31/03/2028. Tự động gia hạn thêm 12 tháng nếu không bên nào thông báo chấm dứt trước 60 ngày." },
+    content: "Hợp đồng có hiệu lực từ ngày 01/04/2026 đến ngày 31/03/2028. Tự động gia hạn thêm 12 tháng nếu không bên nào thông báo chấm dứt trước 60 ngày.",
+    editedBy: null },
   { num: "Điều 3", title: "Phí sử dụng và thanh toán", page: 2,
-    content: "Phí sử dụng: 18.000.000 đồng/tháng (đã bao gồm VAT). Thanh toán trước ngày 05 hàng tháng bằng chuyển khoản ngân hàng. Chậm thanh toán quá 15 ngày, Bên A có quyền tạm ngừng cung cấp dịch vụ." },
+    content: "Phí sử dụng: 18.000.000 đồng/tháng (đã bao gồm VAT). Thanh toán trước ngày 05 hàng tháng bằng chuyển khoản ngân hàng. Chậm thanh toán quá 15 ngày, Bên A có quyền tạm ngừng cung cấp dịch vụ.",
+    editedBy: null },
   { num: "Điều 4", title: "Nghĩa vụ của Bên A", page: 2,
-    content: "Bên A có trách nhiệm: (a) Bàn giao tài liệu hướng dẫn sử dụng trong vòng 15 ngày kể từ ngày ký; (b) Cập nhật phiên bản phần mềm mới khi có; (c) Hỗ trợ kỹ thuật trong giờ hành chính (8:00–17:00, T2–T6); (d) Đảm bảo uptime tối thiểu 99.5%." },
+    content: "Bên A có trách nhiệm: (a) Bàn giao tài liệu hướng dẫn sử dụng trong vòng 15 ngày kể từ ngày ký; (b) Cập nhật phiên bản phần mềm mới khi có; (c) Hỗ trợ kỹ thuật trong giờ hành chính (8:00–17:00, T2–T6); (d) Đảm bảo uptime tối thiểu 99.5%.",
+    editedBy: null },
   { num: "Điều 5", title: "Nghĩa vụ của Bên B", page: 3,
-    content: "Bên B có trách nhiệm: (a) Thanh toán phí đúng hạn; (b) Không sao chép, phân phối, hoặc cho bên thứ ba sử dụng phần mềm; (c) Thông báo kịp thời các lỗi phát sinh; (d) Không can thiệp vào mã nguồn phần mềm." },
+    content: "Bên B có trách nhiệm: (a) Thanh toán phí đúng hạn; (b) Không sao chép, phân phối, hoặc cho bên thứ ba sử dụng phần mềm; (c) Thông báo kịp thời các lỗi phát sinh; (d) Không can thiệp vào mã nguồn phần mềm.",
+    editedBy: null },
   { num: "Điều 6", title: "Bảo mật thông tin", page: 3,
-    content: "Hai bên cam kết bảo mật toàn bộ thông tin kỹ thuật và thương mại liên quan đến hợp đồng này trong suốt thời gian thực hiện và 3 năm sau khi chấm dứt hợp đồng." },
+    content: "Hai bên cam kết bảo mật toàn bộ thông tin kỹ thuật và thương mại liên quan đến hợp đồng này trong suốt thời gian thực hiện và 3 năm sau khi chấm dứt hợp đồng.",
+    editedBy: null },
   { num: "Điều 7", title: "Sở hữu trí tuệ", page: 4,
-    content: "Bên A là chủ sở hữu toàn bộ quyền sở hữu trí tuệ đối với phần mềm. Bên B được cấp quyền sử dụng không độc quyền, không được chuyển nhượng. Mọi dữ liệu do Bên B nhập vào phần mềm thuộc quyền sở hữu của Bên B." },
+    content: "Bên A là chủ sở hữu toàn bộ quyền sở hữu trí tuệ đối với phần mềm. Bên B được cấp quyền sử dụng không độc quyền, không được chuyển nhượng. Mọi dữ liệu do Bên B nhập vào phần mềm thuộc quyền sở hữu của Bên B.",
+    editedBy: { user: "Admin", at: "26/06/2026 10:15" },
+    originalContent: "Bên A là chủ sở hữu toàn bộ quyền sở hữu trí tuệ đối với phần mềm. Bên B được cấp giấy phép sử dụng." },
   { num: "Điều 8", title: "Chấm dứt hợp đồng", page: 4,
-    content: "Hợp đồng chấm dứt khi: (a) Hết thời hạn và không gia hạn; (b) Hai bên thoả thuận chấm dứt; (c) Một bên vi phạm nghiêm trọng nghĩa vụ sau khi được thông báo 30 ngày mà không khắc phục." },
+    content: "Hợp đồng chấm dứt khi: (a) Hết thời hạn và không gia hạn; (b) Hai bên thoả thuận chấm dứt; (c) Một bên vi phạm nghiêm trọng nghĩa vụ sau khi được thông báo 30 ngày mà không khắc phục.",
+    editedBy: null },
 ];
 
 /* ===========================================================================
@@ -508,8 +517,113 @@ function TabObligations({ selfParty }) {
 }
 
 /* ===========================================================================
- * TAB 3 — Nội dung hợp đồng (clauses accordion) — Kevin comment 2026-06-26
+ * TAB 3 — Nội dung hợp đồng (clauses accordion + inline edit)
+ * Kevin comment 2026-06-26 + Kevin feedback: inline edit per clause with
+ * snapshot + attribution (D-07: edit → ghi Event, who edited: system/user).
+ * NO "Báo nội dung thiếu/sai" passive button — user edits directly.
  * ========================================================================= */
+function ClauseItem({ c, i, expanded, onToggle }) {
+  const [editing, setEditing] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [draft, setDraft] = useState(c.content);
+  const hasBeenEdited = !!c.editedBy;
+
+  return (
+    <div style={{ borderBottom: `1px solid ${t.color.border}` }}>
+      {/* Accordion header */}
+      <button onClick={onToggle} style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+        padding: `${t.space[3]}px ${t.space[4]}px`, border: "none", background: t.color.surface,
+        cursor: "pointer", fontFamily: t.font.family, textAlign: "left",
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: t.space[2] }}>
+          <span style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>
+            {c.num} — {c.title}
+          </span>
+          {hasBeenEdited && (
+            <span style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.medium, color: t.color.primary, background: t.color.primarySoft, padding: `0 ${t.space[2]}px`, borderRadius: t.radius.pill }}>đã sửa</span>
+          )}
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: t.space[3] }}>
+          {c.page && <span style={{ fontSize: t.font.size.xs, color: t.color.inkMuted }}>Tr. {c.page}</span>}
+          <span style={{ fontSize: t.font.size.sm, color: t.color.inkMuted }}>{expanded ? "▴" : "▾"}</span>
+        </span>
+      </button>
+
+      {/* Expanded body: view / edit mode */}
+      {expanded && (
+        <div style={{ padding: `0 ${t.space[4]}px ${t.space[4]}px` }}>
+          {/* Attribution line — who last touched this */}
+          <div style={{ fontSize: t.font.size.xs, color: t.color.inkMuted, marginBottom: t.space[2], display: "flex", alignItems: "center", gap: t.space[2] }}>
+            {hasBeenEdited ? (
+              <>
+                <span>Sửa bởi <strong style={{ color: t.color.ink }}>{c.editedBy.user}</strong> lúc {c.editedBy.at}</span>
+                <span style={{ color: t.color.border }}>·</span>
+                <button onClick={() => setShowOriginal(!showOriginal)} style={{ border: "none", background: "none", color: t.color.primary, cursor: "pointer", fontSize: t.font.size.xs, fontFamily: t.font.family, padding: 0, textDecoration: "underline" }}>
+                  {showOriginal ? "Ẩn bản gốc" : "Xem bản gốc (AI)"}
+                </button>
+              </>
+            ) : (
+              <span>Nội dung gốc (AI bóc tách)</span>
+            )}
+          </div>
+
+          {/* Original content diff (collapsed by default) */}
+          {showOriginal && c.originalContent && (
+            <div style={{
+              padding: `${t.space[2]}px ${t.space[3]}px`, marginBottom: t.space[3],
+              background: t.color.graySoft, borderRadius: t.radius.sm, borderLeft: `3px solid ${t.color.border}`,
+              fontSize: t.font.size.sm, color: t.color.inkMuted, lineHeight: 1.6,
+            }}>
+              <div style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.semibold, color: t.color.inkSubtle, marginBottom: t.space[1] }}>Bản gốc (AI bóc tách):</div>
+              {c.originalContent}
+            </div>
+          )}
+
+          {/* Content: view or edit */}
+          {editing ? (
+            <div>
+              <textarea
+                value={draft} onChange={(e) => setDraft(e.target.value)}
+                style={{
+                  width: "100%", minHeight: 120, padding: t.space[3], fontSize: t.font.size.md,
+                  fontFamily: t.font.family, color: t.color.ink, lineHeight: 1.7,
+                  border: `1px solid ${t.color.primary}`, borderRadius: t.radius.md,
+                  outline: "none", resize: "vertical", boxSizing: "border-box",
+                }}
+              />
+              <div style={{ display: "flex", gap: t.space[2], marginTop: t.space[2], alignItems: "center" }}>
+                <button onClick={() => setEditing(false)} style={{
+                  background: t.color.primary, color: t.color.surface, border: "none",
+                  padding: `${t.space[1]}px ${t.space[4]}px`, borderRadius: t.radius.md,
+                  fontSize: t.font.size.sm, fontWeight: t.font.weight.semibold, cursor: "pointer", fontFamily: t.font.family,
+                }}>Lưu</button>
+                <button onClick={() => { setDraft(c.content); setEditing(false); }} style={{
+                  border: `1px solid ${t.color.border}`, background: t.color.surface, color: t.color.ink,
+                  padding: `${t.space[1]}px ${t.space[4]}px`, borderRadius: t.radius.md,
+                  fontSize: t.font.size.sm, cursor: "pointer", fontFamily: t.font.family,
+                }}>Hủy</button>
+                <span style={{ fontSize: t.font.size.xs, color: t.color.inkMuted }}>
+                  Thay đổi được ghi lại kèm tên người sửa (D-07)
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: t.font.size.md, color: t.color.ink, lineHeight: 1.7 }}>{c.content}</div>
+              <button onClick={() => setEditing(true)} style={{
+                marginTop: t.space[2], border: `1px solid ${t.color.border}`, background: t.color.surface,
+                color: t.color.inkMuted, padding: `1px ${t.space[3]}px`, borderRadius: t.radius.sm,
+                fontSize: t.font.size.xs, cursor: "pointer", fontFamily: t.font.family,
+              }}>✎ Sửa nội dung</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabClauses({ clauses, mayHaveUnextracted }) {
   const [expanded, setExpanded] = useState(() => {
     if (clauses.length <= 8) return new Set(clauses.map((_, i) => i));
@@ -527,6 +641,8 @@ function TabClauses({ clauses, mayHaveUnextracted }) {
   const pageNums = clauses.map((c) => c.page).filter(Boolean);
   const minPage = pageNums.length ? Math.min(...pageNums) : null;
   const maxPage = pageNums.length ? Math.max(...pageNums) : null;
+
+  const editedCount = clauses.filter((c) => c.editedBy).length;
 
   if (clauses.length === 0) {
     return (
@@ -552,33 +668,18 @@ function TabClauses({ clauses, mayHaveUnextracted }) {
   return (
     <div style={{ marginTop: t.space[5] }}>
       {/* Header summary */}
-      <div style={{ fontSize: t.font.size.md, color: t.color.inkMuted, marginBottom: t.space[4] }}>
-        {clauses.length} điều khoản{minPage != null && maxPage != null ? ` · trang ${minPage}–${maxPage}` : ""}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: t.space[4] }}>
+        <div style={{ fontSize: t.font.size.md, color: t.color.inkMuted }}>
+          {clauses.length} điều khoản{minPage != null && maxPage != null ? ` · trang ${minPage}–${maxPage}` : ""}
+          {editedCount > 0 && <span style={{ color: t.color.primary, marginLeft: t.space[2] }}>· {editedCount} đã sửa</span>}
+        </div>
+        <button style={{ border: `1px solid ${t.color.borderStrong}`, background: t.color.surface, color: t.color.ink, padding: `${t.space[1]}px ${t.space[3]}px`, borderRadius: t.radius.md, fontSize: t.font.size.sm, cursor: "pointer", fontFamily: t.font.family }}>Tải hợp đồng gốc</button>
       </div>
 
-      {/* Clause accordion */}
+      {/* Clause accordion with inline edit */}
       <div style={{ border: `1px solid ${t.color.border}`, borderRadius: t.radius.lg, overflow: "hidden" }}>
         {clauses.map((c, i) => (
-          <div key={i} style={{ borderBottom: i < clauses.length - 1 ? `1px solid ${t.color.border}` : "none" }}>
-            <button onClick={() => toggle(i)} style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
-              padding: `${t.space[3]}px ${t.space[4]}px`, border: "none", background: t.color.surface,
-              cursor: "pointer", fontFamily: t.font.family, textAlign: "left",
-            }}>
-              <span style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>
-                {c.num} — {c.title}
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: t.space[3] }}>
-                {c.page && <span style={{ fontSize: t.font.size.xs, color: t.color.inkMuted }}>Tr. {c.page}</span>}
-                <span style={{ fontSize: t.font.size.sm, color: t.color.inkMuted }}>{expanded.has(i) ? "▴" : "▾"}</span>
-              </span>
-            </button>
-            {expanded.has(i) && (
-              <div style={{ padding: `0 ${t.space[4]}px ${t.space[4]}px`, fontSize: t.font.size.md, color: t.color.ink, lineHeight: 1.7 }}>
-                {c.content}
-              </div>
-            )}
-          </div>
+          <ClauseItem key={i} c={c} i={i} expanded={expanded.has(i)} onToggle={() => toggle(i)} />
         ))}
       </div>
 
@@ -592,10 +693,9 @@ function TabClauses({ clauses, mayHaveUnextracted }) {
         )}
       </div>
 
-      {/* CTAs */}
-      <div style={{ display: "flex", gap: t.space[3], marginTop: t.space[4] }}>
-        <button style={{ border: `1px solid ${t.color.borderStrong}`, background: t.color.surface, color: t.color.ink, padding: `${t.space[2]}px ${t.space[4]}px`, borderRadius: t.radius.md, fontSize: t.font.size.md, cursor: "pointer", fontFamily: t.font.family }}>Tải hợp đồng gốc</button>
-        <button style={{ border: `1px solid ${t.color.border}`, background: t.color.surface, color: t.color.inkMuted, padding: `${t.space[2]}px ${t.space[4]}px`, borderRadius: t.radius.md, fontSize: t.font.size.md, cursor: "pointer", fontFamily: t.font.family }}>Báo nội dung thiếu/sai</button>
+      {/* Edit audit note */}
+      <div style={{ marginTop: t.space[3], fontSize: t.font.size.xs, color: t.color.inkSubtle }}>
+        Mọi thay đổi nội dung điều khoản được snapshot và ghi lại người sửa (system / user). Bản gốc AI bóc tách luôn được lưu.
       </div>
     </div>
   );
@@ -698,8 +798,8 @@ export default function DocumentDetailV2() {
           <div><strong>DEC-020:</strong> review row kept, type chip = "Review", excluded from duty tally. DRL-09 counter rejected (detail page gets checklist, not X/N counter).</div>
           <div><strong>FR-EX-05:</strong> ⚠ badge ONLY — raw confidence % hidden. DEC-045 completeness banner 3-state (green/amber/unchecked).</div>
           <div><strong>Footer (D-02):</strong> split confirm vs self-party. "Đã xác nhận" ONLY when self-party set + confirmed. No English. No snake_case anywhere.</div>
-          <div><strong>Tab 3 (clauses):</strong> accordion; ≤8 = all expanded, &gt;8 = collapsed. Empty state honest (D-08): "Khế chưa bóc được nội dung chi tiết". Completeness footer. Backend #283.</div>
-          <div><strong>Out of scope:</strong> clause↔obligation cross-nav (no source_clause_num today) · inline edit of clauses (D-01/D-06) · AI summary/highlight (bias risk) · DEC-040 X/N counter (DRL-09 rejected).</div>
+          <div><strong>Tab 3 (clauses):</strong> accordion; ≤8 = all expanded, &gt;8 = collapsed. Empty state honest (D-08). <strong>Inline edit per clause (D-07)</strong>: edit button on each clause body; save snapshots original + records who edited (system/user + timestamp) → Event. "đã sửa" badge on edited clause headers. "Xem bản gốc (AI)" toggle shows original extraction. Backend #283.</div>
+          <div><strong>Out of scope:</strong> clause↔obligation cross-nav (no source_clause_num today) · AI summary/highlight (bias risk) · DEC-040 X/N counter (DRL-09 rejected).</div>
         </div>
       </main>
     </div>

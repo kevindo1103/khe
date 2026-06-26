@@ -117,11 +117,21 @@ button{font-family:var(--ff);cursor:pointer}
 .clause-summary{font-size:14px;color:var(--ink-m);margin-bottom:16px}
 .clause-footer{margin-top:16px;font-size:13px;color:var(--ink-m)}
 .clause-footer .warn{color:var(--amb);margin-left:8px}
-.clause-ctas{display:flex;gap:12px;margin-top:16px}
 .clause-empty{padding:48px 24px;text-align:center;border:1px dashed var(--bdr-s);border-radius:12px;margin-top:20px}
 .clause-empty .icon{font-size:40px}
 .clause-empty h3{font-size:18px;font-weight:700;margin-top:16px}
 .clause-empty p{font-size:14px;color:var(--ink-m);max-width:460px;margin:12px auto 0;line-height:1.6}
+.clause-edited-badge{font-size:12px;font-weight:500;color:var(--pri);background:var(--pri-s);padding:0 8px;border-radius:999px;margin-left:8px}
+.clause-attr{font-size:12px;color:var(--ink-m);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.clause-attr a{border:none;background:none;color:var(--pri);cursor:pointer;font-size:12px;text-decoration:underline;padding:0}
+.clause-orig{padding:8px 12px;margin-bottom:12px;background:var(--gray-s);border-radius:6px;border-left:3px solid var(--bdr);font-size:13px;color:var(--ink-m);line-height:1.6}
+.clause-orig .orig-lbl{font-size:12px;font-weight:600;color:var(--ink-s);margin-bottom:4px}
+.clause-edit-btn{margin-top:8px;border:1px solid var(--bdr);background:var(--surf);color:var(--ink-m);padding:1px 12px;border-radius:6px;font-size:12px}
+.clause-edit-area{width:100%;min-height:120px;padding:12px;font-size:14px;line-height:1.7;border:1px solid var(--pri);border-radius:8px;resize:vertical;font-family:var(--ff);color:var(--ink)}
+.clause-edit-btns{display:flex;gap:8px;margin-top:8px;align-items:center}
+.clause-edit-note{font-size:12px;color:var(--ink-s)}
+.clause-summary-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.clause-audit-note{margin-top:12px;font-size:12px;color:var(--ink-s)}
 
 /* Footer */
 .footer{margin-top:32px;padding:16px 0;border-top:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
@@ -261,7 +271,7 @@ body{padding-top:40px}
       <div><strong>Self-party:</strong> until set → "N mục cần theo dõi" NOT "N nghĩa vụ" (D-13/DEC-030). Footer blocks "Xác nhận".</div>
       <div><strong>Direction:</strong> "↑ Phải làm" / "↓ Được hưởng" / "? Chưa rõ — chọn bên". Payment rows show payer/payee.</div>
       <div><strong>Due dates:</strong> date → calendar + countdown · event → "Chờ mốc" + capture CTA · standing → "Cam kết đang hiệu lực".</div>
-      <div><strong>Tab 3:</strong> accordion ≤8 expanded. Empty = D-08 honest. Backend #283.</div>
+      <div><strong>Tab 3:</strong> accordion ≤8 expanded. <strong>Inline edit per clause (D-07)</strong>: edit → snapshot original + ghi người sửa (system/user + time). "đã sửa" badge. "Xem bản gốc" toggle. Empty = D-08 honest. Backend #283.</div>
     </div>
   </div>
 </div>
@@ -302,9 +312,10 @@ const CLAUSES = [
   {num:'Điều 4',title:'Nghĩa vụ của Bên A',page:2,content:'Bên A có trách nhiệm: (a) Bàn giao tài liệu hướng dẫn sử dụng trong vòng 15 ngày kể từ ngày ký; (b) Cập nhật phiên bản phần mềm mới khi có; (c) Hỗ trợ kỹ thuật trong giờ hành chính (8:00–17:00, T2–T6); (d) Đảm bảo uptime tối thiểu 99.5%.'},
   {num:'Điều 5',title:'Nghĩa vụ của Bên B',page:3,content:'Bên B có trách nhiệm: (a) Thanh toán phí đúng hạn; (b) Không sao chép, phân phối, hoặc cho bên thứ ba sử dụng phần mềm; (c) Thông báo kịp thời các lỗi phát sinh; (d) Không can thiệp vào mã nguồn phần mềm.'},
   {num:'Điều 6',title:'Bảo mật thông tin',page:3,content:'Hai bên cam kết bảo mật toàn bộ thông tin kỹ thuật và thương mại liên quan đến hợp đồng này trong suốt thời gian thực hiện và 3 năm sau khi chấm dứt hợp đồng.'},
-  {num:'Điều 7',title:'Sở hữu trí tuệ',page:4,content:'Bên A là chủ sở hữu toàn bộ quyền sở hữu trí tuệ đối với phần mềm. Bên B được cấp quyền sử dụng không độc quyền, không được chuyển nhượng. Mọi dữ liệu do Bên B nhập vào phần mềm thuộc quyền sở hữu của Bên B.'},
+  {num:'Điều 7',title:'Sở hữu trí tuệ',page:4,content:'Bên A là chủ sở hữu toàn bộ quyền sở hữu trí tuệ đối với phần mềm. Bên B được cấp quyền sử dụng không độc quyền, không được chuyển nhượng. Mọi dữ liệu do Bên B nhập vào phần mềm thuộc quyền sở hữu của Bên B.',editedBy:{user:'Admin',at:'26/06/2026 10:15'},originalContent:'Bên A là chủ sở hữu toàn bộ quyền sở hữu trí tuệ đối với phần mềm. Bên B được cấp giấy phép sử dụng.'},
   {num:'Điều 8',title:'Chấm dứt hợp đồng',page:4,content:'Hợp đồng chấm dứt khi: (a) Hết thời hạn và không gia hạn; (b) Hai bên thoả thuận chấm dứt; (c) Một bên vi phạm nghiêm trọng nghĩa vụ sau khi được thông báo 30 ngày mà không khắc phục.'},
 ];
+var clauseEditing = {};
 
 let selfPartySet = false;
 let activeTab = 'overview';
@@ -408,16 +419,31 @@ function renderClauses() {
   const pages = CLAUSES.map(function(c) { return c.page; }).filter(Boolean);
   const minP = Math.min.apply(null, pages);
   const maxP = Math.max.apply(null, pages);
-  let html = '<div class="clause-summary" style="margin-top:20px">' + CLAUSES.length + ' điều khoản · trang ' + minP + '–' + maxP + '</div>';
+  var editedCount = CLAUSES.filter(function(c) { return !!c.editedBy; }).length;
+  var editedNote = editedCount > 0 ? '<span style="color:var(--pri);margin-left:8px">· ' + editedCount + ' đã sửa</span>' : '';
+  var html = '<div class="clause-summary-row" style="margin-top:20px"><div style="font-size:14px;color:var(--ink-m)">' + CLAUSES.length + ' điều khoản · trang ' + minP + '–' + maxP + editedNote + '</div><button class="btn-sec" style="padding:4px 12px;font-size:13px">Tải hợp đồng gốc</button></div>';
   html += '<div class="clause-list">';
   CLAUSES.forEach(function(c, i) {
-    html += '<div><button class="clause-hdr" onclick="toggleClause(' + i + ')"><span class="clause-title">' + c.num + ' — ' + c.title + '</span><span style="display:flex;align-items:center;gap:12px">' + (c.page ? '<span class="clause-page">Tr. ' + c.page + '</span>' : '') + '<span style="font-size:13px;color:var(--ink-m)" id="clause-arrow-' + i + '">▾</span></span></button><div class="clause-body" id="clause-body-' + i + '" style="display:none">' + c.content + '</div></div>';
+    var editBadge = c.editedBy ? '<span class="clause-edited-badge">đã sửa</span>' : '';
+    html += '<div style="border-bottom:1px solid var(--bdr)">';
+    html += '<button class="clause-hdr" onclick="toggleClause(' + i + ')"><span style="display:flex;align-items:center"><span class="clause-title">' + c.num + ' — ' + c.title + '</span>' + editBadge + '</span><span style="display:flex;align-items:center;gap:12px">' + (c.page ? '<span class="clause-page">Tr. ' + c.page + '</span>' : '') + '<span style="font-size:13px;color:var(--ink-m)" id="clause-arrow-' + i + '">▾</span></span></button>';
+    html += '<div id="clause-body-' + i + '" style="display:none;padding:0 16px 16px">';
+    // Attribution line
+    if (c.editedBy) {
+      html += '<div class="clause-attr">Sửa bởi <strong style="color:var(--ink)">' + c.editedBy.user + '</strong> lúc ' + c.editedBy.at + ' <span style="color:var(--bdr)">·</span> <a onclick="toggleOriginal(' + i + ')">Xem bản gốc (AI)</a></div>';
+      html += '<div class="clause-orig" id="clause-orig-' + i + '" style="display:none"><div class="orig-lbl">Bản gốc (AI bóc tách):</div>' + (c.originalContent || '') + '</div>';
+    } else {
+      html += '<div class="clause-attr">Nội dung gốc (AI bóc tách)</div>';
+    }
+    // Content + edit area
+    html += '<div id="clause-view-' + i + '" style="font-size:14px;line-height:1.7">' + c.content + '<div style="margin-top:8px"><button class="clause-edit-btn" onclick="startEditClause(' + i + ')">✎ Sửa nội dung</button></div></div>';
+    html += '<div id="clause-edit-' + i + '" style="display:none"><textarea class="clause-edit-area" id="clause-textarea-' + i + '">' + c.content + '</textarea><div class="clause-edit-btns"><button class="btn-pri" style="padding:4px 16px;font-size:13px" onclick="saveEditClause(' + i + ')">Lưu</button><button class="btn-sec" style="padding:4px 16px;font-size:13px" onclick="cancelEditClause(' + i + ')">Hủy</button><span class="clause-edit-note">Thay đổi được ghi lại kèm tên người sửa (D-07)</span></div></div>';
+    html += '</div></div>';
   });
   html += '</div>';
   html += '<div class="clause-footer">Khế đọc được ' + CLAUSES.length + ' điều khoản từ tài liệu này.<span class="warn">⚠ Có thể còn nội dung Khế chưa bóc hết — đối chiếu file gốc nếu cần.</span></div>';
-  html += '<div class="clause-ctas"><button class="btn-sec">Tải hợp đồng gốc</button><button class="btn-sec" style="color:var(--ink-m)">Báo nội dung thiếu/sai</button></div>';
+  html += '<div class="clause-audit-note">Mọi thay đổi nội dung điều khoản được snapshot và ghi lại người sửa (system / user). Bản gốc AI bóc tách luôn được lưu.</div>';
   el.innerHTML = html;
-  // ≤8 clauses → expand all
   if (CLAUSES.length <= 8) {
     CLAUSES.forEach(function(_, i) {
       var body = document.getElementById('clause-body-' + i);
@@ -431,13 +457,29 @@ function renderClauses() {
 function toggleClause(i) {
   var body = document.getElementById('clause-body-' + i);
   var arrow = document.getElementById('clause-arrow-' + i);
-  if (body.style.display === 'none') {
-    body.style.display = 'block';
-    arrow.textContent = '▴';
-  } else {
-    body.style.display = 'none';
-    arrow.textContent = '▾';
-  }
+  if (body.style.display === 'none') { body.style.display = 'block'; arrow.textContent = '▴'; }
+  else { body.style.display = 'none'; arrow.textContent = '▾'; }
+}
+
+function toggleOriginal(i) {
+  var el = document.getElementById('clause-orig-' + i);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function startEditClause(i) {
+  document.getElementById('clause-view-' + i).style.display = 'none';
+  document.getElementById('clause-edit-' + i).style.display = 'block';
+}
+
+function cancelEditClause(i) {
+  document.getElementById('clause-view-' + i).style.display = 'block';
+  document.getElementById('clause-edit-' + i).style.display = 'none';
+  document.getElementById('clause-textarea-' + i).value = CLAUSES[i].content;
+}
+
+function saveEditClause(i) {
+  document.getElementById('clause-view-' + i).style.display = 'block';
+  document.getElementById('clause-edit-' + i).style.display = 'none';
 }
 
 function renderFooter() {
