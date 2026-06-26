@@ -1,6 +1,7 @@
 *.db
 *.db-*
 tenants/
+storage/
 .env*
 __pycache__/
 *.pyc

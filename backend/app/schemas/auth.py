@@ -7,15 +7,15 @@ class LoginIn(BaseModel):
     password: str
 
 
-class TokenOut(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+class LoginOut(BaseModel):
+    user: dict
+    tenant_id: str
 
 
 class UserOut(BaseModel):
-    id: int
-    tenant_id: str
+    user_id: int
     username: str
+    tenant_id: str
     role: str
 
     model_config = {"from_attributes": True}
