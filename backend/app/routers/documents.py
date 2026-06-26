@@ -179,6 +179,7 @@ def _persist_upload(
     file: UploadFile,
     doc_type: str | None,
     background_tasks: BackgroundTasks,
+    is_evidence: bool = False,
 ) -> UploadOut:
     """Shared upload logic — atomic Document insert + audit Event (#56).
 
@@ -212,12 +213,16 @@ def _persist_upload(
     _stream_to_disk_capped(file, temp_disk_path, settings.MAX_UPLOAD_MB * 1024 * 1024)
 
     # 3. INSERT Document + flush() to get the autoincrement id (no commit yet)
+    # P2 (#302): evidence docs skip extraction → status "done" immediately.
+    # Conservative PII default: contains_personal_data=True for all evidence docs (DEC-039).
     doc = Document(
         tenant_id=tenant_id,
         file_name=file.filename or "unnamed.pdf",
         file_path="",  # placeholder; set after the rename
         doc_type=doc_type,
-        status="processing",
+        status="done" if is_evidence else "processing",
+        is_evidence=is_evidence,
+        contains_personal_data=is_evidence,
     )
     db.add(doc)
     try:
@@ -265,8 +270,9 @@ def _persist_upload(
             detail="Failed to commit document.",
         )
 
-    # 6. Enqueue extraction worker (PR-B)
-    _enqueue_extraction(background_tasks, doc.id, tenant_id, doc_type)
+    # 6. Enqueue extraction worker (PR-B). Skip for evidence docs (P2 #302).
+    if not is_evidence:
+        _enqueue_extraction(background_tasks, doc.id, tenant_id, doc_type)
 
     return UploadOut(doc_id=doc.id, file_name=doc.file_name, status=doc.status)
 
@@ -280,11 +286,16 @@ def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     doc_type: str | None = None,
+    is_evidence: bool = False,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
     master_db: Session = Depends(get_master_db),
 ):
-    """Upload a single PDF. Consent gate FIRST; 403 if SME has not consented."""
+    """Upload a single PDF. Consent gate FIRST; 403 if SME has not consented.
+
+    is_evidence=true: marks doc as biên bản bàn giao/nghiệm thu — skips AI
+    extraction, sets contains_personal_data=true for DEC-039 firm gate (P2/#302).
+    """
     if not check_extraction_consent(db, user.tenant_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -299,7 +310,7 @@ def upload_document(
             detail="Quota exceeded. Contact your firm partner to adjust limit.",
         )
 
-    result = _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+    result = _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks, is_evidence=is_evidence)
     # Journey (#213): first upload moves NEW → EXTRACTING (monotonic no-op after).
     tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
     return result
@@ -311,6 +322,7 @@ def upload_bulk(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     doc_type: str | None = None,
+    is_evidence: bool = False,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
     master_db: Session = Depends(get_master_db),
@@ -339,7 +351,7 @@ def upload_bulk(
             results.append(UploadOut(doc_id=None, file_name=file.filename or "", status="quota_exceeded"))
             continue
         results.append(
-            _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+            _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks, is_evidence=is_evidence)
         )
         accepted += 1
 

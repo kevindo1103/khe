@@ -9,7 +9,7 @@ When an obligation is marked "done", any obligations waiting on it
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -18,8 +18,16 @@ from app.models.tenant import Obligation
 logger = logging.getLogger(__name__)
 
 
-def propagate_obligation_done(obligation_id: int, tenant_db: Session) -> int:
+def propagate_obligation_done(
+    obligation_id: int,
+    tenant_db: Session,
+    fulfilled_at: datetime | None = None,
+) -> int:
     """Activate obligations waiting on the given obligation.
+
+    ``fulfilled_at`` anchors the child due-date calculation (G1 fix #302):
+    use the parent's actual completion date, not today, so backfilled
+    historical milestones propagate the correct future date.
 
     Returns the count of activated dependents (for Frontend toast).
     """
@@ -32,12 +40,12 @@ def propagate_obligation_done(obligation_id: int, tenant_db: Session) -> int:
         .all()
     )
 
-    today = date.today()
+    anchor = fulfilled_at.date() if fulfilled_at else date.today()
     for dep in dependents:
         if dep.trigger_delay_days:
-            dep.due_date = (today + timedelta(days=dep.trigger_delay_days)).isoformat()
+            dep.due_date = (anchor + timedelta(days=dep.trigger_delay_days)).isoformat()
         else:
-            dep.due_date = today.isoformat()
+            dep.due_date = anchor.isoformat()
         dep.status = "pending"
         dep.milestone_trigger = "date"
 

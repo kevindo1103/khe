@@ -162,7 +162,35 @@ def patch_obligation(
 
     activated_count = 0
     if payload.status == "done":
-        activated_count = propagate_obligation_done(ob.id, db)
+        # G2 (#302): require fulfilled_at; persist date + actor + evidence.
+        if payload.fulfilled_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fulfilled_at is required when marking an obligation done.",
+            )
+        ob.fulfilled_at = payload.fulfilled_at
+        ob.fulfilled_by = payload.fulfilled_by or user.username
+        ob.evidence_doc_ids = (
+            json.dumps(payload.evidence_doc_ids) if payload.evidence_doc_ids else None
+        )
+        # G1 (#302): anchor chain propagation on fulfilled_at, not today.
+        activated_count = propagate_obligation_done(ob.id, db, fulfilled_at=payload.fulfilled_at)
+
+        # P4 compliance: log evidence_attached Event for each evidence doc (NĐ 13 audit).
+        if payload.evidence_doc_ids:
+            for ev_doc_id in payload.evidence_doc_ids:
+                db.add(Event(
+                    tenant_id=user.tenant_id,
+                    event_type="evidence_attached",
+                    entity_type="obligation",
+                    entity_id=ob.id,
+                    actor=ob.fulfilled_by,
+                    purpose="obligation_fulfillment",
+                    payload=json.dumps({
+                        "evidence_doc_id": ev_doc_id,
+                        "obligation_id": ob.id,
+                    }),
+                ))
 
     _log_event(
         db,
@@ -171,7 +199,13 @@ def patch_obligation(
         entity_type="obligation",
         entity_id=ob.id,
         actor=user.username,
-        payload={"old_status": old_status, "new_status": payload.status},
+        payload={
+            "old_status": old_status,
+            "new_status": payload.status,
+            "fulfilled_at": payload.fulfilled_at.isoformat() if payload.fulfilled_at else None,
+            "fulfilled_by": ob.fulfilled_by if payload.status == "done" else None,
+            "evidence_doc_ids": payload.evidence_doc_ids,
+        },
     )
 
     db.commit()
