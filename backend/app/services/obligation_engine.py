@@ -81,7 +81,7 @@ def _build_chain_docs(
     return [doc] if doc else []
 
 
-def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
+def derive_obligations(db: Session, tenant_id: str, doc_id: int, *, source_label: str = "ai_extracted") -> dict:
     """Derive obligations for a document.
 
     Notes:
@@ -147,6 +147,7 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         Obligation.tenant_id == tenant_id,
         Obligation.document_id.in_(chain_ids),
         Obligation.status == "pending",
+        Obligation.source != "user_manual",
     ).delete()
 
     due_str = due_date.strftime("%Y-%m-%d") if due_date else None
@@ -163,6 +164,7 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         remind_before_days=365 if recurrence == "open_ended_review" else 30,
         source_doc_chain=json.dumps(chain_ids),
         resolution_method="last_writer_wins" if len(chain_ids) > 1 else None,
+        source=source_label,
     )
     db.add(ob)
 

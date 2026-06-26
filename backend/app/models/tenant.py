@@ -101,6 +101,8 @@ class Obligation(TenantBase):
     # NULL = not snoozed. Auto-expires (scheduler resumes once now() passes it) —
     # snooze never mutates status/due_date (D-07: obligation truth unchanged).
     snoozed_until = Column(DateTime, nullable=True)
+    # Provenance (#301): how this obligation originated.
+    source = Column(String, nullable=True)             # "ai_extracted" | "user_manual" | "ai_re_derived" | NULL(legacy)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
