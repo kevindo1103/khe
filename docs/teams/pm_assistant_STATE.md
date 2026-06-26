@@ -134,8 +134,9 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 | **Backend** | **#275** | Direction-aware reminders — quyền_lợi trigger semantics + 4 Telegram templates | **P1 pre-pilot** |
 | **Backend + Frontend** | **#276** | Honest completeness flag — always-on disclaimer, backfill=NULL | **P1 pre-pilot** |
 | **Backend** | **#277** | Chat reliability — #268 trace fix + #263 clause fallback | **P1 pre-pilot 🔴** |
-| **Designer** | **#278** | /admin/documents LIST full revamp — obligation-centric, B&W minimalism (DEC-043 + QC 2026-06-25) | **Pre-pilot, gates FE** |
-| **Backend** | **#279** | GET /documents/ list API delta — 6 new fields for #278 | **Pre-pilot, parallel with #278** |
+| **Designer** | **#278** ✅ | /admin/documents LIST full revamp — mockup merged PR #283 → `main` (2026-06-26) | **Done — gates FE #285** |
+| **Backend** | **#279** | GET /documents/ list API delta — 6 new fields + search extends to `primary_party` (spec updated in comment 2026-06-26) | **Pre-pilot, gates FE #285** |
+| **Frontend** | **#285** ✅ filed | /admin/documents list v2 implementation — F1 (Cần kiểm tra chip), F2 (hydration flash), N3 (standing obligation weight fix), N4 (badge hide), full 7-row-state spec. Blocks on #279 for populated state; empty state shippable now. | **Pre-pilot** |
 | **Designer** | **#281** | /admin/documents/:id DETAIL full revamp — inverted IA, self-party-gated, rights surface (QC doc-detail report + PM adversarial verify 2026-06-26). **+ "Nội dung hợp đồng" tab** (Kevin approved 2026-06-26, addendum in §PENDING POSTS — promote clauses[] to peer tab) | **Pre-pilot, gates FE** |
 | **Backend+AI** | **#282** | Doc-detail data/logic correctness — party separation (root cause), due-date resolution, per-obligation direction, event-trigger activation, counter integrity | **Pre-pilot 🔴 (B1-B5 blockers)** |
 | **Backend** | **#284** ✅ filed | DETAIL clauses API delta — `GET /documents/{id}/clauses` + `ClauseOut`/`ClauseListOut`. Read-only surface of existing clause data for "Nội dung hợp đồng" tab | **Pre-pilot, parallel with #281** |
