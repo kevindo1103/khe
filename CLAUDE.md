@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-20 (v0.6 — fold DEC-031 v2 chat architecture extension) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.7 reference*
+*Last updated: 2026-06-20 (v0.7 — DEC-047 PR scope-lock enforcement + session kickoff checklist + scope-sprawl bug pattern) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.7 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -89,6 +89,26 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **Deploy** chỉ qua GitHub Actions CI/CD. KHÔNG SSH/SFTP trực tiếp VPS bypass quality gate. Exception: documented hotpatch playbook.
 - **PR phải qua quality gate** (`pr-quality-gate.yml`): `npm run build` (frontend), `python -c "import main"` (backend), schema diff check.
 
+### PR Scope-Lock Enforcement (DEC-047, post PR #288 incident)
+
+**Hard rule:** PR CHỈ được chứa files trong scope của session mở PR. Cross-lane changes = **file issue, NEVER bundle**.
+
+| Lane | Owner | Allowed paths | Strictly forbidden in PR |
+|---|---|---|---|
+| **docs** | KHE_Docs (branch `claude/edit-git-docs-Khe01`) | `docs/**` + root `*.md` | Bất kỳ code/test/workflow files |
+| **infra/workflows** | KHE_Infra | `.github/workflows/**`, deploy scripts, VPS configs | Backend code, frontend code, docs |
+| **mockup exception** | KHE_Designer | `docs/mockup_*.jsx` ONLY | Other docs/, code, workflows |
+| **backend** | KHE_Backend | `backend/**` | Frontend, docs, workflows |
+| **frontend admin** | KHE_Frontend_Admin | `frontend/src/pages/{admin,firm,public}/**` + shared `frontend/src/{types,lib,hooks,components}/**` | PWA `frontend/pwa/**`, backend, docs |
+| **PWA** | KHE_PWA_Chat | `frontend/pwa/**` standalone | Admin `frontend/src/**`, backend, docs |
+| **QC** | KHE_QC | `backend/tests/**`, `frontend/tests/**`, e2e | App code (`backend/app/**`, `frontend/src/**` non-test), docs |
+
+**Trigger pattern (PR #288):** dev cherry-picks fix từ stale branch → carries co-committed files khác lane → PR scope sprawl → human review burden + revert risk. **Fix:** branch off `origin/staging` (or appropriate base) fresh; cherry-pick ONLY in-scope files; `git diff --name-only origin/staging..HEAD` verify trước push.
+
+**CI enforcement (TODO Infra):** `pr-quality-gate.yml` add scope-lock check — block PR if changed paths violate session's allowed lanes (read from PR author / branch prefix mapping).
+
+**Cross-lane work needed?** File issue `from:<my-team>` + `for:<other-team>` + `relay`, **không bundle**. Người khác PR riêng.
+
 ### Cross-session communication
 
 **Protocol:** GitHub Issues với labels — sessions tự đọc inbox khi spawn, không user relay thủ công.
@@ -99,9 +119,12 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - Spec conflict → PM: `from:X` + `for:pm` + `spec-conflict`
 - **Blocker labels:** `blocker:human-needed` (high priority) vs `blocker:waiting-dependency` (track only)
 - **Status labels:** `status:planned` → `status:in-progress` → `status:review` → `status:done-staging` → close
-- **Bước 0 mỗi session kickoff:** list `for:<my-team>` open issues
-- **Bước 1 mỗi session:** đọc `docs/teams/<myteam>_STATE.md`
-- **Post-merge:** comment **DOCS_INBOX** issue trong 24h
+- **Bước 0 mỗi session kickoff (BẮT BUỘC, theo thứ tự):**
+  1. **Đọc `CLAUDE.md` trước tiên** — đặc biệt §PR Scope-Lock Enforcement (DEC-047), §D-rules, §Multi-Tenant DB, §Common Bug Patterns. KHÔNG skip dù session quen.
+  2. Đọc `docs/teams/<myteam>_STATE.md` — context session trước.
+  3. List `for:<my-team>` open issues — inbox.
+  4. **Verify branch name** — đúng `claude/<type>-<scope>-...` pattern + đúng lane (xem §Branch Naming + §PR Scope-Lock).
+- **Post-merge:** comment **DOCS_INBOX** issue trong 24h nếu PR ảnh hưởng business rule / schema / API / UI / deploy / known bug.
 
 ### Branch Naming (BẮT BUỘC)
 
@@ -178,6 +201,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | **Claude `messages.parse()` schema-complexity timeout** | Claude trả 400 `Schema is too complex` deterministic khi schema có `list[NestedModel]` hoặc many bounded fields | Claude grammar compiler có hard limit. Fix: tách 2-tier schema — lean flat cho Claude fallback, full nested cho Gemini primary. AI PR #103/#135. |
 | **Gemini `response_schema` `too many states for serving`** | Gemini trả lỗi khi schema có nhiều `ge/le` bounded fields + many fields | Gemini grammar state-explosion. Fix: bỏ `ge/le` constraints (server-side `@field_validator` clamp instead) + gộp dict-of-fields thành `list[NamedField]` keyed. AI PR #135. |
 | **SQLite `lower()` ASCII-only — `.ilike()` fail trên VN diacritics** | Chat `party_filter` với `"DANH VIỆT"` không match `"danh việt"` dù case-insensitive — SQLite built-in `lower()` không xử lý Unicode (`Ệ`/`Ố`/`Ư`...) | Register Python `str.lower()` as SQLite `lower()` via `_register_unicode_lower` listener trên tenant engines. Backend PR #138 (closes #134). |
+| **PR scope sprawl từ stale branch** | PR mở từ branch tích lũy commits qua nhiều cycles → cherry-pick fix mang theo files khác lane (`docs/` trong PR backend, `.github/workflows/` trong PR frontend...). Reviewer phải nhặt từng file vs revert toàn bộ. Incident: PR #288 (4 frontend fix + co-committed docs + workflow). | (1) Branch off `origin/staging` fresh; (2) cherry-pick CHỈ in-scope files; (3) `git diff --name-only origin/staging..HEAD` verify trước push; (4) đọc §PR Scope-Lock Enforcement (DEC-047). CI scope-check sẽ block (TODO Infra). |
 
 ---
 
@@ -366,6 +390,8 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.7 — DEC-047 PR Scope-Lock Enforcement section (full lane table + trigger pattern + CI TODO + cross-lane workflow). §Cross-session communication Bước 0 kickoff checklist BẮT BUỘC (CLAUDE.md trước tiên → STATE.md → inbox → verify branch). §Common Bug Patterns +1: "PR scope sprawl từ stale branch" (PR #288 incident). Operational notes — không change cascade upstream docs.*
 
 *v0.6 — folded DEC-031 v2 (Result-seeded Progressive State chat architecture). D-08 extension note: silent wrong-scope = spirit violation; carry-over context PHẢI visible + correctable; auto-widen on miss cấm. Discard DEC-031 v1 spec (`1f6c5ad`) — v2 (`dc307eb`) canonical. Cascade: PRODUCT_STRATEGY v0.3 → BRD v0.7 → CLAUDE.md v0.6.*
 
