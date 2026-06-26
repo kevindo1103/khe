@@ -1,0 +1,3 @@
+frontend/pwa/dist
+frontend/pwa/node_modules
+scripts/__pycache__/

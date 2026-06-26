@@ -27,6 +27,15 @@ class Document(TenantBase):
     file_path = Column(String, nullable=False)
     doc_type = Column(String, nullable=True)           # "lease" | "supply" | "labor" | ...
     status = Column(String, default="pending")         # "pending" | "processing" | "done" | "error"
+    # User-explicit review confirm (#238, D-02). NULL = not yet confirmed → counts
+    # toward the NEEDS_REVIEW gate; set on POST /documents/{id}/confirm.
+    confirmed_by_user_at = Column(DateTime, nullable=True)
+    # Extraction cost tracking (#255 pilot monitoring). NULL for pre-migration /
+    # not-yet-extracted docs. Set on each successful extraction.
+    extraction_provider = Column(String, nullable=True)    # "gemini_flash" | "claude_haiku" | "claude_sonnet"
+    extraction_tokens_in = Column(Integer, nullable=True)
+    extraction_tokens_out = Column(Integer, nullable=True)
+    extraction_cost_vnd = Column(Float, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -40,8 +49,26 @@ class Term(TenantBase):
     field_name = Column(String, nullable=False)        # e.g. "effective_date", "expiry_date"
     field_value = Column(Text, nullable=True)
     confidence = Column(Float, nullable=True)          # AI confidence 0..1
+    # ── tenant_002 chain / review ──
+    needs_review = Column(Boolean, default=False)
+    is_superseded = Column(Boolean, default=False)
+    overrides_term_id = Column(Integer, ForeignKey("terms.id"), nullable=True)
+    inherited_from_doc_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    # ── tenant_011: Stage 3 review ref-link trust gate (#217, FR-EX-05) ──
+    # Per-field source anchor. NULL → FE renders plain text (graceful degrade,
+    # no dead link). Populated by the VisionExtractionProvider (KHE_AI scope).
+    ref = Column(Text, nullable=True)                  # display label, e.g. "Điều 8" / "tr.1 §A"
+    page_num = Column(Integer, nullable=True)          # 1-based page for scroll-to
+    bbox = Column(Text, nullable=True)                 # JSON [x0,y0,x1,y1] normalized 0..1
+    # Provenance (#258): how this term's value originated.
+    source = Column(String, nullable=True)             # "extracted" | "remap" | "manual" | NULL(legacy)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+OBLIGATION_STATUSES = [
+    "pending", "in_progress", "partial", "done", "cancelled", "waiting_trigger",
+]
 
 
 class Obligation(TenantBase):
@@ -51,10 +78,31 @@ class Obligation(TenantBase):
     tenant_id = Column(String, nullable=False, index=True)
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     description = Column(Text, nullable=False)
-    obligation_type = Column(String, default="once")  # "once" | "monthly" | "quarterly" | "yearly"
+    recurrence = Column(String, default="once")          # cadence: "once" | "open_ended_review"
+    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "other"
+    direction = Column(String, nullable=True)            # DEC-030: "nghĩa_vụ" | "quyền_lợi" | NULL (needs_review)
+    obligor = Column(String, nullable=True)              # DEC-030: role_label from parties[]
     due_date = Column(String, nullable=True)
     status = Column(String, default="pending")          # "pending" | "done" | "overdue" | "cancelled"
     remind_before_days = Column(Integer, default=30)
+    # ── tenant_002 chain resolution ──
+    source_doc_chain = Column(Text, nullable=True)       # JSON list of doc IDs in chain order
+    resolution_method = Column(String, nullable=True)    # e.g. "last_writer_wins"
+    # ── tenant_006: DEC-030 Phase 2 — series + event-chain ──
+    milestone_series_id = Column(Text, nullable=True)    # same series_id for all installments of one chain
+    milestone_index = Column(Integer, nullable=True)     # 1-based; None if not a series
+    milestone_total = Column(Integer, nullable=True)
+    milestone_trigger = Column(String, default="date")   # "date" | "event"
+    trigger_condition = Column(Text, nullable=True)      # verbatim from contract if trigger=event
+    trigger_delay_days = Column(Integer, nullable=True)  # e.g. 30 for "30 ngày sau nghiệm thu"
+    trigger_obligation_id = Column(Integer, nullable=True)  # self-ref to obligations.id
+    amount_raw = Column(Text, nullable=True)             # raw string, not parsed
+    # Snooze (#214): suppress this obligation's reminder until the given time;
+    # NULL = not snoozed. Auto-expires (scheduler resumes once now() passes it) —
+    # snooze never mutates status/due_date (D-07: obligation truth unchanged).
+    snoozed_until = Column(DateTime, nullable=True)
+    # Provenance (#301): how this obligation originated.
+    source = Column(String, nullable=True)             # "ai_extracted" | "user_manual" | "ai_re_derived" | NULL(legacy)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -68,6 +116,9 @@ class Party(TenantBase):
     normalized_name = Column(String, nullable=True, index=True)
     party_type = Column(String, nullable=True)         # "landlord" | "supplier" | "employee" | ...
     contact_info = Column(Text, nullable=True)
+    # ── tenant_008: DEC-030 per-document parties + role_label (#155) ──
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    role_label = Column(Text, nullable=True)           # role as stated IN the contract
     created_at = Column(DateTime, server_default=func.now())
 
 
@@ -76,11 +127,17 @@ class Event(TenantBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(String, nullable=False, index=True)
-    entity_type = Column(String, nullable=False)        # "document" | "term" | "obligation" | "reminder"
+    entity_type = Column(String, nullable=False)        # "document" | "term" | "obligation" | "reminder" | "consent"
     entity_id = Column(Integer, nullable=False)
-    event_type = Column(String, nullable=False)         # "created" | "updated" | "deleted" | "reminder_sent" | ...
+    event_type = Column(String, nullable=False)         # "created" | "updated" | "deleted" | "reminder_sent" | "consent_logged" | "consent_revoked" | "extraction_performed" | ...
     actor = Column(String, nullable=True)               # username or "system"
     payload = Column(Text, nullable=True)               # JSON blob
+    # ── Consent group (tenant_002) ──
+    purpose = Column(String, nullable=True)             # "vision_extraction" | "reminder_send" | "firm_partner_access"
+    consent_reference = Column(String, nullable=True)
+    consent_text_version = Column(String, nullable=True)  # e.g. "nd13-v1"
+    channel = Column(String, nullable=True)             # "telegram" | "email" (reminder_send only)
+    channel_target_ref = Column(String, nullable=True)   # telegram_chat_id or email address
     created_at = Column(DateTime, server_default=func.now())
 
 
@@ -107,3 +164,73 @@ class Employee(TenantBase):
     email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class Clause(TenantBase):
+    __tablename__ = "clauses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    clause_num = Column(String, nullable=True)        # e.g. "Điều 8", "Khoản 2.3"
+    title = Column(String, nullable=True)             # e.g. "Chấm dứt hợp đồng"
+    content = Column(Text, nullable=False)            # full clause text
+    page_num = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class DocumentRelationship(TenantBase):
+    __tablename__ = "document_relationships"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    from_doc_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    to_doc_id = Column(Integer, ForeignKey("documents.id"), nullable=True)   # null = orphan amendment (DEC-021)
+    unresolved_ref = Column(String, nullable=True)                            # extracted hint when to_doc missing
+    relationship_type = Column(String, nullable=False)                        # "amends" | "references_framework" (MVP)
+    status = Column(String, default="pending")                               # "pending" | "confirmed"
+    confirmed_by_sme = Column(Boolean, default=False)                          # D-02 gate
+    confidence = Column(Float, nullable=True)                                  # AI suggestion score
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class ChatQueryLog(TenantBase):
+    """Per-tenant chat query log for DEC-028 learning loop.
+
+    Raw PII (question + tool args) lives here — tenant-isolated, purgeable.
+    NOT in the append-only events ledger (NĐ 13/2023 compliance debt).
+    """
+    __tablename__ = "chat_query_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    question = Column(Text, nullable=False)
+    tool_calls = Column(Text, nullable=True)          # JSON: [{"name":..., "args":{...}}]
+    found = Column(Boolean, nullable=False, server_default="0")
+    result_count = Column(Integer, server_default="0")
+    created_at = Column(DateTime, server_default=func.now())
+    # Tokenomics (#164)
+    input_tokens = Column(Integer, server_default="0")
+    output_tokens = Column(Integer, server_default="0")
+    cost_vnd = Column(Float, server_default="0.0")
+    llm_calls = Column(Integer, server_default="0")
+
+
+class ChatSession(TenantBase):
+    """Result-seeded progressive chat state (DEC-031 v2, #201).
+
+    One row per device/tab conversation thread. ``state_json`` holds POINTER IDs
+    only (active_doc_ids / active_obligation_ids / working_set_label /
+    last_tool_call) — never PII text — so it is a soft prior for the next query,
+    not a memory of content. TTL 24h via ``expires_at`` + weekly cleanup job.
+    """
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False)
+    session_id = Column(String, nullable=False, unique=True)  # UUID from FE localStorage
+    state_json = Column(Text, nullable=False)                 # pointer IDs only, NO PII
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    expires_at = Column(DateTime, nullable=True)

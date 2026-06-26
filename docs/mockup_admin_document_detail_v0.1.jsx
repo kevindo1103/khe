@@ -12,7 +12,7 @@
 import React, { useState } from "react";
 import {
   tokens as t, Button, Card, Badge, ConfidenceMeter, Toast, Input,
-} from "./mockup_design_system_v0.1.jsx";
+} from "./mockup_design_system_v0.2.jsx";
 
 const FIELDS = [
   { key: "doi_tac", label: "Đối tác", value: "Cty TNHH Hải Đăng", conf: 0.97 },

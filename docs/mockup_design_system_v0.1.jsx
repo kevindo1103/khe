@@ -1,4 +1,9 @@
 /**
+ * ⚠️ SUPERSEDED by mockup_design_system_v0.2.jsx (minimalist revamp — Atlassian/
+ *    Stripe-grade: neutral ramp, soft layered elevation, focus rings, motion).
+ *    v0.2 keeps the same API surface — migrate by changing the import path.
+ *    Kept for history.
+ *
  * Khế — Design System v0.1  (KHE_Designer · Phase 1 · issue #24 · DEC-017)
  * ----------------------------------------------------------------------------
  * STATIC PROTOTYPE ONLY — not production code (scope-lock: docs/mockup_*.jsx).

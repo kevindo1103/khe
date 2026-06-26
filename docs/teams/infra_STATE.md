@@ -1,21 +1,21 @@
 # KHE_Infra — Session State
 
-_Last updated: 2026-06-19 | Sprint 0 COMPLETE + post-Sprint-0 ops + production VPS live_
+_Last updated: 2026-06-23 | Sprint 0 COMPLETE + Sprint 1 COMPLETE_
 
 ---
 
-## Current Sprint: Sprint 0 — DONE ✅ + post-Sprint-0 ops
+## Current Sprint: Sprint 1 — DONE ✅
 
 ### Status
 
 | Item | Status | Notes |
 |---|---|---|
 | `pr-quality-gate.yml` | ✅ Done | All PRs. Branch pattern + backend import + alembic single-head + frontend build. Long-lived branches exempted. |
-| `deploy-staging.yml` | ✅ Done | bootstrap → rsync → .env (incl. CORS_ORIGINS) → migrate_all_tenants.py → systemctl → HTTPS check |
-| `deploy-main.yml` | ✅ Done | bootstrap → rsync → .env (incl. CORS_ORIGINS) → migrate_all_tenants.py → systemctl → Telegram notify |
+| `deploy-staging.yml` | ✅ Done | bootstrap → rsync (data-safe excludes) → .env (incl. CORS_ORIGINS, DATA_DIR, ENVIRONMENT) → migrate_all_tenants.py → systemctl → HTTPS check |
+| `deploy-main.yml` | ✅ Done | Same as staging + guarded migrate script + Telegram notify ✅/❌ |
 | GitHub Actions secrets | ✅ Done | 8 secrets set (see below) |
 | GitHub Environments | ✅ Done | `staging` + `production` created |
-| API key injection to VPS | ✅ Done | GEMINI_API_KEY, CLAUDE_API_KEY, JWT_SECRET, TELEGRAM_BOT_TOKEN, CORS_ORIGINS written to `.env` via SSH stdin pipe |
+| API key injection to VPS | ✅ Done | GEMINI_API_KEY, CLAUDE_API_KEY, JWT_SECRET, TELEGRAM_BOT_TOKEN, CORS_ORIGINS, DATA_DIR, ENVIRONMENT written to `.env` via SSH stdin pipe |
 | VPS dir bootstrap | ✅ Done | `mkdir -p` + `python3 -m venv` idempotent before first rsync |
 | Telegram notify | ✅ Live | ✅/❌ firing on production deploy |
 | Hotpatch playbook | ✅ Done | Documented below |
@@ -24,23 +24,36 @@ _Last updated: 2026-06-19 | Sprint 0 COMPLETE + post-Sprint-0 ops + production V
 | CORS_ORIGINS injected | ✅ Done | staging=`https://staging.khe.iceflow.cloud`, prod=`https://khe.iceflow.cloud` |
 | TLS / HTTPS | ✅ Done | certbot issued cert for `khe.iceflow.cloud` + `staging.khe.iceflow.cloud`. DNS A records set (`14.225.212.116`) |
 | HTTPS check in deploy-staging | ✅ Done | Non-blocking warning step — fires if staging TLS unreachable |
-| Production VPS bootstrap | ✅ Done | `/opt/khe/backend/` + venv + `khe-backend.service` enabled (2026-06-19) |
-| Production nginx config | ✅ Done | `/etc/nginx/sites-available/khe` rewritten + enabled in sites-enabled. Trailing slash on `proxy_pass`. |
-| PWA build + deploy wired | ✅ Done | `deploy-staging.yml` + `deploy-main.yml` build `frontend/pwa/` → rsync to `/opt/khe/pwa{,-staging}/` |
-| nginx PWA/Admin routing (#86) | ✅ Done | PWA→`/`, Admin→`/admin`, API→`/api/`. `client_max_body_size 50M` (#88). Both vhosts live. |
+| Production VPS bootstrap | ✅ Done | `/opt/khe/backend/` + venv + `khe-backend.service` enabled |
+| Production nginx config | ✅ Done | `/etc/nginx/sites-available/khe` live. Trailing slash on `proxy_pass`. `client_max_body_size 50M`. |
 | `khe-backend-staging` stale proc fix | ✅ Done | Killed stale uvicorn holding port 8001, systemd service now owns port cleanly |
 | `migrate_all_tenants.py` guard | ✅ Done | deploy-main.yml guarded with `[ -f ... ] &&` — script on staging, not yet on main |
+| rsync data-safe excludes (#87) | ✅ Done | `--exclude=master.db --exclude='tenants/' --exclude='storage/'` in both workflows |
+| DATA_DIR injected to .env (#97) | ✅ Done | staging→`/opt/khe/data-staging`, prod→`/opt/khe/data`. Backend reads `DATA_DIR` env. |
+| ENVIRONMENT injected to .env | ✅ Done | `staging` / `production` — controls FastAPI docs visibility |
+| nginx `client_max_body_size 50M` (#88) | ✅ Done | Both vhosts. Fixes 413 on PDF upload. |
+| Cookie proxy headers (#136) | ✅ Done | `proxy_set_header Cookie $http_cookie` + `proxy_pass_header Set-Cookie` on `/api/` location in staging vhost |
+| PWA removed from nginx routing | ✅ Done | `/pwa` location block removed. Admin SPA at `/`, no PWA route. |
+| SW kill-switch at `/sw.js` | ✅ Done | `/opt/khe/sw-kill.js` served via nginx location block. Auto-unregisters cached service workers. |
+| Uptime monitoring (#29) | ✅ Done | `khe-health-check.timer` fires every 5 min → Telegram alert on non-200 |
+| Daily backup (#29) | ✅ Done | `khe-backup.timer` fires at 02:00 → tar.gz of `data/` + `data-staging/`, 30-day retention |
+| `smoke-staging` workflow (#234) | ✅ Done | `workflow_dispatch` — runs `smoke_e2e_staging.sh` from CI with staging secrets + contract PDF |
 
-### Bug + ops fixes post-Sprint-0
+### Bug + ops fixes Sprint 1
 
 | Fix | PR / action | Issue |
 |---|---|---|
 | Wire `migrate_all_tenants.py` into deploy | #48 | #45 item 1 — tenant_002+ schema not applying |
-| Triage phantom deploy failures | annotated | #45 item 2 — 0-job failure runs from feature branches (not real) |
 | Inject CORS_ORIGINS into .env | #48 | #45 item 3 — credentialed CORS broken with wildcard |
 | HTTPS staging warning step | #48 | #45 item 4 — auth cookie Secure flag needs TLS |
 | Domain khe.vn → khe.iceflow.cloud | #48 | domain not yet acquired |
 | DNS A records + certbot TLS | VPS ops | staging.khe.iceflow.cloud + khe.iceflow.cloud live |
+| rsync --delete wipes DB files | workflows update | #87 — added data-safe excludes |
+| nginx 413 on PDF upload | VPS ops + workflows | #88 — `client_max_body_size 50M` |
+| Cookie not forwarded to backend | VPS ops | #136 — `proxy_set_header Cookie` + `proxy_pass_header Set-Cookie` |
+| PWA SW cache trap (login → /chat) | VPS ops | Cached SW routed all traffic to PWA. Kill-switch at `/sw.js` unregisters SW. PWA route removed. |
+| DATA_DIR mismatch (data outside venv) | workflows + VPS ops | #97 — DATA_DIR env + one-time migration of tenant DBs to correct path |
+| Production VPS not bootstrapped | VPS ops | Dirs, venv, systemd units, nginx all set up manually |
 
 ### Bug fixes shipped Sprint 0
 
@@ -77,6 +90,15 @@ Go to: **repo Settings → Secrets and variables → Actions → New repository 
 | `VPS_USER` | ✅ Set |
 | `VPS_SSH_KEY` | ✅ Set (`ed25519`, generated via `ssh-keygen -t ed25519 -C "khe-deploy"`) |
 
+### Smoke test secrets (staging Environment only)
+
+| Secret name | Value |
+|---|---|
+| `STAGING_TENANT` | ✅ Set |
+| `STAGING_USER` | ✅ Set |
+| `STAGING_PASS` | ✅ Set |
+| `STAGING_CONTRACT_B64` | ✅ Set (PII-scrubbed PDF, base64-encoded) |
+
 ---
 
 ## VPS Port Allocation (CRITICAL — shared VPS với Bingxue ERP)
@@ -98,33 +120,89 @@ nginx configs:
 
 ---
 
+## VPS Directory Layout
+
+```
+/opt/khe/
+├── backend/              ← production backend (rsync target)
+│   ├── venv/             ← excluded from rsync
+│   └── .env              ← written by CI/CD on every deploy
+├── backend-staging/      ← staging backend (rsync target)
+│   ├── venv/
+│   └── .env
+├── frontend/             ← production Admin SPA (rsync target)
+├── frontend-staging/     ← staging Admin SPA
+├── data/                 ← production data (NOT in rsync target — durable)
+│   ├── master.db
+│   └── tenants/
+├── data-staging/         ← staging data (durable)
+│   ├── master.db
+│   └── tenants/
+├── scripts/
+│   ├── health-check.sh   ← uptime monitor (called by systemd timer)
+│   └── backup.sh         ← daily backup (called by systemd timer)
+├── backups/              ← tar.gz archives, 30-day retention
+└── sw-kill.js            ← PWA service worker kill-switch (served at /sw.js)
+```
+
+---
+
+## Monitoring & Backup (Sprint 1)
+
+### Health check
+
+`/opt/khe/scripts/health-check.sh` — checks `/health` on both staging + prod every 5 min. Sends Telegram alert if non-200.
+
+```bash
+#!/bin/bash
+source /opt/khe/backend-staging/.env
+check() {
+    local NAME=$1; local URL=$2; local STATUS
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" 2>/dev/null || echo "000")
+    if [ "$STATUS" != "200" ]; then
+        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="🚨 Khế ${NAME} DOWN — /health returned HTTP ${STATUS}" > /dev/null
+    fi
+}
+check "staging" "https://staging.khe.iceflow.cloud/api/health"
+check "production" "https://khe.iceflow.cloud/api/health"
+```
+
+Systemd units:
+- `/etc/systemd/system/khe-health-check.service`
+- `/etc/systemd/system/khe-health-check.timer` — `OnCalendar=*:0/5` (every 5 min)
+
+### Backup
+
+`/opt/khe/scripts/backup.sh` — tars `data/` + `data-staging/` to `/opt/khe/backups/`. Deletes archives older than 30 days.
+
+```bash
+#!/bin/bash
+BACKUP_DIR=/opt/khe/backups
+DATE=$(date +%Y%m%d_%H%M%S)
+mkdir -p "$BACKUP_DIR"
+tar -czf "$BACKUP_DIR/data-staging-${DATE}.tar.gz" /opt/khe/data-staging/ 2>/dev/null
+tar -czf "$BACKUP_DIR/data-${DATE}.tar.gz" /opt/khe/data/ 2>/dev/null
+find "$BACKUP_DIR" -name "*.tar.gz" -mtime +30 -delete
+echo "[$DATE] Backup OK → $BACKUP_DIR"
+```
+
+Systemd units:
+- `/etc/systemd/system/khe-backup.service`
+- `/etc/systemd/system/khe-backup.timer` — `OnCalendar=*-*-* 02:00:00` (daily 02:00)
+
+---
+
 ## GitHub Environments
 
-Create two environments in **repo Settings → Environments**:
+Two environments in **repo Settings → Environments**:
 - `staging`
-- `production`
-
-Each environment can optionally add protection rules (required reviewers, wait timer) before production deploys.
+- `production` (with required reviewer protection recommended)
 
 ---
 
-## VPS Setup Checklist (Sprint 0 — to do when VPS provisioned)
-
-```
-[ ] Ubuntu 22.04 LTS
-[ ] Create deploy user, add SSH pubkey
-[ ] Install: python3.11, python3-venv, nginx, nodejs 20.x
-[ ] mkdir -p /opt/khe/backend /opt/khe/frontend /opt/khe/frontend-staging
-[ ] Create Python venv: python3.11 -m venv /opt/khe/backend/venv
-[ ] Create systemd units: khe-backend, khe-backend-staging (see below)
-[ ] Configure nginx (see §Nginx Config below)
-[ ] Add deploy user to sudoers for: systemctl restart khe-backend*, nginx reload
-[ ] Copy initial .env from backend/.env.example (fill secrets)
-```
-
----
-
-## Systemd Unit Template
+## Systemd Unit Templates
 
 `/etc/systemd/system/khe-backend.service`:
 
@@ -138,7 +216,6 @@ User=deploy
 WorkingDirectory=/opt/khe/backend
 EnvironmentFile=/opt/khe/backend/.env
 ExecStart=/opt/khe/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
-# .env is written by deploy-main.yml on every deploy (GEMINI_API_KEY, CLAUDE_API_KEY, JWT_SECRET, TELEGRAM_BOT_TOKEN)
 Restart=always
 RestartSec=5
 
@@ -146,13 +223,13 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Duplicate for `khe-backend-staging.service` with port 8001.
+Duplicate for `khe-backend-staging.service` with `WorkingDirectory=/opt/khe/backend-staging`, `EnvironmentFile=/opt/khe/backend-staging/.env`, port 8001.
 
 ---
 
-## Nginx Config Template
+## Nginx Config (Current — Live on VPS)
 
-`/etc/nginx/sites-available/khe`:
+### Production: `/etc/nginx/sites-available/khe`
 
 ```nginx
 server {
@@ -165,27 +242,31 @@ server {
     listen 443 ssl;
     server_name khe.iceflow.cloud www.khe.iceflow.cloud;
 
-    # TLS — use certbot / Let's Encrypt
     ssl_certificate /etc/letsencrypt/live/khe.iceflow.cloud/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/khe.iceflow.cloud/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    client_max_body_size 50M;  # PDF upload limit (#88)
-
-    root /opt/khe/frontend;
-    index index.html;
+    client_max_body_size 50M;
 
     location /api/ {
         proxy_pass http://127.0.0.1:8000/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Cookie $http_cookie;
+        proxy_pass_header Set-Cookie;
     }
 
     location / {
-        try_files $uri $uri/ /index.html;
+        root /opt/khe/frontend;
+        try_files $uri /index.html;
     }
 }
+```
 
-# Staging vhost — /etc/nginx/sites-available/khe-staging
+### Staging: `/etc/nginx/sites-available/khe-staging`
+
+```nginx
 server {
     listen 80;
     server_name staging.khe.iceflow.cloud;
@@ -201,12 +282,21 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    client_max_body_size 50M;  # PDF upload limit (#88)
+    client_max_body_size 50M;
 
     location /api/ {
         proxy_pass http://127.0.0.1:8001/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Cookie $http_cookie;
+        proxy_pass_header Set-Cookie;
+    }
+
+    # PWA service worker kill-switch — auto-unregisters any cached SW
+    location = /sw.js {
+        alias /opt/khe/sw-kill.js;
+        add_header Content-Type "application/javascript";
+        add_header Cache-Control "no-store";
     }
 
     location /pwa {
@@ -219,6 +309,19 @@ server {
         try_files $uri /index.html;
     }
 }
+```
+
+### SW kill-switch: `/opt/khe/sw-kill.js`
+
+```javascript
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', async () => {
+  const keys = await caches.keys();
+  await Promise.all(keys.map(k => caches.delete(k)));
+  await self.registration.unregister();
+  const clients = await self.clients.matchAll({ type: 'window' });
+  clients.forEach(c => c.navigate(c.url));
+});
 ```
 
 ---
@@ -258,11 +361,15 @@ curl -s http://127.0.0.1:8000/health
 | `pr-quality-gate.yml` | PR → main, staging | branch-pattern-check, backend-check, frontend-check |
 | `deploy-staging.yml` | push → staging, workflow_dispatch | quality-gate, deploy-staging |
 | `deploy-main.yml` | push → main, workflow_dispatch | quality-gate, deploy-production |
+| `smoke-staging.yml` | workflow_dispatch only | smoke (runs `smoke_e2e_staging.sh` with staging secrets) |
 
 ---
 
 ## Change Log
 
-| Date | Change | Branch |
+| Date | Change | Branch / Action |
 |---|---|---|
 | 2026-06-11 | Initial Sprint 0 setup: 3 workflow files + this STATE file | claude/infra-ci-quality-gate |
+| 2026-06-19 | Production VPS bootstrap: dirs, venv, systemd units, nginx | VPS ops |
+| 2026-06-23 | Sprint 1 complete: rsync data-safe excludes, DATA_DIR, Cookie proxy, SW kill-switch, monitoring timer, daily backup | Various PRs + VPS ops |
+| 2026-06-26 | smoke-staging workflow (#234), infra_STATE Sprint 1 update, smoke secrets set | PR #239 |
