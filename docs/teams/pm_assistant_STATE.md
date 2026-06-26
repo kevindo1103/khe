@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-25 | v3.2*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-25 | v3.3*
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
 > **2026-06-18 (a):** Tạo `docs/PRODUCT_STRATEGY_Khe.md` (v0.2, PM draft) — **tài liệu nền độc lập** (foundation → BRD → SRS). Gồm Personas + JTBD (J1-J5) + Why-How-What (Golden Circle) + định vị April Dunford 5-component + GTM motion (B2B channel vs self-serve contingency). Vertical OPEN (DEC-018). Routed DOCS_INBOX cho KHE_Docs canonical fold. *(Bối cảnh: review phân tích CLM-SME của cộng sự Kevin — giữ thesis Khế, self-serve playbook lưu làm contingency motion cho DEC-015 #2, pricing input cho DEC-016.)*
@@ -133,6 +133,8 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 | **Backend** | **#275** | Direction-aware reminders — quyền_lợi trigger semantics + 4 Telegram templates | **P1 pre-pilot** |
 | **Backend + Frontend** | **#276** | Honest completeness flag — always-on disclaimer, backfill=NULL | **P1 pre-pilot** |
 | **Backend** | **#277** | Chat reliability — #268 trace fix + #263 clause fallback | **P1 pre-pilot 🔴** |
+| **Designer** | **#278** | /admin/documents full revamp — obligation-centric, B&W minimalism (DEC-043 + QC 2026-06-25) | **Pre-pilot, gates FE** |
+| **Backend** | **#279** | GET /documents/ list API delta — 6 new fields for #278 | **Pre-pilot, parallel with #278** |
 | ~~Backend~~ | #270/#65/#237 | **Firm portal ⏸️ DEFERRED post-pilot (DEC-046).** BA #270 frozen as Phase 2 spec. Build resumes post-pilot. | — (out of pilot) |
 | **QC** | #187 | Playwright e2e — upload→extract→confirm→assert nav unlock + Event ledger | Pre-pilot gate |
 | **QC** | #75/#175 | UAT smoke M0/M1 + E2E script (needs uat-demo-b + uat-demo-noconsent) | Pre-pilot gate |
