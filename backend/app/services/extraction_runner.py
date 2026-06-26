@@ -93,6 +93,14 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             logger.warning("Document %d not found for tenant %s", doc_id, tenant_id)
             return
 
+        # 2b. P2 (#302): evidence docs skip full vision extraction — metadata + file
+        #     link only. Server-side enforcement (bypass-proof, DEC-048 P2 AC).
+        if getattr(doc, "is_evidence", False):
+            doc.status = "done"
+            db.commit()
+            logger.info("Document %d is_evidence=True — skipping extraction", doc_id)
+            return
+
         # 3. Read file bytes.
         file_path = settings.STORAGE_DIR / doc.file_path
         try:

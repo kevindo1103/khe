@@ -259,25 +259,27 @@ def test_done_obligation_no_duplicate_after_remap(auth_client, db, monkeypatch):
     # done (historical) + pending (re-derived) is valid, not a bug.
 
 
-@pytest.mark.xfail(reason="fulfilled_at column not yet added (#302) — tripwire for QC F1")
 def test_fulfilled_pending_survives_remap(auth_client, db, monkeypatch):
-    """QC F1 tripwire: once fulfilled_at lands, a pending obligation with
-    fulfillment data must survive remap. This test will start passing when
-    #302 adds the column + predicate is updated."""
+    """#302 landed: a pending obligation with fulfilled_at must survive remap
+    (QC F1 — fulfilled_at marks user-touched data).
+
+    Uses a doc WITH date terms so derive_obligations runs through the delete
+    path (path 2), not early-returning on skip_reason. Without this, the test
+    is false-green — derive never exercises the delete filter."""
+    from datetime import datetime
     _wipe(db)
     doc = _doc(db)
+    # Add date term so derive_obligations passes the skip gate and hits delete.
+    db.add(Term(tenant_id=TENANT, document_id=doc.id, field_name="ngay_het_han",
+                field_value="2027-12-31", source="extracted"))
+    db.commit()
+
     ob = Obligation(tenant_id=TENANT, document_id=doc.id,
                     description="Partially fulfilled", status="pending",
-                    source="ai_extracted", obligation_type="payment")
+                    source="ai_extracted", obligation_type="payment",
+                    fulfilled_at=datetime(2026, 6, 1))
     db.add(ob)
     db.commit()
-    db.refresh(ob)
-    # Simulate fulfilled_at being set (column doesn't exist yet → setattr)
-    try:
-        ob.fulfilled_at = "2026-06-01T00:00:00"
-        db.commit()
-    except Exception:
-        pytest.skip("fulfilled_at column not available yet")
 
     _fake_remap(monkeypatch)
     auth_client.post(f"/documents/{doc.id}/remap-type", json={"doc_type_group": "bat_dong_san"})

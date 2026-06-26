@@ -148,6 +148,7 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int, *, source_label
         Obligation.document_id.in_(chain_ids),
         Obligation.status == "pending",
         Obligation.source != "user_manual",
+        Obligation.fulfilled_at.is_(None),
     ).delete()
 
     due_str = due_date.strftime("%Y-%m-%d") if due_date else None

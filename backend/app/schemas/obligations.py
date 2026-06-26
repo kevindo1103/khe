@@ -1,6 +1,8 @@
 """Pydantic schemas for Obligation endpoints (#26 PR-A)."""
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+from pydantic import BaseModel, ConfigDict, field_validator
+import json
 
 
 class ObligationOut(BaseModel):
@@ -26,8 +28,22 @@ class ObligationOut(BaseModel):
     trigger_obligation_id: int | None = None
     amount_raw: str | None = None
     snoozed_until: datetime | None = None   # #214 — reminder suppressed until this time
+    # Fulfillment capture (#302, DEC-048 G2/P3)
+    fulfilled_at: datetime | None = None
+    fulfilled_by: str | None = None
+    evidence_doc_ids: list[int] | None = None   # deserialized from JSON Text column
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("evidence_doc_ids", mode="before")
+    @classmethod
+    def _parse_evidence_doc_ids(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
 
 
 class ObligationListOut(BaseModel):
@@ -39,6 +55,9 @@ class ObligationListOut(BaseModel):
 
 class ObligationPatchIn(BaseModel):
     status: str
+    fulfilled_at: datetime | None = None        # required when status="done"
+    fulfilled_by: str | None = None             # actor attribution (P3)
+    evidence_doc_ids: list[int] | None = None   # optional evidence doc refs
 
 
 class SnoozeOut(BaseModel):

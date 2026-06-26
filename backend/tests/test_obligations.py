@@ -305,7 +305,10 @@ class TestObligationEndpoints:
         r = auth_client.get("/obligations")
         ob = next(ob for ob in r.json()["items"] if ob["document_id"] == doc_id)
 
-        r2 = auth_client.patch(f"/obligations/{ob['id']}", json={"status": "done"})
+        r2 = auth_client.patch(f"/obligations/{ob['id']}", json={
+            "status": "done",
+            "fulfilled_at": "2026-01-01T10:00:00",
+        })
         assert r2.status_code == 200
         assert r2.json()["obligation"]["status"] == "done"
 
@@ -668,7 +671,10 @@ class TestPatchChainIntegration:
         db.add(child)
         db.commit()
 
-        r = auth_client.patch(f"/obligations/{parent.id}", json={"status": "done"})
+        r = auth_client.patch(f"/obligations/{parent.id}", json={
+            "status": "done",
+            "fulfilled_at": "2026-06-01T10:00:00",
+        })
         assert r.status_code == 200
         data = r.json()
         assert data["ok"] is True
