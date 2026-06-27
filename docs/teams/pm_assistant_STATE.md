@@ -162,6 +162,8 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 | **Compliance** | ~~#307~~ ✅ | **[EPIC #300] P4 — evidence PII + DEC-039 gate** — PR #316. | ✅ Closed (PR #316) |
 | **Backend** | ~~#313~~ ✅ | **[EPIC #300] P5(b) — cascade-past `awaiting_confirmation`** — PR #319. | ✅ Closed (PR #319) |
 | **Backend** | **#284** ✅ filed | DETAIL clauses API delta — `GET /documents/{id}/clauses` + `ClauseOut`/`ClauseListOut`. Read-only surface of existing clause data for "Nội dung hợp đồng" tab | **Pre-pilot, parallel with #281** |
+| **Backend** | **#346** | **Extraction metrics API** — persist cost/latency/provider on `documents` + cross-tenant admin endpoint. Foundation cho DEC-011 GM re-model + QC #344. Kevin full approve, parallel. | **status:planned** |
+| **Frontend** | **#347** | **Extraction metrics dashboard UI** — `/admin/extraction-metrics`. Per-doc table + summary cards + filters. Dep on #346 API. Kevin full approve, parallel. | **status:planned, dep #346** |
 | ~~Backend~~ | #270/#65/#237 | **Firm portal ⏸️ DEFERRED post-pilot (DEC-046).** BA #270 frozen as Phase 2 spec. Build resumes post-pilot. | — (out of pilot) |
 | **QC** | #187 | Playwright e2e — upload→extract→confirm→assert nav unlock + Event ledger | Pre-pilot gate |
 | **QC** | #75/#175 | UAT smoke M0/M1 + E2E script (needs uat-demo-b + uat-demo-noconsent) | Pre-pilot gate |
