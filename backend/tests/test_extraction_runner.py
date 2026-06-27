@@ -425,8 +425,12 @@ class TestPaymentScheduleObligations:
         for po in payment_obs:
             assert po["obligation_type"] == "payment"
             assert po["recurrence"] == "once"
-        # The item without due_date should NOT create an obligation
-        assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
+        # B3 (#282): date-triggered item without due_date is now persisted as
+        # waiting_trigger (previously skipped). Resolver won't resolve it without
+        # trigger_delay_days, so it stays waiting_trigger.
+        waiting = [o for o in obligations if "Theo thông báo" in o.get("description", "")]
+        assert len(waiting) == 1
+        assert waiting[0]["status"] == "waiting_trigger"
 
     def test_payment_schedule_no_due_date_skipped(self, auth_client):
         """Obligation schedule items without due_date (trigger=date) are skipped (no obligation created)."""
@@ -467,8 +471,12 @@ class TestPaymentScheduleObligations:
 
         data = auth_client.get(f"/documents/{doc_id}").json()
         obligations = data.get("obligations", [])
-        # Only the expiry obligation from derive_obligations, no payment obligation
-        assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
+        # B3 (#282): date-triggered item without due_date is now persisted as
+        # waiting_trigger (previously skipped). No trigger_delay_days → resolver
+        # can't resolve → stays waiting_trigger.
+        waiting = [o for o in obligations if "Theo thông báo" in o.get("description", "")]
+        assert len(waiting) == 1
+        assert waiting[0]["status"] == "waiting_trigger"
 
     def test_payment_obligations_idempotent_on_re_extraction_skip_path(self, auth_client):
         """Re-extraction on a doc where derive_obligations skips (no derivable expiry)

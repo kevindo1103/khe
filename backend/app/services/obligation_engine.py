@@ -46,6 +46,7 @@ def _detect_anchor_field(trigger_condition: str | None) -> str | None:
         if any(p in tc for p in patterns):
             return field_name
     return None
+
 _START_FIELD = "ngay_hieu_luc"
 _DURATION_FIELD = "thoi_han_hd"
 
@@ -392,6 +393,7 @@ def resolve_date_anchored_obligations(
 
     today = date.today()
     resolved = 0
+    resolved_items = []
     for ob in obligations:
         if ob.trigger_delay_days is None:
             continue
@@ -405,7 +407,26 @@ def resolve_date_anchored_obligations(
         ob.due_date = due.isoformat()
         ob.status = "overdue" if due < today else "pending"
         resolved += 1
+        resolved_items.append({
+            "obligation_id": ob.id,
+            "anchor_field": anchor_field,
+            "anchor_date": anchor_date.isoformat(),
+            "due_date": ob.due_date,
+            "status": ob.status,
+        })
 
     if resolved:
+        db.add(Event(
+            tenant_id=tenant_id,
+            event_type="obligation_date_resolved",
+            entity_type="document",
+            entity_id=doc_id,
+            actor="system",
+            purpose=None,
+            payload=json.dumps({
+                "count": resolved,
+                "items": resolved_items,
+            }),
+        ))
         db.commit()
     return resolved
