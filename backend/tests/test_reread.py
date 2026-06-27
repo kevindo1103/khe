@@ -1,9 +1,13 @@
-"""Tests for POST /documents/{doc_id}/reread (#324 Task 2)."""
+"""Tests for POST /documents/{doc_id}/reread (#324 Task 2, #327 v2 LLM-backed)."""
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from app.db.database import MasterSessionLocal, get_tenant_session
 from app.models.master import Tenant
-from app.models.tenant import Clause, Document, Obligation, Term
+from app.models.tenant import Clause, Document, Obligation
+from modules.extraction.rederive import RederiveResult
+from modules.extraction.schemas import ObligationScheduleItem
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -34,27 +38,13 @@ def _make_clause(db, tenant_id, doc_id, clause_num="Điều 1"):
     return clause
 
 
-def _make_term(db, tenant_id, doc_id, field_name, field_value, ref=None):
-    t = Term(
-        tenant_id=tenant_id,
-        document_id=doc_id,
-        field_name=field_name,
-        field_value=field_value,
-        ref=ref,
-        is_superseded=False,
-    )
-    db.add(t)
-    db.commit()
-    db.refresh(t)
-    return t
-
-
-def _make_obligation(db, tenant_id, doc_id, clause_num, due_date="2027-01-01", source="ai_extracted"):
+def _make_obligation(db, tenant_id, doc_id, clause_num, due_date="2027-01-01",
+                     source="ai_extracted", obligation_type="expiration"):
     ob = Obligation(
         tenant_id=tenant_id,
         document_id=doc_id,
         description=f"Hợp đồng contract.pdf hết hạn ngày {due_date}",
-        obligation_type="expiration",
+        obligation_type=obligation_type,
         recurrence="once",
         status="pending",
         source_clause_num=clause_num,
@@ -67,14 +57,30 @@ def _make_obligation(db, tenant_id, doc_id, clause_num, due_date="2027-01-01", s
     return ob
 
 
+def _mock_rederive(obligations=None, warnings=None):
+    """Return a patch context that mocks rederive_obligations in the router."""
+    result = RederiveResult(
+        obligations=obligations or [],
+        provider="mock",
+        cost_vnd=0.0,
+        warnings=warnings or [],
+    )
+    return patch(
+        "app.routers.documents.rederive_obligations",
+        new_callable=AsyncMock,
+        return_value=result,
+    )
+
+
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-def test_no_terms_no_diffs(auth_client, test_tenant, db):
-    """Clause with no Terms → derivation skips → no 'add' diffs, no crash."""
+def test_no_proposals_no_diffs(auth_client, test_tenant, db):
+    """LLM returns no obligations → no 'add' diffs, no crash."""
     doc = _make_doc(db, test_tenant)
     _make_clause(db, test_tenant, doc.id, clause_num="Điều 1")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    with _mock_rederive(obligations=[]):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
     data = r.json()
     assert data["document_id"] == doc.id
@@ -82,13 +88,20 @@ def test_no_terms_no_diffs(auth_client, test_tenant, db):
     assert data["diffs"] == []
 
 
-def test_add_diff_when_terms_exist_no_obligation(auth_client, test_tenant, db):
-    """Terms exist but no matching obligation → diff action='add'."""
+def test_add_diff_when_no_existing_obligation(auth_client, test_tenant, db):
+    """LLM proposes obligation, no existing match → diff action='add'."""
     doc = _make_doc(db, test_tenant)
-    clause = _make_clause(db, test_tenant, doc.id, clause_num="Điều 1")
-    _make_term(db, test_tenant, doc.id, "ngay_het_han", "2027-12-31", ref="Điều 1")
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 1")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    proposed = [ObligationScheduleItem(
+        obligation_type="expiration",
+        description="Hợp đồng hết hạn ngày 2027-12-31",
+        due_date="2027-12-31",
+        source_clause_num="Điều 1",
+        derived_from="original",
+    )]
+    with _mock_rederive(obligations=proposed):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
     data = r.json()
     assert data["clauses_checked"] == 1
@@ -101,13 +114,20 @@ def test_add_diff_when_terms_exist_no_obligation(auth_client, test_tenant, db):
 
 
 def test_update_diff_when_due_date_changed(auth_client, test_tenant, db):
-    """Term yields a different due_date than existing obligation → diff action='update'."""
+    """LLM proposes different due_date than existing obligation → diff action='update'."""
     doc = _make_doc(db, test_tenant)
-    clause = _make_clause(db, test_tenant, doc.id, clause_num="Điều 2")
-    _make_term(db, test_tenant, doc.id, "ngay_het_han", "2028-06-30", ref="Điều 2")
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 2")
     ob = _make_obligation(db, test_tenant, doc.id, "Điều 2", due_date="2027-01-01")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    proposed = [ObligationScheduleItem(
+        obligation_type="expiration",
+        description=ob.description,
+        due_date="2028-06-30",
+        source_clause_num="Điều 2",
+        derived_from="original",
+    )]
+    with _mock_rederive(obligations=proposed):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
     diffs = r.json()["diffs"]
     update_diffs = [d for d in diffs if d["action"] == "update"]
@@ -120,29 +140,33 @@ def test_update_diff_when_due_date_changed(auth_client, test_tenant, db):
 
 
 def test_no_diff_when_up_to_date(auth_client, test_tenant, db):
-    """Term matches existing obligation exactly → no diffs emitted."""
+    """LLM proposes same due_date + description → no diffs emitted."""
     doc = _make_doc(db, test_tenant)
-    clause = _make_clause(db, test_tenant, doc.id, clause_num="Điều 3")
-    _make_term(db, test_tenant, doc.id, "ngay_het_han", "2027-06-30", ref="Điều 3")
-    _make_obligation(db, test_tenant, doc.id, "Điều 3", due_date="2027-06-30")
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 3")
+    ob = _make_obligation(db, test_tenant, doc.id, "Điều 3", due_date="2027-06-30")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    proposed = [ObligationScheduleItem(
+        obligation_type="expiration",
+        description=ob.description,
+        due_date="2027-06-30",
+        source_clause_num="Điều 3",
+        derived_from="original",
+    )]
+    with _mock_rederive(obligations=proposed):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
-    # description may differ from the template, but due_date matches → 0 or 1 diffs
-    # Only assert no due_date update diff (the important field)
     diffs = r.json()["diffs"]
-    due_diffs = [d for d in diffs if d.get("field") == "due_date"]
-    assert due_diffs == []
+    assert diffs == []
 
 
-def test_remove_diff_when_derivation_skips_and_obligation_exists(auth_client, test_tenant, db):
-    """Terms insufficient → derivation skips → existing obligation gets action='remove'."""
+def test_remove_diff_when_llm_returns_nothing(auth_client, test_tenant, db):
+    """LLM returns no proposals for clause → existing obligation gets action='remove'."""
     doc = _make_doc(db, test_tenant)
-    clause = _make_clause(db, test_tenant, doc.id, clause_num="Điều 4")
-    # No matching Terms for this clause → derivation skips
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 4")
     ob = _make_obligation(db, test_tenant, doc.id, "Điều 4", due_date="2027-01-01")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    with _mock_rederive(obligations=[]):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
     diffs = r.json()["diffs"]
     assert any(d["action"] == "remove" and d["obligation_id"] == ob.id for d in diffs)
@@ -151,11 +175,11 @@ def test_remove_diff_when_derivation_skips_and_obligation_exists(auth_client, te
 def test_user_manual_obligation_is_protected(auth_client, test_tenant, db):
     """Obligation with source='user_manual' → protected=True in diff."""
     doc = _make_doc(db, test_tenant)
-    clause = _make_clause(db, test_tenant, doc.id, clause_num="Điều 5")
-    # No Terms → derivation skips → remove diff
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 5")
     ob = _make_obligation(db, test_tenant, doc.id, "Điều 5", source="user_manual")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    with _mock_rederive(obligations=[]):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
     diffs = r.json()["diffs"]
     remove_diff = next((d for d in diffs if d.get("obligation_id") == ob.id), None)
@@ -168,14 +192,20 @@ def test_scope_by_clause_ids(auth_client, test_tenant, db):
     doc = _make_doc(db, test_tenant)
     c1 = _make_clause(db, test_tenant, doc.id, clause_num="Điều 1")
     c2 = _make_clause(db, test_tenant, doc.id, clause_num="Điều 2")
-    _make_term(db, test_tenant, doc.id, "ngay_het_han", "2027-01-01", ref="Điều 1")
-    _make_term(db, test_tenant, doc.id, "ngay_het_han", "2028-01-01", ref="Điều 2")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread", json={"clause_ids": [c1.id]})
+    proposed = [
+        ObligationScheduleItem(
+            obligation_type="expiration",
+            description="Hết hạn Điều 1",
+            due_date="2027-01-01",
+            source_clause_num="Điều 1",
+        ),
+    ]
+    with _mock_rederive(obligations=proposed):
+        r = auth_client.post(f"/documents/{doc.id}/reread", json={"clause_ids": [c1.id]})
     assert r.status_code == 200
     data = r.json()
     assert data["clauses_checked"] == 1
-    # Only clause 1 was checked
     for diff in data["diffs"]:
         assert diff["source_clause_num"] == "Điều 1"
 
@@ -186,7 +216,8 @@ def test_empty_clause_ids_checks_all(auth_client, test_tenant, db):
     _make_clause(db, test_tenant, doc.id, clause_num="Điều 1")
     _make_clause(db, test_tenant, doc.id, clause_num="Điều 2")
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    with _mock_rederive(obligations=[]):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
     assert r.json()["clauses_checked"] == 2
 
@@ -256,7 +287,6 @@ def test_tenant_isolation(test_tenant, db):
 
 def test_quota_exceeded_returns_429(auth_client, test_tenant, db):
     """When docs_used_month >= doc_quota, re-read returns 429."""
-    # Set quota to 0 to simulate exhaustion.
     mdb = MasterSessionLocal()
     try:
         from sqlalchemy import update
@@ -277,13 +307,62 @@ def test_quota_exceeded_returns_429(auth_client, test_tenant, db):
 def test_done_obligations_excluded_from_diffs(auth_client, test_tenant, db):
     """Obligations with status='done' are not included in diff computation."""
     doc = _make_doc(db, test_tenant)
-    clause = _make_clause(db, test_tenant, doc.id, clause_num="Điều 6")
-    # Done obligation — should not appear in remove diffs
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 6")
     ob = _make_obligation(db, test_tenant, doc.id, "Điều 6", due_date="2026-01-01")
     ob.status = "done"
     db.commit()
 
-    r = auth_client.post(f"/documents/{doc.id}/reread")
+    with _mock_rederive(obligations=[]):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
     assert r.status_code == 200
     diffs = r.json()["diffs"]
     assert not any(d.get("obligation_id") == ob.id for d in diffs)
+
+
+def test_multiple_obligation_types_per_clause(auth_client, test_tenant, db):
+    """LLM proposes multiple obligation types for one clause — each matched independently."""
+    doc = _make_doc(db, test_tenant)
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 7")
+    ob_pay = _make_obligation(db, test_tenant, doc.id, "Điều 7",
+                              due_date="2027-03-01", obligation_type="payment")
+    ob_exp = _make_obligation(db, test_tenant, doc.id, "Điều 7",
+                              due_date="2027-12-31", obligation_type="expiration")
+
+    proposed = [
+        ObligationScheduleItem(
+            obligation_type="payment",
+            description=ob_pay.description,
+            due_date="2027-06-01",
+            source_clause_num="Điều 7",
+        ),
+        ObligationScheduleItem(
+            obligation_type="expiration",
+            description=ob_exp.description,
+            due_date="2027-12-31",
+            source_clause_num="Điều 7",
+        ),
+    ]
+    with _mock_rederive(obligations=proposed):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
+    assert r.status_code == 200
+    diffs = r.json()["diffs"]
+    pay_diffs = [d for d in diffs if d.get("obligation_id") == ob_pay.id]
+    assert len(pay_diffs) == 1
+    assert pay_diffs[0]["action"] == "update"
+    assert pay_diffs[0]["field"] == "due_date"
+    assert pay_diffs[0]["new_value"] == "2027-06-01"
+    exp_diffs = [d for d in diffs if d.get("obligation_id") == ob_exp.id]
+    assert exp_diffs == []
+
+
+def test_warnings_from_llm_returns_empty_diffs(auth_client, test_tenant, db):
+    """When rederive returns warnings (SDK missing, etc.), endpoint returns empty diffs."""
+    doc = _make_doc(db, test_tenant)
+    _make_clause(db, test_tenant, doc.id, clause_num="Điều 8")
+
+    with _mock_rederive(obligations=[], warnings=["sdk_missing"]):
+        r = auth_client.post(f"/documents/{doc.id}/reread")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["clauses_checked"] == 1
+    assert data["diffs"] == []
