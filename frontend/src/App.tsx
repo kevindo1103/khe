@@ -11,6 +11,7 @@ import DocumentDetail from './pages/admin/DocumentDetail';
 import Obligations from './pages/admin/Obligations';
 import Chat from './pages/admin/Chat';
 import Settings from './pages/admin/Settings';
+import ExtractionMetrics from './pages/admin/ExtractionMetrics';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="obligations" element={<Obligations />} />
         <Route path="chat" element={<Chat />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="extraction-metrics" element={<ExtractionMetrics />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin/login" replace />} />
     </Routes>
