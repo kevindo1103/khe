@@ -16,7 +16,7 @@ Idempotency: only deletes existing obligations with status="pending";
 "done" / "cancelled" obligations are preserved (D-02 — respect SME edits).
 """
 import json
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,25 @@ from app.services.relationships import _build_connected_chain, _get_confirmed_am
 
 # Fields relevant to obligation derivation.
 _DUE_FIELD = "ngay_het_han"
+
+# Conservative anchor pattern → Term field_name map for B3 date resolution (#282).
+# Only patterns we're confident about. D-08: better to leave waiting_trigger than
+# compute a wrong date from a misidentified anchor.
+_DATE_ANCHOR_PATTERNS: list[tuple[list[str], str]] = [
+    (["ngày ký", "ký kết", "ký hợp đồng", "ngay ky"], "ngay_ky"),
+    (["ngày hiệu lực", "có hiệu lực", "phát sinh hiệu lực", "hieu luc"], "ngay_hieu_luc"),
+]
+
+
+def _detect_anchor_field(trigger_condition: str | None) -> str | None:
+    """Map trigger_condition text to a Term field_name. Returns None if anchor unknown."""
+    if not trigger_condition:
+        return None
+    tc = trigger_condition.lower()
+    for patterns, field_name in _DATE_ANCHOR_PATTERNS:
+        if any(p in tc for p in patterns):
+            return field_name
+    return None
 _START_FIELD = "ngay_hieu_luc"
 _DURATION_FIELD = "thoi_han_hd"
 
@@ -319,3 +338,74 @@ def derive_obligation_from_clause(
 
     db.commit()
     return {"created": 1, "skipped": False, "reason": None}
+
+
+def resolve_date_anchored_obligations(
+    db: Session,
+    tenant_id: str,
+    doc_id: int,
+) -> int:
+    """Resolve date-anchored obligations whose due_date is still None (#282 B3).
+
+    For obligations where milestone_trigger="date", status="waiting_trigger",
+    due_date=None: detect the anchor Term from trigger_condition, look up the
+    anchor date in this doc's extracted Terms, compute due_date = anchor +
+    trigger_delay_days, and update status to pending (or overdue if past).
+
+    D-08: anchor not found in Terms → obligation stays waiting_trigger (no
+    fabrication). trigger_delay_days=None → skip (can't compute without guessing).
+
+    Returns count of obligations resolved.
+    """
+    terms = (
+        db.query(Term)
+        .filter(
+            Term.tenant_id == tenant_id,
+            Term.document_id == doc_id,
+            Term.field_value.isnot(None),
+        )
+        .all()
+    )
+    known_dates: dict[str, date] = {}
+    for t in terms:
+        if not t.field_value:
+            continue
+        try:
+            known_dates[t.field_name] = date.fromisoformat(t.field_value[:10])
+        except ValueError:
+            pass
+
+    if not known_dates:
+        return 0
+
+    obligations = (
+        db.query(Obligation)
+        .filter(
+            Obligation.tenant_id == tenant_id,
+            Obligation.document_id == doc_id,
+            Obligation.milestone_trigger == "date",
+            Obligation.status == "waiting_trigger",
+            Obligation.due_date.is_(None),
+        )
+        .all()
+    )
+
+    today = date.today()
+    resolved = 0
+    for ob in obligations:
+        if ob.trigger_delay_days is None:
+            continue
+        anchor_field = _detect_anchor_field(ob.trigger_condition)
+        if not anchor_field:
+            continue
+        anchor_date = known_dates.get(anchor_field)
+        if not anchor_date:
+            continue
+        due = anchor_date + timedelta(days=ob.trigger_delay_days)
+        ob.due_date = due.isoformat()
+        ob.status = "overdue" if due < today else "pending"
+        resolved += 1
+
+    if resolved:
+        db.commit()
+    return resolved
