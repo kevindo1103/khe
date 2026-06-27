@@ -1,7 +1,7 @@
 # KHE_Compliance — Team State
 
 *Owner: KHE_Compliance (single-owner, low-touch) · Branch: `claude/compliance-nd13-consent-spec`*
-*Last updated: 2026-06-18 — Sprint 1 first task (#30): NĐ 13/2023 consent UX spec + DEC-010 audit sign-off · **3 PM decisions LOCKED** (revocation / retention / LLM DPA)*
+*Last updated: 2026-06-27 — P4 evidence PII spec (#307, DEC-048) + `obligation_fulfillment` purpose enum add*
 
 > **Scope (HARD):** Compliance **spec** only — NĐ 13/2023 (DLCN/PII) · NĐ 337/2025 (lao động ĐT) · NĐ 70/2025 (hóa đơn ĐT) · consent flows · data residency · retention · audit-log spec.
 > ❌ KHÔNG implement application code (`backend/**`, `frontend/**`, `.github/workflows/**`) — file issues cho KHE_Backend / KHE_Infra.
@@ -18,6 +18,8 @@
 | **DEC-014** | Positioning "ngôi nhà sau khi ký" — KHÔNG claim "ký số" (NĐ 337 guard). | Positioning guard (§F). |
 | **D-09** | Firm KHÔNG sửa dữ liệu SME ở MVP (chỉ xem). | Firm portal consent scope = read-only (§C). |
 | **D-10** | Quyền partner xuyên-tenant chỉ mở khi SME consent rõ ràng, thu hồi được. | `firm_partner_access` consent + revocation (§C, §D). |
+| **DEC-039** | Firm portal visibility matrix — `contains_personal_data=true` → firm sees metadata only, content hidden. | Evidence PII gate (§G). |
+| **DEC-048** | Document Detail — Obligation Fulfillment & Dependency Chain. P4 = evidence PII + DEC-039 visibility (parallel gate). | §G spec + sign-off. |
 
 ### PM-locked decisions (2026-06-18, on #30)
 
@@ -50,8 +52,9 @@ Mọi PII processing log một Event với `purpose` từ enum đóng dưới đ
 | `vision_extraction` | Trước mỗi lần gửi ảnh/PDF tài liệu tới Vision LLM (Gemini/Claude, US-hosted) | Google LLC / Anthropic PBC (US) | ✅ YES — gate 403 (A.2) |
 | `reminder_send` | Khi gửi nhắc qua Telegram bot / email | Telegram (Telegram FZ-LLC) / email provider | ✅ YES — opt-in tại first-login (schema §A.5) |
 | `firm_partner_access` | Khi firm partner xem dữ liệu nghĩa vụ của tenant | Firm partner (đã ký DPA với SME) | ✅ YES — D-10, revocable (A.2 + §C) |
+| `obligation_fulfillment` | Khi SME/operator attach evidence doc (biên bản) vào obligation mark-done | Không có bên thứ ba (at-rest VN, P2 skip extraction) | ❌ NO — Event log only, KHÔNG consent gate (§G) |
 
-> **HARD:** enum **đóng**. Thêm purpose mới = compliance review trước, không tự thêm ở code.
+> **HARD:** enum **đóng**. Thêm purpose mới = compliance review trước, không tự thêm ở code. (`obligation_fulfillment` approved 2026-06-26 on #307 — PM accepted.)
 
 ### A.2 — Consent event schema (per-tenant `events` table)
 
@@ -218,6 +221,69 @@ Sign-off: __________________   (Thiếu bất kỳ mục nào = KHÔNG go-live e
 
 ---
 
+## §G — Evidence doc PII policy + DEC-039 visibility (#307, DEC-048 P4)
+
+> **Context:** EPIC #300 (Document Detail / Obligation Fulfillment). When an obligation is marked done, SMEs attach **evidence docs** (biên bản bàn giao/nghiệm thu) as proof. P2 (Backend) skips extraction for evidence docs. P4 (Compliance) gates PII policy + DEC-039 visibility. **Parallel gate — blocks go-live, does NOT block staging/dev.**
+
+### G.1 — Evidence docs and NĐ 13/2023
+
+**Evidence docs (`is_evidence=true`) fall under NĐ 13/2023.** Biên bản bàn giao/nghiệm thu routinely contain PII of natural persons — names, CCCD/CMND numbers, signatures, sometimes address/phone. This applies regardless of parent contract type (a handover protocol for a lease can still name individuals).
+
+**Policy:** `is_evidence=true` → **default `contains_personal_data = true`** (conservative).
+- P2 skips extraction → no `doc_type_group` derived → can't gate on type like regular docs (#270 §3).
+- Conservative default = correct NĐ 13 posture: assume PII present unless proven otherwise.
+- SME override to `false` allowed but not MVP priority.
+
+### G.2 — DEC-039 visibility gate for evidence in firm portal
+
+Reuses existing DEC-039 matrix (#270 §3) with zero new portal logic:
+
+| What firm sees | What firm does NOT see |
+|---|---|
+| ✅ Evidence **exists** (flag on the obligation) | ❌ Evidence file content/download |
+| ✅ Fulfillment date (`fulfilled_at`) | ❌ Names/signatures in biên bản |
+| ✅ Actor attribution (who captured — P3) | ❌ Any PII fields |
+| ✅ Obligation status = fulfilled | |
+
+**SME sees everything** (their own data, their own biên bản).
+
+**⚠️ HARD CONDITION (blocks firm portal go-live):** evidence file download endpoint (`/documents/{id}/file`) MUST check `contains_personal_data` for firm-scoped requests and **block** if true. Without this, a firm partner could fetch the raw biên bản via API even though the portal UI hides it — that's a NĐ 13 violation, not just a UI gap. Backend flagged this as needing verification (#307 comment, 2026-06-27).
+
+### G.3 — Purpose/consent logging for evidence attachment
+
+Attaching evidence stores PII at-rest in the tenant's own DB (VN). This is a **storage** action, NOT an LLM-transit event (P2 keeps evidence off the vision provider). No cross-border transfer.
+
+**No consent gate required.** The SME voluntarily uploads their own document to their own tenant — consent for storage is implicit in the act of upload. Log an Event for audit:
+
+```python
+Event(
+    tenant_id=tenant_id,
+    event_type="evidence_attached",
+    entity_type="obligation",
+    entity_id=obligation_id,
+    purpose="obligation_fulfillment",   # added to closed enum §A.1 (approved #307)
+    created_by=current_user.id,         # or operator-for-SME (P3 actor attribution)
+    created_at=<utc>,
+)
+```
+
+**No 403 gate** for this purpose — Event log only.
+
+### G.4 — P2 skip-extraction sign-off
+
+**CONDITIONAL SIGN-OFF ✅** (2026-06-27, Backend confirmation on #307):
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Skip enforced **server-side** (ingest checks `is_evidence` BEFORE `provider.extract()`) | ✅ | `is_evidence=true` → `status="done"` immediately, extraction task not enqueued |
+| Defense-in-depth (FR-EX-06 consent gate as layer 2) | ✅ | Even if evidence reaches extraction, consent gate blocks without `vision_extraction` consent |
+| At-rest VN (no non-VN CDN/cache) | ✅ | Per-tenant SQLite on VPS VN-hosted, no CDN replication |
+| DEC-039 gate on evidence file **download** for firm requests | ⚠️ **OPEN** | Backend to verify `/documents/{id}/file` checks `contains_personal_data` for firm-scoped requests |
+
+**Conclusion:** P4 sign-off for SME-side and staging = **approved**. Firm portal go-live requires the download-gate verification (G.2 hard condition).
+
+---
+
 ## Inbox log
 
 | Date | Issue | Action |
@@ -229,7 +295,10 @@ Sign-off: __________________   (Thiếu bất kỳ mục nào = KHÔNG go-live e
 | 2026-06-18 | spawn | Noted `SPAWN_KHE_COMPLIANCE.md` references #32 (PWA epic) instead of #30; file not in repo — PM to fix on template side. |
 | 2026-06-18 | #38 | Filed verify-back issue: statutory contract-retention vs 90d (counsel, gates DEC-010 §E item 8). |
 | 2026-06-18 | #22 | Added §A.5 `reminder_send` consent Event schema (channel + channel_target_ref cols); folds the #22 interim comment into spec. |
+| 2026-06-27 | #307 | P4 assessment posted (evidence PII + DEC-039 + purpose enum + P2 sign-off). PM accepted. |
+| 2026-06-27 | #307 | Backend confirmed P2 server-side enforcement. Conditional sign-off posted (download-gate open for firm portal). |
+| 2026-06-27 | #307 | §G added + `obligation_fulfillment` added to §A.1 closed enum. Relay → DOCS_INBOX #1. |
 
 ---
 
-*Created 2026-06-18 by KHE_Compliance · branch `claude/compliance-nd13-consent-spec`. Spec = draft requirements, NOT legal advice; Kevin/counsel duyệt trước go-live.*
+*Created 2026-06-18 by KHE_Compliance. Updated 2026-06-27 (§G evidence PII, DEC-048 P4). Spec = draft requirements, NOT legal advice; Kevin/counsel duyệt trước go-live.*
