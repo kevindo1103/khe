@@ -124,6 +124,22 @@ class BulkUploadOut(BaseModel):
     documents: list[UploadOut]
 
 
+# ── Clause-scoped re-derive (#303, DEC-048 §13) ──
+
+
+class ReDeriveClauseIn(BaseModel):
+    clause_num: str
+
+
+class ReDeriveClauseOut(BaseModel):
+    ok: bool = True
+    created: int
+    skipped: bool
+    protected_manual: int
+    deleted: int
+    cost_vnd: float = 0.0
+
+
 # ── Self-party confirmation (DEC-030, #155) ──
 
 
