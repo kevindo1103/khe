@@ -8,8 +8,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.5 |
-| Trạng thái | Fold cycle 4 — DEC-027/028/029/030 mega-batch |
+| Phiên bản | v0.6 |
+| Trạng thái | Fold cycle 5 — DEC-048 EPIC #300 production promote (ce48bbd) |
 | Owner | KHE_Docs |
 
 ---
@@ -22,6 +22,7 @@
 | v0.2 | 2026-06-18 | KHE_Docs | Fold DOCS_INBOX 13/14: add §G Strategy framework terms — Persona, JTBD, Golden Circle (Why-How-What), Dunford Positioning Thesis, B2B2B channel motion vs PLG, Obligation OS, Vertical wedge (DEC-018), Plan B contingency. |
 | v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Add §H Backend M0 vocab — CANONICAL_FIELDS (7), DocType enum. Add §I Document relationships — amends vs references_framework, last_writer_wins, source_doc_chain. Update §C Extraction — `get_extraction_provider`, `ExtractionUnavailable`, `is_error` vs `needs_review`. Add §J Tenant quota — FR-TN-01..03, doc_quota nullable, calendar reset, hard block 429. |
 | v0.4 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §A `Clause` entity — text nguyên gốc từ Document, distinct from Term/Field (structured). Per-tenant `clauses` table (SRS §5.9). Powers `search_clauses` tool (BRD FR-CQ-02). Rename old `Template / Clause` row → `Template (GĐ2)` to avoid name collision. |
+| v0.6 | 2026-06-27 | KHE_Docs | **Cycle 5 fold — DEC-048 EPIC #300 production.** §A Obligation rewrite expanded (fulfilled_at G1 anchor, awaiting_confirmation, source_clause_num, derived_from, source P1). §A NEW ClauseEditEvent (§13 addendum) + Evidence Document. §M NEW Fulfillment + Cascade Chain section (DEC-048 vocab: fulfillment capture, propagate_obligation_done, cascade-past, awaiting_confirmation, anchor=fulfilled_at G1, P1 merge rule, derive delete path-2 guard, waiting_trigger + _detect_anchor_field, obligation_fulfillment purpose enum, evidence_attached). |
 | v0.5 | 2026-06-20 | KHE_Docs | **Cycle 4 fold.** §A: Obligation entity rewritten (8 categories + 5 cadences + direction + obligor + status enum correction). NEW Quyền lợi sub-concept. Party +role_label + self-party. §C augmented: 2-tier extraction schema (Claude lean / Gemini full), PaymentScheduleItem, PartyItem, NamedExtractedField, DOC_TYPE_GROUPS enum 11, BASE/V2_UNIVERSAL/TYPE_SPECIFIC field tiers. §K NEW Direction model (DEC-030) — direction, obligor, legal_name, tenant_profile, self-party match. §L NEW Chat tool surface evolved (value_contains, party_filter, doc_type_filter, due_from/to, truncation_hint, today's-date injection, _is_negative_answer, NĐ 13 compliance debt). §B Tenant +tenant_profile separate model row. |
 
 ---
@@ -45,6 +46,10 @@ Cam kết rời rạc, có ngày, có trạng thái, suy ra từ Document. **Sch
 - **`direction`** (DEC-030): `nghĩa_vụ` / `quyền_lợi` / `null` per `obligor` match `legal_name`.
 - **`obligor`**: tên party chịu nghĩa vụ.
 - **`source_doc_chain`**, **`resolution_method`**: chain resolution (DEC-019..021). Derived obligations luôn set; payment-schedule obligations KHÔNG set (idempotency key).
+- **`fulfilled_at`** / **`fulfilled_by`** / **`evidence_doc_ids`** (DEC-048): ngày + actor + bằng chứng khi SME ghi nhận hoàn thành. `fulfilled_at` là **anchor** cho cascade chain (G1 fix per §M).
+- **`source_clause_num`** + **`derived_from`** (Kevin Option B 0a, PR #303): clause provenance. Enables clause-scoped re-derive (§M).
+- **`source`** (P1 merge rule, PR #311): `ai_extracted` / `user_manual` / `ai_re_derived`. `user_manual` obligations **protected from re-derive delete**.
+- **Status enum extended** (DEC-048): `pending` · `done` · `cancelled` · `awaiting_confirmation` (cascade-past D-02) · `waiting_trigger` (FR-OB-13 unresolved date anchor).
 - **Derived vs extracted:** `due_date` có thể derived (vd `ngay_het_han = ngay_hieu_luc + thoi_han_hd`); payment_schedule items → `payment` Obligation rows. Xem SRS §6.1/6.3.
 
 ### Quyền lợi (DEC-030)
@@ -66,6 +71,14 @@ Append-only bản ghi mọi thay đổi trạng thái (ingest, sửa term, hoàn
 
 ### Clause (DEC-026)
 Điều khoản rời từ Document, có số thứ tự (`clause_num`, vd `"Điều 8"`) + tiêu đề (`title`, vd `"Chấm dứt hợp đồng"`) + nội dung đầy đủ (`content`) + vị trí trang. **Phân biệt với Term/Field:** Term = giá trị có cấu trúc (CANONICAL_FIELDS, date/numeric coercion). Clause = **text nguyên gốc**, preserve wording. Per-tenant table `clauses` (SRS §5.9). Populated từ `VisionExtractionResult.clauses[]` cùng vision call. Powers `search_clauses` tool (FR-CQ-02).
+
+**Editable (DEC-048 §13 addendum):** SME có thể sửa clause inline. Lần edit đầu Backend snapshot vào **`original_content`** (immutable sau first write — D-07 audit). UI surface "đã sửa" badge + "Xem bản gốc (AI)" toggle.
+
+### ClauseEditEvent (DEC-048 §13 addendum)
+Snapshot event khi SME sửa clause. Fields: `clause_id`, `clause_num`, `original_content` (immutable), `edited_content`, `edited_by`, `edited_at`, `re_read_triggered` (bool), `re_read_at`, `re_read_result_id`. Event ledger row có shape PII-safe: log content **lengths** không log raw text (D-12). Wired qua `PATCH /documents/{id}/clauses/{clause_id}` (PR #325, migration `tenant_018`).
+
+### Evidence Document (DEC-048)
+Document upload với `is_evidence=true` — biên bản nghiệm thu, hóa đơn thanh toán, biên nhận đính kèm khi SME ghi nhận hoàn thành nghĩa vụ. **Server-side skip `provider.extract()`** (P2 rule). `contains_personal_data` default `true` (conservative). DEC-039 firm gate: firm portal chỉ thấy metadata (file_name + created_at), không thấy binary. Link với obligation qua `Obligation.evidence_doc_ids[]`.
 
 ### Template (GĐ2)
 Mẫu HĐ do firm thẩm định, có version. *Định nghĩa sẵn nhưng chưa kích hoạt ở MVP — mở GĐ2 (lawyer-in-loop drafting).*
@@ -384,4 +397,47 @@ Log `{question, tool_calls, found}` mỗi query → PM/QC weekly review → fold
 
 ---
 
-*Hết v0.5 — cycle 4 fold. Bước kế tiếp: thêm UI terms khi Frontend session spawn, CONTRACT_LOGIC_Khe.md role conventions khi lawyer partner kickoff.*
+---
+
+## M. Fulfillment + Cascade Chain (DEC-048)
+
+### Fulfillment capture
+Action SME ghi nhận hoàn thành nghĩa vụ qua `PATCH /obligations/{id}` body `{status:"done", fulfilled_at, fulfilled_by, evidence_doc_ids}`. UI: Tab Nghĩa vụ → "Đánh dấu đã hoàn thành" → FulfillModal (date picker + actor + evidence link). Event `obligation_fulfilled` ghi với `purpose=obligation_fulfillment` (no consent gate).
+
+### `propagate_obligation_done(parent)`
+Function trong `obligation_chain.py` invoked khi parent obligation `done`. Iterates dependent children; for each → computes `child.due_date = parent.fulfilled_at + child.trigger_delay_days`; if `< today` → child status = **`awaiting_confirmation`** (else `pending`). Logs `cascade_triggered` Event per child.
+
+### Cascade-past (DEC-048 Option B, Kevin ratify)
+Edge case: parent fulfilled long ago → child due also in past. **KHÔNG** auto-flip `overdue` hoặc spam reminder. **KHÔNG** treat as `pending`. Instead → `awaiting_confirmation` → SME confirm "đã hoàn thành chưa?" (D-02). PATCH-able sang `done`/`cancelled`/`pending`.
+
+### `awaiting_confirmation` (status)
+DEC-048 status enum value. UX: card "Cần xác nhận đã hoàn thành?" trong Tab Nghĩa vụ. Differs from `overdue` (FE-derived urgency của `pending` past-due) — `awaiting_confirmation` là legitimate state, không cần nhắc.
+
+### Anchor = `fulfilled_at` (G1 fix)
+Cascade chain MUST use `parent.fulfilled_at` làm anchor cho child due computation, **NOT** `date.today()`. Tại sao: replaying historical parent fulfillment phải sinh due dates relative to actual fulfillment date để audit reconstruct chính xác.
+
+### P1 source-aware merge rule (PR #311)
+Khi re-derive (clause edit / re-read / re-extraction): cleanup phase DELETE existing derived obligations với guard:
+```sql
+WHERE source != 'user_manual' AND fulfilled_at IS NULL
+```
+Mục đích: bảo vệ user edits + fulfilled state khỏi AI overwrite.
+
+### Derive delete path-2 guard
+PR #311 V1 fix. Cleanup path-2 (re-derive cleanup) phải có `fulfilled_at IS NULL` guard ngoài source check — prevents losing audit trail của fulfilled obligations dù `source` field bị sai.
+
+### `waiting_trigger` (status)
+DEC-048 status cho FR-OB-13 obligations chưa resolve được date anchor. Background resolver `resolve_date_anchored_obligations()` map trigger phrase → Term field → compute `due_date` → flip sang `pending`. D-08: anchor unknown → giữ `waiting_trigger`, không bịa.
+
+### `_detect_anchor_field()`
+Helper trong `obligation_engine.py` PR #322. Maps Vietnamese trigger phrases → CANONICAL_FIELDS names. MVP scope: `"ngày ký"` → `ngay_ky`, `"ngày hiệu lực"` → `ngay_hieu_luc`. Event-triggered anchors (`ngay_ban_giao`, `ngay_nghiem_thu`) handled by cascade chain qua `fulfilled_at`, không qua resolver.
+
+### `obligation_fulfillment` (purpose enum)
+KHE_Compliance §A.1 closed-set purpose enum value (PM #307 approve). Storage-only — no LLM transit, no cross-border. Event log only, no 403 consent gate. Folded as DEC-048 audit trail purpose tag.
+
+### `evidence_attached` (Event type)
+Logged khi upload với `is_evidence=true`. Payload: `{document_id, contains_personal_data, purpose=obligation_fulfillment}`. DEC-039 §G.2: firm portal visibility metadata-only cho evidence docs (hard condition, blocks firm portal go-live).
+
+---
+
+*Hết v0.6 — cycle 5 DEC-048 fold. Bước kế tiếp: thêm UI terms khi Frontend session spawn, CONTRACT_LOGIC_Khe.md role conventions khi lawyer partner kickoff.*
