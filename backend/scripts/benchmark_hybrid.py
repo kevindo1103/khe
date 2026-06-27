@@ -87,19 +87,111 @@ async def gemini_ocr(file_bytes: bytes, mime: str) -> dict:
 
 
 async def cloud_vision_ocr(file_bytes: bytes, mime: str) -> dict | None:
-    """Pass 1b: Google Cloud Vision API OCR — dedicated engine, ~$1.50/1000 pages."""
+    """Pass 1b: Google Cloud Vision API OCR — dedicated engine, ~39.5đ/page.
+
+    Auth: set GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+    OR set CLOUD_VISION_API_KEY=AIza... (API key).
+    Requires: pip install google-cloud-vision (for service account)
+              OR pip install httpx (for API key fallback).
+    """
+    sa_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    api_key = os.environ.get("CLOUD_VISION_API_KEY")
+
+    if sa_path:
+        return await _cloud_vision_sa(file_bytes, mime)
+    elif api_key:
+        return await _cloud_vision_apikey(file_bytes, mime, api_key)
+    else:
+        print("ERROR: Set GOOGLE_APPLICATION_CREDENTIALS (service account JSON)")
+        print("  OR set CLOUD_VISION_API_KEY (API key)")
+        return None
+
+
+async def _cloud_vision_sa(file_bytes: bytes, mime: str) -> dict | None:
+    """Cloud Vision via google-cloud-vision library + service account."""
+    try:
+        from google.cloud import vision
+    except ImportError:
+        print("ERROR: pip install google-cloud-vision")
+        return None
+
+    client = vision.ImageAnnotatorClient()
+    t0 = time.time()
+    all_pages_text = []
+    total_pages = 0
+
+    if mime == "application/pdf":
+        input_config = vision.InputConfig(content=file_bytes, mime_type=mime)
+        feature = vision.Feature(type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION)
+
+        batch = 0
+        while True:
+            pages = list(range(batch * 5 + 1, batch * 5 + 6))
+            request = vision.AnnotateFileRequest(
+                input_config=input_config,
+                features=[feature],
+                pages=pages,
+            )
+            try:
+                response = client.batch_annotate_files(requests=[request])
+            except Exception as exc:
+                print(f"Cloud Vision error: {exc}")
+                return None
+
+            if not response.responses:
+                break
+
+            fr = response.responses[0]
+            if fr.error.message:
+                print(f"Cloud Vision error: {fr.error.message}")
+                return None
+
+            total_pages = fr.total_pages or total_pages
+            for i, pr in enumerate(fr.responses):
+                fta = pr.full_text_annotation
+                text = fta.text if fta else ""
+                page_n = batch * 5 + i + 1
+                all_pages_text.append(f"[Trang {page_n}]\n{text}")
+
+            if (batch + 1) * 5 >= total_pages:
+                break
+            batch += 1
+    else:
+        image = vision.Image(content=file_bytes)
+        try:
+            response = client.document_text_detection(image=image)
+        except Exception as exc:
+            print(f"Cloud Vision error: {exc}")
+            return None
+        fta = response.full_text_annotation
+        all_pages_text.append(fta.text if fta else "")
+        total_pages = 1
+
+    elapsed = time.time() - t0
+    full_text = "\n\n".join(all_pages_text)
+    cost_per_page_vnd = 39.5
+    cost_vnd = total_pages * cost_per_page_vnd
+    cost_usd = cost_vnd / 25_400
+    dieu_unique, dieu_count = _count_dieu(full_text)
+
+    return {
+        "text": full_text,
+        "pages": total_pages,
+        "latency_s": elapsed,
+        "text_length": len(full_text),
+        "dieu_found": dieu_unique,
+        "dieu_count": dieu_count,
+        "cost_usd": cost_usd,
+        "cost_vnd": cost_vnd,
+    }
+
+
+async def _cloud_vision_apikey(file_bytes: bytes, mime: str, api_key: str) -> dict | None:
+    """Cloud Vision via REST API + API key (fallback when no service account)."""
     try:
         import httpx
     except ImportError:
-        print("ERROR: httpx not installed. Run: pip install httpx")
-        return None
-
-    api_key = os.environ.get("CLOUD_VISION_API_KEY")
-    if not api_key:
-        print("ERROR: Set CLOUD_VISION_API_KEY env var")
-        print("  1. Enable Cloud Vision API on your GCP project")
-        print("  2. Create API key: https://console.cloud.google.com/apis/credentials")
-        print("  3. export CLOUD_VISION_API_KEY=your_key")
+        print("ERROR: pip install httpx")
         return None
 
     b64 = base64.b64encode(file_bytes).decode()
@@ -170,8 +262,9 @@ async def cloud_vision_ocr(file_bytes: bytes, mime: str) -> dict | None:
 
     elapsed = time.time() - t0
     full_text = "\n\n".join(all_pages_text)
-    cost_usd = total_pages * 1.50 / 1000
-    cost_vnd = cost_usd * 25_400
+    cost_per_page_vnd = 39.5
+    cost_vnd = total_pages * cost_per_page_vnd
+    cost_usd = cost_vnd / 25_400
     dieu_unique, dieu_count = _count_dieu(full_text)
 
     return {
