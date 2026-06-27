@@ -192,3 +192,24 @@ def build_instruction(doc_type: str = "auto") -> str:
         f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )
+
+
+def build_text_instruction(doc_type: str = "auto") -> str:
+    """Text-mode variant for DEC-049 hybrid OCR pipeline.
+
+    Same extraction spec as ``build_instruction`` but the preamble references OCR text
+    instead of an image — the document content arrives as a preceding text Part."""
+    hint = ""
+    if doc_type and doc_type != "auto":
+        hint = (
+            f"\nGỢI Ý từ người dùng: tài liệu có thể là loại '{doc_type}'. "
+            "Vẫn tự phân loại và cho doc_type_confidence của bạn.\n"
+        )
+    return (
+        "Văn bản hợp đồng bên trên đã được bóc từ file PDF bằng OCR. "
+        "Bóc tách thông tin theo schema JSON yêu cầu.\n"
+        f"{hint}\n"
+        f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
+        f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
+        "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
+    )
