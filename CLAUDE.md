@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-20 (v0.8 — ERP_→KHE_ rename in topology + add Claude_Backend_Dev / Claude_Frontend_Dev parallel to Windsurf + Telegram fix row 8) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.7 reference*
+*Last updated: 2026-06-27 (v0.9 — fold cycle 5: DEC-048 EPIC #300 production promote) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.8 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,7 +9,7 @@
 
 ## Project context
 
-**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (v0.3 — Why/Personas/JTBD/Positioning + §5b Chat Architecture + §7.1 Billing) · `docs/MVP_BRD_Khe_v0.1.md` (v0.7) · `docs/SRS_v0.1.md` (v0.4.1) · `docs/GLOSSARY_v0.1.md` (v0.5) · `docs/PROJECT_PLAN_v0.1.md` (v0.4)
+**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (v0.3 — Why/Personas/JTBD/Positioning + §5b Chat Architecture + §7.1 Billing) · `docs/MVP_BRD_Khe_v0.1.md` (v0.8) · `docs/SRS_v0.1.md` (v0.5) · `docs/GLOSSARY_v0.1.md` (v0.6) · `docs/PROJECT_PLAN_v0.1.md` (v0.5) · `docs/USER_MANUAL_PILOT_v0.1.md` (pilot onboarding)
 
 **Doc cascade:** PRODUCT_STRATEGY → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup. PRODUCT_STRATEGY thắng về *tại sao / cho ai / job gì*; BRD thắng về *hệ thống phải làm gì*.
 
@@ -202,6 +202,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 | **Gemini `response_schema` `too many states for serving`** | Gemini trả lỗi khi schema có nhiều `ge/le` bounded fields + many fields | Gemini grammar state-explosion. Fix: bỏ `ge/le` constraints (server-side `@field_validator` clamp instead) + gộp dict-of-fields thành `list[NamedField]` keyed. AI PR #135. |
 | **SQLite `lower()` ASCII-only — `.ilike()` fail trên VN diacritics** | Chat `party_filter` với `"DANH VIỆT"` không match `"danh việt"` dù case-insensitive — SQLite built-in `lower()` không xử lý Unicode (`Ệ`/`Ố`/`Ư`...) | Register Python `str.lower()` as SQLite `lower()` via `_register_unicode_lower` listener trên tenant engines. Backend PR #138 (closes #134). |
 | **PR scope sprawl từ stale branch** | PR mở từ branch tích lũy commits qua nhiều cycles → cherry-pick fix mang theo files khác lane (`docs/` trong PR backend, `.github/workflows/` trong PR frontend...). Reviewer phải nhặt từng file vs revert toàn bộ. Incident: PR #288 (4 frontend fix + co-committed docs + workflow). | (1) Branch off `origin/staging` fresh; (2) cherry-pick CHỈ in-scope files; (3) `git diff --name-only origin/staging..HEAD` verify trước push; (4) đọc §PR Scope-Lock Enforcement (DEC-047). CI scope-check sẽ block (TODO Infra). |
+| **Derive delete path-2 mất audit của fulfilled obligations** | Re-derive (clause edit / re-read / re-extraction) cleanup phase DELETE obligations dù chúng đã có `fulfilled_at` set → mất audit trail của work hoàn thành. Incident: PR #311 V1 fix. | Cleanup DELETE phải có **path-2 guard** `WHERE source != 'user_manual' AND fulfilled_at IS NULL`. Bảo vệ user_manual obligations + fulfilled state khỏi AI overwrite. Codified D-15 (DEC-048). Test cover: `test_clause_provenance.py` AC-fulfilled-protected. |
 
 ---
 
@@ -317,7 +318,11 @@ Pattern (mirror Bingxue):
 - No-match nhưng obligor present → `quyền_lợi` (đối tác cần làm cho SME)
 - legal_name NULL hoặc obligor NULL → `direction=NULL` + `needs_review=true` (D-02 user confirm via UI). KHÔNG default sang `nghĩa_vụ`.
 
-*(Sẽ grow theo Sprint 1+ implementation.)*
+**D-14 (FR-OB-09 — DEC-048 Fulfillment capture):** Fulfillment status `done` PHẢI ghi `fulfilled_at` + `fulfilled_by`. KHÔNG cho phép `status=done` mà `fulfilled_at IS NULL`. `evidence_doc_ids` tùy chọn (nếu provide → docs phải `is_evidence=true`). Event `obligation_fulfilled` log với `purpose=obligation_fulfillment` (KHE_Compliance §A.1 closed-set, no consent gate). Revert flow ghi `obligation_fulfillment_reverted`.
+
+**D-15 (FR-OB-10 — DEC-048 Cascade chain anchor):** Khi parent obligation `done` → cascade child obligations PHẢI dùng `parent.fulfilled_at` làm anchor (G1 fix), **KHÔNG** dùng `date.today()`. Backfill case (child_due < today) → child status = **`awaiting_confirmation`** (D-02 SME confirm), KHÔNG auto-flip `overdue` hoặc trigger reminder. P1 source-aware merge: re-derive cleanup phase MUST có guard `WHERE source != 'user_manual' AND fulfilled_at IS NULL` (PR #311).
+
+*(Sẽ grow theo Sprint 2+ implementation.)*
 
 ---
 
@@ -335,8 +340,9 @@ Pattern (mirror Bingxue):
 - **`<tenant_slug>.db`** — per-tenant data (vd `tenants/sme-abc-restaurant.db`)
   - `documents` table — file metadata + `doc_type` (legacy enum 4) + `doc_type_group` (DEC-029 enum 11)
   - `terms` table — extracted fields (12 universal + ~30 type-specific via NamedExtractedField — DEC-029)
-  - `obligations` table — derived deadlines. **Schema rewrite #122 Option B (DEC-027/030):** `obligation_type` = category enum 8 (`payment`/`delivery`/`handover`/`expiration`/`renewal`/`review`/`warranty`/`other`); `recurrence` = cadence (renamed); `status` = `{pending,done,cancelled}` (`overdue` = FE urgency NOT status); `direction` = `nghĩa_vụ`/`quyền_lợi`/`null`; `obligor`; `source_doc_chain` + `resolution_method`. Migration `tenant_005`.
-  - `clauses` table (DEC-026, migration `tenant_003_clauses`) — text nguyên gốc Document; Gemini-only populated
+  - `obligations` table — derived deadlines. **Schema rewrite #122 Option B (DEC-027/030):** `obligation_type` = category enum 8; `recurrence` = cadence; `direction` + `obligor`; `source_doc_chain` + `resolution_method`. **DEC-048 expansion (cycle 5, migration `tenant_017`):** +`fulfilled_at` (cascade anchor G1) +`fulfilled_by` +`evidence_doc_ids` JSON +`source_clause_num` (Kevin Option B 0a) +`derived_from` (`original`/`user_edit`/`ai_re_derived`) +`source` (`ai_extracted`/`user_manual`/`ai_re_derived` — P1 merge protected). Status enum extended: `pending` · `done` · `cancelled` · `awaiting_confirmation` (cascade-past D-02) · `waiting_trigger` (FR-OB-13).
+  - `clauses` table (DEC-026, migration `tenant_003_clauses`) — text nguyên gốc Document; Gemini-only populated. **DEC-048 §13 expansion (migration `tenant_018`):** +`original_content` (immutable snapshot first edit, D-07) +`edited_by_user` +`edited_at`.
+  - `documents` table — +`is_evidence` BOOL DEC-048 (skip extraction P2 + `contains_personal_data` conservative true)
   - `parties` table (DEC-030) — +`role_label` extracted verbatim
   - `parties` table — normalized partner entities
   - `events` table — append-only ledger (reuse SpurX pattern)
@@ -390,6 +396,8 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.9 — Cycle 5 fold (DEC-048 EPIC #300 production promote `ce48bbd`). +D-14 fulfillment capture (fulfilled_at + fulfilled_by mandatory, evidence_doc_ids link to is_evidence docs, purpose=obligation_fulfillment no consent gate). +D-15 cascade chain anchor (fulfilled_at G1 fix NOT date.today(), backfill → awaiting_confirmation D-02, P1 source-aware merge guard). §Multi-Tenant DB obligations expansion (+6 cols incl. fulfilled_at/by/evidence/source_clause_num/derived_from/source; status enum +awaiting_confirmation +waiting_trigger; migration tenant_017). +clauses tenant_018 edit cols (original_content immutable + edited_by_user + edited_at). +documents is_evidence. +Bug pattern "Derive delete path-2 mất audit fulfilled obligations" (PR #311). References block bumped: BRD v0.8, SRS v0.5, Glossary v0.6, PROJECT_PLAN v0.5 (pending), +USER_MANUAL_PILOT_v0.1.md. Cascade: PRODUCT_STRATEGY v0.3 → BRD v0.8 → SRS v0.5 → Glossary v0.6 → PROJECT_PLAN v0.5 → CLAUDE.md v0.9.*
 
 *v0.8 — Topology cleanup + Claude_*_Dev roles. (1) ERP_*→KHE_* rename rows 1-10 + §Cross-session rules (Infra-only files, Backend schema change). (2) Topology header "Middle Dev (Windsurf)" → "Middle Dev (Windsurf / Claude_*_Dev)". (3) Rows 3/4/5 dev column adds Claude_Backend_Dev (#3) + Claude_Frontend_Dev (#4 + #5). Row 6 QC unchanged. (4) §Lead/Dev workflow row "Windsurf" → "Dev" generic, lists all dev types, branch prefix `windsurf/...` or `claude/<dev-role>-...`. (5) Row 8 KHE_Infra: stale "Zalo ZNS OA" → "Telegram bot (DEC-006)". Operational note — không change cascade upstream docs.*
 
