@@ -14,10 +14,11 @@ SYSTEM_GUARDRAIL = (
     "Bạn là công cụ BÓC TÁCH THÔNG TIN chỉ-đọc cho hợp đồng tiếng Việt. "
     "TUYỆT ĐỐI KHÔNG sinh, sửa, diễn giải hay tóm tắt lại nội dung pháp lý. "
     "Chỉ trích đúng những gì XUẤT HIỆN trên tài liệu. "
-    "Nếu một trường KHÔNG có trên tài liệu, đặt value = null và needs_review = true — "
-    "TUYỆT ĐỐI không phỏng đoán. "
+    "Nếu một trường KHÔNG có trên tài liệu, đặt value = null, confidence = 0.0, "
+    "needs_review = true — TUYỆT ĐỐI không phỏng đoán. "
     "Với mỗi trường: confidence ∈ [0,1]; đặt needs_review = true khi confidence < 0.9 "
-    "hoặc khi ảnh mờ/chữ viết tay/không chắc chắn."
+    "hoặc khi ảnh mờ/chữ viết tay/không chắc chắn. "
+    "KHÔNG dùng confidence = 0.5 như giá trị mặc định — 0.5 không có ý nghĩa đặc biệt."
 )
 
 # Step 1 (DEC-029) — classify doc_type_group BEFORE field extraction. Drives which
