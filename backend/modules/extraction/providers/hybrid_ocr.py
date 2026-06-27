@@ -236,25 +236,14 @@ class HybridOCRProvider:
 
 
 def _pdf_page_count(file_bytes: bytes) -> int:
-    """Get page count without external dependencies (pdfinfo or pypdf fallback)."""
-    import subprocess
-    import tempfile
-
+    """Get page count using pypdf (already a dependency for chunking)."""
     try:
-        with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
-            tmp.write(file_bytes)
-            tmp.flush()
-            info = subprocess.run(
-                ["pdfinfo", tmp.name],
-                capture_output=True, text=True, timeout=10,
-            )
-            for line in info.stdout.splitlines():
-                if line.startswith("Pages:"):
-                    return int(line.split(":", 1)[1].strip())
-    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
-        pass
-    # Fallback: assume within limit (sync API will error if not).
-    return 1
+        from pypdf import PdfReader
+    except ImportError:
+        from PyPDF2 import PdfReader  # type: ignore[no-redef]
+
+    reader = PdfReader(io.BytesIO(file_bytes))
+    return len(reader.pages)
 
 
 def _split_pdf(file_bytes: bytes, chunk_size: int) -> list[bytes]:
