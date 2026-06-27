@@ -128,6 +128,7 @@ class BulkUploadOut(BaseModel):
 
 
 class ClauseOut(BaseModel):
+    id: int
     clause_num: str | None = None
     title: str | None = None
     content: str
@@ -169,3 +170,35 @@ class SelfPartyIn(BaseModel):
 class SelfPartyOut(BaseModel):
     ok: bool
     updated: int
+
+
+# ── Document event history (#281) ──
+
+
+class EventOut(BaseModel):
+    id: int
+    event_type: str
+    entity_type: str
+    entity_id: int
+    actor: str | None = None
+    created_at: datetime | None = None
+    payload: dict | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _parse_payload(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+
+class EventListOut(BaseModel):
+    document_id: int
+    total: int
+    limit: int
+    offset: int
+    items: list[EventOut]
