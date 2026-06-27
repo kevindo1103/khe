@@ -10,6 +10,7 @@ BackgroundTasks runs sync callables in a threadpool, while the provider's
 import asyncio
 import json
 import logging
+import unicodedata
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,13 @@ from app.services import quota, tenant_journey
 from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
+
+
+def _norm(s: str) -> str:
+    """Case-fold + strip diacritics + collapse whitespace for fuzzy comparison."""
+    s = unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
+    return " ".join(s.lower().split())
+
 
 _VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "other"}
 _VALID_TRIGGERS = {"date", "event"}
@@ -44,6 +52,13 @@ def _derive_direction(tenant_id: str, obligor: str | None, result) -> str | None
 
     Returns 'nghĩa_vụ' if obligor matches tenant's self-party,
     'quyền_lợi' if obligor is the counterparty, None if can't determine.
+
+    Matching is normalized (case-fold + diacritics-stripped + whitespace-collapsed)
+    so Vietnamese diacritic variants and abbreviations in legal_name compare correctly
+    against extracted party names (#282 B1 hardening).
+
+    Obligor is matched against BOTH role_label AND party name of self-parties — LLMs
+    sometimes emit the full company name as obligor rather than the role label.
     """
     if not obligor:
         return None
@@ -51,15 +66,19 @@ def _derive_direction(tenant_id: str, obligor: str | None, result) -> str | None
     if not legal_name:
         return None
     parties = getattr(result, "parties", [])
-    # Find self-party: fuzzy match legal_name against parties[].name
-    self_roles = set()
+    norm_ln = _norm(legal_name)
+    # Build set of normalized identifiers (role_labels + names) for the self-party.
+    self_identifiers: set[str] = set()
     for p in parties:
-        p_name = getattr(p, "name", "") or ""
-        if legal_name.lower() in p_name.lower() or p_name.lower() in legal_name.lower():
-            self_roles.add(getattr(p, "role_label", None))
-    if not self_roles:
+        norm_nm = _norm(getattr(p, "name", "") or "")
+        if norm_nm and (norm_ln in norm_nm or norm_nm in norm_ln):
+            role = getattr(p, "role_label", None)
+            if role:
+                self_identifiers.add(_norm(role))
+            self_identifiers.add(norm_nm)
+    if not self_identifiers:
         return None
-    return "nghĩa_vụ" if obligor in self_roles else "quyền_lợi"
+    return "nghĩa_vụ" if _norm(obligor) in self_identifiers else "quyền_lợi"
 
 
 def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> None:
