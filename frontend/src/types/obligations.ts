@@ -11,7 +11,9 @@ export type ObligationStatus =
   | 'partial'
   | 'done'
   | 'cancelled'
-  | 'waiting_trigger';
+  | 'waiting_trigger'
+  | 'overdue'
+  | 'awaiting_confirmation';
 
 export interface ObligationOut {
   id: number;

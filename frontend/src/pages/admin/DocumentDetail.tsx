@@ -167,7 +167,7 @@ function ObligationRow({
   ob: ObligationOut;
   onFulfill: (ob: ObligationOut) => void;
 }) {
-  const canFulfill = ['pending', 'in_progress', 'partial'].includes(ob.status);
+  const canFulfill = ['pending', 'in_progress', 'partial', 'overdue', 'awaiting_confirmation'].includes(ob.status);
   return (
     <div className="py-3 border-b border-border last:border-0">
       <div className="flex items-start justify-between gap-2">
@@ -333,6 +333,7 @@ function ClauseItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string>('');
   const [showOriginal, setShowOriginal] = useState(false);
 
   const title =
@@ -352,6 +353,7 @@ function ClauseItem({
 
   const saveEdit = async () => {
     setSaving(true);
+    setSaveError('');
     try {
       const res = await apiFetch<ClausePatchOut>(
         `/documents/${docId}/clauses/${clause.id}`,
@@ -361,6 +363,8 @@ function ClauseItem({
       setEditing(false);
       setDraft('');
       setShowOriginal(false);
+    } catch (err) {
+      setSaveError((err as ApiError).message || 'Lưu điều khoản thất bại');
     } finally {
       setSaving(false);
     }
@@ -399,6 +403,9 @@ function ClauseItem({
                 onChange={(e) => setDraft(e.target.value)}
                 autoFocus
               />
+              {saveError && (
+                <p className="text-xs text-red-600">{saveError}</p>
+              )}
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={saveEdit} loading={saving}>
                   Lưu
