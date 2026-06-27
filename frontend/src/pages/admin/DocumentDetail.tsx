@@ -225,7 +225,7 @@ function ClauseItem({ clause, defaultOpen }: { clause: ClauseOut; defaultOpen: b
   const [open, setOpen] = useState(defaultOpen);
   const title =
     clause.title ||
-    (clause.clause_number ? `Điều ${clause.clause_number}` : `Điều khoản #${clause.id}`);
+    (clause.clause_num ? `Điều ${clause.clause_num}` : `Điều khoản #${clause.id}`);
   return (
     <div className="border-b border-border last:border-0">
       <button
@@ -235,8 +235,8 @@ function ClauseItem({ clause, defaultOpen }: { clause: ClauseOut; defaultOpen: b
       >
         <span className="text-sm font-medium text-ink">{title}</span>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {clause.page_number != null && (
-            <span className="text-2xs text-ink-muted">tr.{clause.page_number}</span>
+          {clause.page_num != null && (
+            <span className="text-2xs text-ink-muted">tr.{clause.page_num}</span>
           )}
           <span className="text-ink-muted text-xs">{open ? '▲' : '▼'}</span>
         </div>

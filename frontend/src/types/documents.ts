@@ -100,9 +100,9 @@ export interface SelfPartyConfirmOut {
 // Backend #284 — GET /documents/{id}/clauses
 export interface ClauseOut {
   id: number;
-  clause_number: string | null;
+  clause_num: string | null;
   title: string | null;
-  page_number: number | null;
+  page_num: number | null;
   content: string;
   // Phase 2 fields (clause inline edit, Backend clause PATCH — not yet shipped)
   edited_by_user?: string | null;
