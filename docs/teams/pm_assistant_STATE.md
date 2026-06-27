@@ -131,7 +131,7 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 | **Backend + AI** | **#345** | **Wire auto-route + chunking ≥15p scans (G6)** — scan-detect → page count → chunk if ≥15p → DocAI hybrid per chunk → merge + dedup. Dep: #343 poppler-utils, PR #341. | **status:planned** |
 | **KHE_AI** | **#344** | DEC-049 validation gates G1-G5 (batch >15p · multi-doc · 14-vs-15 reconcile · embedded-text benchmark · p90) + free-tier scope verify | **Gates DEC-002 final ratify** |
 | **KHE_Infra** | **#343** | G7 poppler-utils trong deploy bootstrap (pdftotext dep — DEC-049) | **Gates DEC-049 prod** |
-| **KHE_Infra** 🔴 | **#342** | **INC-01 URGENT** — rotate GCP DocAI service account key (lộ trong chat) | **🔴 Urgent — before further DocAI runs** |
+| ~~KHE_Infra~~ | ~~#342~~ ✅ | ~~INC-01~~ — Kevin: key dùng để test, giữ cho AI. **Closed not_planned.** | ✅ No action |
 | **Backend** | **#336** | Tạo SME tenant prod `tran-thai-cam-ranh` (Công ty CP Trần Thái Cam Ranh). Password qua channel riêng. **⚠️ onboard full bộ gated trên scan-ratio (#340).** | **Pilot setup** |
 | **Frontend** | #238 | 4 items: confirm button, Home CTA chip, `journey_advanced` refetch, DocList badge | Nav-lock live end-to-end |
 | **Frontend** | #238 | MANDATORY: ReminderNudge + "X/Y bước" chip for CONFIRMED-without-channel | DEC-040 mitigation |
