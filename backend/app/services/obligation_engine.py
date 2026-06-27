@@ -16,7 +16,7 @@ Idempotency: only deletes existing obligations with status="pending";
 "done" / "cancelled" obligations are preserved (D-02 — respect SME edits).
 """
 import json
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -27,17 +27,37 @@ from app.services.relationships import _build_connected_chain, _get_confirmed_am
 
 # Fields relevant to obligation derivation.
 _DUE_FIELD = "ngay_het_han"
+
+# Conservative anchor pattern → Term field_name map for B3 date resolution (#282).
+# Only patterns we're confident about. D-08: better to leave waiting_trigger than
+# compute a wrong date from a misidentified anchor.
+_DATE_ANCHOR_PATTERNS: list[tuple[list[str], str]] = [
+    (["ngày ký", "ký kết", "ký hợp đồng", "ngay ky"], "ngay_ky"),
+    (["ngày hiệu lực", "có hiệu lực", "phát sinh hiệu lực", "hieu luc"], "ngay_hieu_luc"),
+]
+
+
+def _detect_anchor_field(trigger_condition: str | None) -> str | None:
+    """Map trigger_condition text to a Term field_name. Returns None if anchor unknown."""
+    if not trigger_condition:
+        return None
+    tc = trigger_condition.lower()
+    for patterns, field_name in _DATE_ANCHOR_PATTERNS:
+        if any(p in tc for p in patterns):
+            return field_name
+    return None
+
 _START_FIELD = "ngay_hieu_luc"
 _DURATION_FIELD = "thoi_han_hd"
 
 
-def _winning_term_value(
+def _winning_term(
     db: Session,
     tenant_id: str,
     chain_docs: list[Document],
     field_name: str,
-) -> str | None:
-    """Return the effective value of a field in the chain.
+) -> "Term | None":
+    """Return the effective Term object for a field in the chain.
 
     Chain docs are ordered base → amendment. The last non-superseded term
     wins (chain resolution already marked older terms as superseded).
@@ -58,12 +78,20 @@ def _winning_term_value(
         .all()
     )
 
-    # Map to chain order (ascending index = base → amendment).
     order = {doc_id: idx for idx, doc_id in enumerate(chain_ids)}
     terms_sorted = sorted(terms, key=lambda t: order.get(t.document_id, 0))
-    if not terms_sorted:
-        return None
-    return terms_sorted[-1].field_value
+    return terms_sorted[-1] if terms_sorted else None
+
+
+def _winning_term_value(
+    db: Session,
+    tenant_id: str,
+    chain_docs: list[Document],
+    field_name: str,
+) -> str | None:
+    """Return the effective value of a field in the chain (value-only shortcut)."""
+    t = _winning_term(db, tenant_id, chain_docs, field_name)
+    return t.field_value if t else None
 
 
 def _build_chain_docs(
@@ -81,7 +109,7 @@ def _build_chain_docs(
     return [doc] if doc else []
 
 
-def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
+def derive_obligations(db: Session, tenant_id: str, doc_id: int, *, source_label: str = "ai_extracted") -> dict:
     """Derive obligations for a document.
 
     Notes:
@@ -102,9 +130,13 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
     chain_ids = [d.id for d in chain_docs]
     target_doc = chain_docs[-1]  # The amendment (or single doc) is the focal doc.
 
-    due_value = _winning_term_value(db, tenant_id, chain_docs, _DUE_FIELD)
-    start_value = _winning_term_value(db, tenant_id, chain_docs, _START_FIELD)
-    duration_value = _winning_term_value(db, tenant_id, chain_docs, _DURATION_FIELD)
+    due_term = _winning_term(db, tenant_id, chain_docs, _DUE_FIELD)
+    start_term = _winning_term(db, tenant_id, chain_docs, _START_FIELD)
+    duration_term = _winning_term(db, tenant_id, chain_docs, _DURATION_FIELD)
+
+    due_value = due_term.field_value if due_term else None
+    start_value = start_term.field_value if start_term else None
+    duration_value = duration_term.field_value if duration_term else None
 
     due_date: datetime | None = None
     recurrence = "once"
@@ -147,9 +179,16 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         Obligation.tenant_id == tenant_id,
         Obligation.document_id.in_(chain_ids),
         Obligation.status == "pending",
+        Obligation.source != "user_manual",
+        Obligation.fulfilled_at.is_(None),
     ).delete()
 
     due_str = due_date.strftime("%Y-%m-%d") if due_date else None
+    # Clause provenance (#303): anchor to the clause that provided the winning date field.
+    source_clause_num = (
+        (due_term.ref if due_term else None)
+        or (start_term.ref if start_term else None)
+    )
     ob = Obligation(
         tenant_id=tenant_id,
         document_id=target_doc_id,
@@ -163,6 +202,9 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
         remind_before_days=365 if recurrence == "open_ended_review" else 30,
         source_doc_chain=json.dumps(chain_ids),
         resolution_method="last_writer_wins" if len(chain_ids) > 1 else None,
+        source=source_label,
+        source_clause_num=source_clause_num,
+        derived_from="original",
     )
     db.add(ob)
 
@@ -187,3 +229,204 @@ def derive_obligations(db: Session, tenant_id: str, doc_id: int) -> dict:
 
     db.commit()
     return {"created": 1, "skipped": False, "reason": None}
+
+
+def derive_obligation_from_clause(
+    db: Session,
+    tenant_id: str,
+    doc_id: int,
+    clause_num: str,
+    *,
+    source_label: str = "ai_re_derived",
+    derived_from: str = "original",
+) -> dict:
+    """Derive an obligation using only Terms anchored to a specific clause (#303).
+
+    Scoped re-derive: only Terms where ``ref == clause_num`` are used. Does NOT
+    delete other obligations or touch other clauses (KHÔNG churn — AC2 §303).
+    Does NOT resolve across amendment chains — operates on this document only.
+
+    Returns ``{"created": int, "skipped": bool, "reason": str | None}``.
+    """
+    # Fetch Terms scoped to this clause and doc.
+    clause_terms = (
+        db.query(Term)
+        .filter(
+            Term.tenant_id == tenant_id,
+            Term.document_id == doc_id,
+            Term.ref == clause_num,
+            Term.field_value.isnot(None),
+            Term.is_superseded == False,
+        )
+        .all()
+    )
+
+    term_map: dict[str, Term] = {}
+    for t in clause_terms:
+        # Last-write-wins when multiple terms share field_name + clause (edge case).
+        if t.field_name not in term_map or t.id > term_map[t.field_name].id:
+            term_map[t.field_name] = t
+
+    due_term = term_map.get(_DUE_FIELD)
+    start_term = term_map.get(_START_FIELD)
+    duration_term = term_map.get(_DURATION_FIELD)
+
+    due_value = due_term.field_value if due_term else None
+    start_value = start_term.field_value if start_term else None
+    duration_value = duration_term.field_value if duration_term else None
+
+    due_date: "datetime | None" = None
+    recurrence = "once"
+    skip_reason: str | None = None
+
+    if due_value:
+        due_date = parse_date(due_value)
+        if due_date is None:
+            skip_reason = f"Unparseable due date: {due_value!r}"
+    elif start_value and duration_value:
+        start_date = parse_date(start_value)
+        duration_months = parse_duration_months(duration_value)
+        if start_date is None:
+            skip_reason = f"Unparseable start date: {start_value!r}"
+        elif duration_months is None:
+            recurrence = "open_ended_review"
+        else:
+            due_date = add_months(start_date, duration_months)
+    else:
+        skip_reason = "Insufficient clause-scoped data for obligation derivation"
+
+    if skip_reason:
+        return {"created": 0, "skipped": True, "reason": skip_reason}
+
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
+    file_name = doc.file_name if doc else f"doc#{doc_id}"
+
+    due_str = due_date.strftime("%Y-%m-%d") if due_date else None
+    if recurrence == "open_ended_review":
+        description = f"Hợp đồng {file_name} vô thời hạn — cần review"
+    else:
+        description = f"Hợp đồng {file_name} hết hạn ngày {due_str}"
+
+    ob = Obligation(
+        tenant_id=tenant_id,
+        document_id=doc_id,
+        description=description,
+        recurrence=recurrence,
+        obligation_type="expiration",
+        due_date=due_str,
+        status="pending",
+        remind_before_days=365 if recurrence == "open_ended_review" else 30,
+        source=source_label,
+        source_clause_num=clause_num,
+        derived_from=derived_from,
+    )
+    db.add(ob)
+
+    db.add(Event(
+        tenant_id=tenant_id,
+        event_type="obligation_derived",
+        entity_type="document",
+        entity_id=doc_id,
+        actor="system",
+        purpose=None,
+        payload=json.dumps({
+            "recurrence": recurrence,
+            "obligation_type": "expiration",
+            "due_date": due_str,
+            "source_clause_num": clause_num,
+        }),
+    ))
+
+    db.commit()
+    return {"created": 1, "skipped": False, "reason": None}
+
+
+def resolve_date_anchored_obligations(
+    db: Session,
+    tenant_id: str,
+    doc_id: int,
+) -> int:
+    """Resolve date-anchored obligations whose due_date is still None (#282 B3).
+
+    For obligations where milestone_trigger="date", status="waiting_trigger",
+    due_date=None: detect the anchor Term from trigger_condition, look up the
+    anchor date in this doc's extracted Terms, compute due_date = anchor +
+    trigger_delay_days, and update status to pending (or overdue if past).
+
+    D-08: anchor not found in Terms → obligation stays waiting_trigger (no
+    fabrication). trigger_delay_days=None → skip (can't compute without guessing).
+
+    Returns count of obligations resolved.
+    """
+    terms = (
+        db.query(Term)
+        .filter(
+            Term.tenant_id == tenant_id,
+            Term.document_id == doc_id,
+            Term.field_value.isnot(None),
+        )
+        .all()
+    )
+    known_dates: dict[str, date] = {}
+    for t in terms:
+        if not t.field_value:
+            continue
+        try:
+            known_dates[t.field_name] = date.fromisoformat(t.field_value[:10])
+        except ValueError:
+            pass
+
+    if not known_dates:
+        return 0
+
+    obligations = (
+        db.query(Obligation)
+        .filter(
+            Obligation.tenant_id == tenant_id,
+            Obligation.document_id == doc_id,
+            Obligation.milestone_trigger == "date",
+            Obligation.status == "waiting_trigger",
+            Obligation.due_date.is_(None),
+        )
+        .all()
+    )
+
+    today = date.today()
+    resolved = 0
+    resolved_items = []
+    for ob in obligations:
+        if ob.trigger_delay_days is None:
+            continue
+        anchor_field = _detect_anchor_field(ob.trigger_condition)
+        if not anchor_field:
+            continue
+        anchor_date = known_dates.get(anchor_field)
+        if not anchor_date:
+            continue
+        due = anchor_date + timedelta(days=ob.trigger_delay_days)
+        ob.due_date = due.isoformat()
+        ob.status = "overdue" if due < today else "pending"
+        resolved += 1
+        resolved_items.append({
+            "obligation_id": ob.id,
+            "anchor_field": anchor_field,
+            "anchor_date": anchor_date.isoformat(),
+            "due_date": ob.due_date,
+            "status": ob.status,
+        })
+
+    if resolved:
+        db.add(Event(
+            tenant_id=tenant_id,
+            event_type="obligation_date_resolved",
+            entity_type="document",
+            entity_id=doc_id,
+            actor="system",
+            purpose=None,
+            payload=json.dumps({
+                "count": resolved,
+                "items": resolved_items,
+            }),
+        ))
+        db.commit()
+    return resolved

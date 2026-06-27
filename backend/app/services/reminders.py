@@ -312,6 +312,12 @@ def _flip_overdue_status(
             # can be CONFIRMED with docs still unconfirmed; their obligations must
             # stay untouched until the user confirms them.
             Document.confirmed_by_user_at.isnot(None),
+            # P5 (#302): obligations with fulfilled_at set are completed (pending
+            # confirmation). Never flip these to overdue — they need SME confirm,
+            # not a false alarm. See "cần xác nhận đã hoàn thành?" UX spec.
+            Obligation.fulfilled_at.is_(None),
+            # #313 (DEC-048 Option B): cascade-past children get status=awaiting_confirmation
+            # (not "pending") — already excluded by the status=="pending" filter above.
         )
         .all()
     )
@@ -352,6 +358,11 @@ def compute_due_window(
             # #250 (D-02): reminders only for user-CONFIRMED docs — never nhắc on a
             # deadline the user hasn't reviewed. See _flip_overdue_status note.
             Document.confirmed_by_user_at.isnot(None),
+            # P5 (#302): suppress reminders for already-fulfilled obligations pending
+            # formal confirmation. fulfilled_at IS NOT NULL = awaiting SME confirm.
+            Obligation.fulfilled_at.is_(None),
+            # #313 (DEC-048 Option B): cascade-past children get status=awaiting_confirmation
+            # (not "pending") — already excluded by the status=="pending" filter above.
         )
         .all()
     )

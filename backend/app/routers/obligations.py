@@ -158,11 +158,61 @@ def patch_obligation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obligation not found")
 
     old_status = ob.status
-    ob.status = payload.status
 
     activated_count = 0
     if payload.status == "done":
-        activated_count = propagate_obligation_done(ob.id, db)
+        # G2 (#302): require fulfilled_at; persist date + actor + evidence.
+        if payload.fulfilled_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fulfilled_at is required when marking an obligation done.",
+            )
+        # F2: validate evidence_doc_ids belong to this tenant.
+        if payload.evidence_doc_ids:
+            existing = {
+                d.id for d in db.query(Document.id)
+                .filter(Document.id.in_(payload.evidence_doc_ids),
+                        Document.tenant_id == user.tenant_id)
+                .all()
+            }
+            invalid = set(payload.evidence_doc_ids) - existing
+            if invalid:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Evidence doc IDs not found in this tenant: {sorted(invalid)}",
+                )
+
+        ob.status = payload.status
+        ob.fulfilled_at = payload.fulfilled_at
+        ob.fulfilled_by = payload.fulfilled_by or user.username
+        ob.evidence_doc_ids = (
+            json.dumps(payload.evidence_doc_ids) if payload.evidence_doc_ids else None
+        )
+        # G1 (#302): anchor chain propagation on fulfilled_at, not today.
+        activated_count = propagate_obligation_done(ob.id, db, fulfilled_at=payload.fulfilled_at)
+
+        # P4 compliance: log evidence_attached Event for each evidence doc (NĐ 13 audit).
+        if payload.evidence_doc_ids:
+            for ev_doc_id in payload.evidence_doc_ids:
+                db.add(Event(
+                    tenant_id=user.tenant_id,
+                    event_type="evidence_attached",
+                    entity_type="obligation",
+                    entity_id=ob.id,
+                    actor=ob.fulfilled_by,
+                    purpose="obligation_fulfillment",
+                    payload=json.dumps({
+                        "evidence_doc_id": ev_doc_id,
+                        "obligation_id": ob.id,
+                    }),
+                ))
+    else:
+        ob.status = payload.status
+        # F1: clear stale fulfillment data when reverting away from "done".
+        if old_status == "done":
+            ob.fulfilled_at = None
+            ob.fulfilled_by = None
+            ob.evidence_doc_ids = None
 
     _log_event(
         db,
@@ -171,7 +221,13 @@ def patch_obligation(
         entity_type="obligation",
         entity_id=ob.id,
         actor=user.username,
-        payload={"old_status": old_status, "new_status": payload.status},
+        payload={
+            "old_status": old_status,
+            "new_status": payload.status,
+            "fulfilled_at": payload.fulfilled_at.isoformat() if payload.fulfilled_at else None,
+            "fulfilled_by": ob.fulfilled_by if payload.status == "done" else None,
+            "evidence_doc_ids": payload.evidence_doc_ids,
+        },
     )
 
     db.commit()

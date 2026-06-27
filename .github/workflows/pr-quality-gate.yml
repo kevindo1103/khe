@@ -22,6 +22,54 @@ jobs:
             exit 1
           fi
 
+  scope-lock:
+    name: Scope Lock Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check file ownership scope
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..HEAD)
+          VIOLATIONS=""
+
+          # docs/ only from docs-editor branch
+          # Exceptions: mockup files from designer, docs/teams/*_STATE.md from any session
+          if echo "$CHANGED" | grep -qE "^docs/"; then
+            if [[ "$BRANCH" != "claude/edit-git-docs-Khe01" ]]; then
+              PROTECTED_DOCS=$(echo "$CHANGED" | grep "^docs/" \
+                | grep -v "^docs/mockup_.*\.jsx$" \
+                | grep -v "^docs/teams/.*_STATE\.md$" \
+                || true)
+              if [[ -n "$PROTECTED_DOCS" ]]; then
+                if [[ "$BRANCH" == claude/design-* ]]; then
+                  VIOLATIONS="${VIOLATIONS}\n❌ Designer branch touching non-mockup docs: ${PROTECTED_DOCS}"
+                else
+                  VIOLATIONS="${VIOLATIONS}\n❌ docs/ modified by non-docs-editor branch: ${PROTECTED_DOCS}"
+                fi
+              fi
+            fi
+          fi
+
+          # .github/workflows/ only from infra branches (claude/infra-* or claude/chore-infra-*)
+          if echo "$CHANGED" | grep -q "^\.github/workflows/"; then
+            if [[ "$BRANCH" != claude/infra-* && "$BRANCH" != claude/chore-infra-* ]]; then
+              VIOLATIONS="${VIOLATIONS}\n❌ .github/workflows/ modified by non-infra branch ($BRANCH)"
+            fi
+          fi
+
+          if [[ -n "$VIOLATIONS" ]]; then
+            echo -e "SCOPE-LOCK VIOLATIONS:${VIOLATIONS}"
+            echo ""
+            echo "Fix: remove out-of-scope files from this PR."
+            echo "If cross-lane work is needed, file a separate issue (from: + for:)."
+            exit 1
+          fi
+          echo "✅ Scope-lock check passed"
+
   backend-check:
     name: Backend Import Check
     runs-on: ubuntu-latest

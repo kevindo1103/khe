@@ -28,6 +28,14 @@ export interface DocumentListItem {
   clause_count: number;
   confirmed_by_user_at: string | null;   // #238 — null = "Cần xác nhận"
   created_at: string | null;
+  // #279 — new fields (optional until backend ships)
+  primary_party?: string | null;
+  next_due_date?: string | null;
+  nghia_vu_count?: number;
+  quyen_loi_count?: number;
+  direction_null_count?: number;
+  may_have_unextracted_obligations?: boolean | null;
+  duplicate?: boolean;
 }
 
 export interface DocumentListOut {
@@ -87,4 +95,22 @@ export interface SelfPartyConfirmIn {
 export interface SelfPartyConfirmOut {
   ok: boolean;
   updated: number;
+}
+
+// Backend #284 — GET /documents/{id}/clauses
+export interface ClauseOut {
+  id: number;
+  clause_number: string | null;
+  title: string | null;
+  page_number: number | null;
+  content: string;
+  // Phase 2 fields (clause inline edit, Backend clause PATCH — not yet shipped)
+  edited_by_user?: string | null;
+  edited_at?: string | null;
+  original_content?: string | null;
+}
+
+export interface ClauseListOut {
+  items: ClauseOut[];
+  total: number;
 }

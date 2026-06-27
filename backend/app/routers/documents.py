@@ -26,7 +26,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -36,7 +36,18 @@ from app.models.master import Tenant, TenantProfile, TenantUser
 from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
+    ClauseListOut,
+    ClauseOut,
+    ClausePatchIn,
+    ClausePatchOut,
     ConfirmDocumentOut,
+    EventListOut,
+    EventOut,
+    ReDeriveClauseIn,
+    ReDeriveClauseOut,
+    ReReadDiff,
+    ReReadIn,
+    ReReadOut,
     RemapTypeIn,
     RemapTypeOut,
     DocumentDetailOut,
@@ -51,7 +62,11 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
-from app.services.obligation_engine import derive_obligations
+from app.services.obligation_engine import (
+    _DUE_FIELD, _START_FIELD, _DURATION_FIELD,
+    derive_obligation_from_clause, derive_obligations,
+)
+from app.services.date_parse import add_months, parse_date, parse_duration_months
 from app.services import directions, quota, tenant_journey
 from modules.extraction import ALL_TYPE_SPECIFIC_FIELDS, ClauseItem, DOC_TYPE_GROUPS, remap_type
 
@@ -179,6 +194,7 @@ def _persist_upload(
     file: UploadFile,
     doc_type: str | None,
     background_tasks: BackgroundTasks,
+    is_evidence: bool = False,
 ) -> UploadOut:
     """Shared upload logic — atomic Document insert + audit Event (#56).
 
@@ -212,12 +228,16 @@ def _persist_upload(
     _stream_to_disk_capped(file, temp_disk_path, settings.MAX_UPLOAD_MB * 1024 * 1024)
 
     # 3. INSERT Document + flush() to get the autoincrement id (no commit yet)
+    # P2 (#302): evidence docs skip extraction → status "done" immediately.
+    # Conservative PII default: contains_personal_data=True for all evidence docs (DEC-039).
     doc = Document(
         tenant_id=tenant_id,
         file_name=file.filename or "unnamed.pdf",
         file_path="",  # placeholder; set after the rename
         doc_type=doc_type,
-        status="processing",
+        status="done" if is_evidence else "processing",
+        is_evidence=is_evidence,
+        contains_personal_data=is_evidence,
     )
     db.add(doc)
     try:
@@ -265,8 +285,9 @@ def _persist_upload(
             detail="Failed to commit document.",
         )
 
-    # 6. Enqueue extraction worker (PR-B)
-    _enqueue_extraction(background_tasks, doc.id, tenant_id, doc_type)
+    # 6. Enqueue extraction worker (PR-B). Skip for evidence docs (P2 #302).
+    if not is_evidence:
+        _enqueue_extraction(background_tasks, doc.id, tenant_id, doc_type)
 
     return UploadOut(doc_id=doc.id, file_name=doc.file_name, status=doc.status)
 
@@ -280,11 +301,16 @@ def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     doc_type: str | None = None,
+    is_evidence: bool = False,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
     master_db: Session = Depends(get_master_db),
 ):
-    """Upload a single PDF. Consent gate FIRST; 403 if SME has not consented."""
+    """Upload a single PDF. Consent gate FIRST; 403 if SME has not consented.
+
+    is_evidence=true: marks doc as biên bản bàn giao/nghiệm thu — skips AI
+    extraction, sets contains_personal_data=true for DEC-039 firm gate (P2/#302).
+    """
     if not check_extraction_consent(db, user.tenant_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -299,7 +325,7 @@ def upload_document(
             detail="Quota exceeded. Contact your firm partner to adjust limit.",
         )
 
-    result = _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+    result = _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks, is_evidence=is_evidence)
     # Journey (#213): first upload moves NEW → EXTRACTING (monotonic no-op after).
     tenant_journey.advance_stage(master_db, user.tenant_id, "EXTRACTING")
     return result
@@ -311,6 +337,7 @@ def upload_bulk(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     doc_type: str | None = None,
+    is_evidence: bool = False,
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
     master_db: Session = Depends(get_master_db),
@@ -339,7 +366,7 @@ def upload_bulk(
             results.append(UploadOut(doc_id=None, file_name=file.filename or "", status="quota_exceeded"))
             continue
         results.append(
-            _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks)
+            _persist_upload(db, user.tenant_id, user.username, file, doc_type, background_tasks, is_evidence=is_evidence)
         )
         accepted += 1
 
@@ -361,6 +388,7 @@ def list_documents(
     page_size: int = Query(20, ge=1, le=100),
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
 ):
     """List documents for the tenant with pagination and filters.
 
@@ -396,6 +424,30 @@ def list_documents(
         .subquery()
     )
 
+    # Direction rollup (#279): active obligations only (status NOT IN done/cancelled).
+    # standing obligations (due_date NULL) count in direction tallies but not next_due_date.
+    _ACTIVE = Obligation.status.notin_(("done", "cancelled"))
+    dir_subq = (
+        db.query(
+            Obligation.document_id.label("doc_id"),
+            func.sum(
+                case((Obligation.direction == "nghĩa_vụ", 1), else_=0)
+            ).label("nghia_vu_count"),
+            func.sum(
+                case((Obligation.direction == "quyền_lợi", 1), else_=0)
+            ).label("quyen_loi_count"),
+            func.sum(
+                case((Obligation.direction.is_(None), 1), else_=0)
+            ).label("direction_null_count"),
+            func.min(
+                case((Obligation.due_date.isnot(None), Obligation.due_date))
+            ).label("next_due_date"),
+        )
+        .filter(_ACTIVE)
+        .group_by(Obligation.document_id)
+        .subquery()
+    )
+
     query = (
         db.query(
             Document,
@@ -403,17 +455,28 @@ def list_documents(
             term_subq.c.has_needs_review,
             obligation_subq.c.obligation_count,
             clause_subq.c.clause_count,
+            dir_subq.c.nghia_vu_count,
+            dir_subq.c.quyen_loi_count,
+            dir_subq.c.direction_null_count,
+            dir_subq.c.next_due_date,
         )
         .outerjoin(term_subq, term_subq.c.doc_id == Document.id)
         .outerjoin(obligation_subq, obligation_subq.c.doc_id == Document.id)
         .outerjoin(clause_subq, clause_subq.c.doc_id == Document.id)
+        .outerjoin(dir_subq, dir_subq.c.doc_id == Document.id)
         .filter(Document.tenant_id == user.tenant_id)
     )
 
     if status_filter:
         query = query.filter(Document.status == status_filter)
     if q:
-        query = query.filter(Document.file_name.ilike(f"%{q}%"))
+        like = f"%{q}%"
+        party_match = (
+            db.query(Party.id)
+            .filter(Party.document_id == Document.id, Party.name.ilike(like))
+            .exists()
+        )
+        query = query.filter(or_(Document.file_name.ilike(like), party_match))
     if needs_review is not None:
         if needs_review:
             query = query.filter(term_subq.c.has_needs_review == True)
@@ -430,24 +493,54 @@ def list_documents(
         .all()
     )
 
+    # primary_party: fetch tenant legal_name once, then one bounded query for all page docs.
+    # ≤1 extra query per page — not N+1.
+    profile = (
+        master_db.query(TenantProfile)
+        .filter(TenantProfile.tenant_id == user.tenant_id)
+        .first()
+    )
+    legal_name = (profile.legal_name or "").lower() if profile and profile.legal_name else ""
+
+    page_doc_ids = [row[0].id for row in rows]
+    # Fetch all parties for this page in one query, ordered by id ASC (deterministic).
+    page_parties = (
+        db.query(Party)
+        .filter(Party.tenant_id == user.tenant_id, Party.document_id.in_(page_doc_ids))
+        .order_by(Party.document_id, Party.id)
+        .all()
+    ) if page_doc_ids else []
+
+    # Build doc_id → first non-self party name map.
+    primary_party_map: dict[int, str | None] = {}
+    for p in page_parties:
+        if p.document_id in primary_party_map:
+            continue
+        nm = (p.name or "").lower()
+        is_self = bool(legal_name and nm and (legal_name in nm or nm in legal_name))
+        if not is_self:
+            primary_party_map[p.document_id] = p.name
+
     items: list[DocumentListItem] = []
-    for doc, term_count, has_needs_review, obligation_count, clause_count in rows:
-        term_count = term_count or 0
-        obligation_count = obligation_count or 0
-        clause_count = clause_count or 0
-        needs_rev = bool(has_needs_review)
+    for doc, term_count, has_needs_review, obligation_count, clause_count, nghia_vu, quyen_loi, dir_null, next_due in rows:
         items.append(
             DocumentListItem(
                 id=doc.id,
                 file_name=doc.file_name,
                 doc_type=doc.doc_type,
                 status=doc.status,
-                needs_review=needs_rev,
-                term_count=term_count,
-                obligation_count=obligation_count,
-                clause_count=clause_count,
+                needs_review=bool(has_needs_review),
+                term_count=term_count or 0,
+                obligation_count=obligation_count or 0,
+                clause_count=clause_count or 0,
                 confirmed_by_user_at=doc.confirmed_by_user_at,
                 created_at=doc.created_at,
+                primary_party=primary_party_map.get(doc.id),
+                next_due_date=next_due,
+                nghia_vu_count=nghia_vu or 0,
+                quyen_loi_count=quyen_loi or 0,
+                direction_null_count=dir_null or 0,
+                may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
             )
         )
 
@@ -532,6 +625,100 @@ def get_document(
 
 
 # ── File download (documents) ──
+
+@docs_router.get("/{doc_id}/clauses", response_model=ClauseListOut)
+def get_document_clauses(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return full clause array for a document (#284).
+
+    Empty result (clause_count=0) is valid — Claude-fallback docs have no clauses.
+    Ordered by page_num ASC NULLS LAST, then id ASC (extraction order).
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    clauses = (
+        db.query(Clause)
+        .filter(Clause.document_id == doc_id, Clause.tenant_id == user.tenant_id)
+        .order_by(Clause.page_num.asc().nulls_last(), Clause.id.asc())
+        .all()
+    )
+
+    page_nums = [c.page_num for c in clauses if c.page_num is not None]
+    return ClauseListOut(
+        document_id=doc_id,
+        clause_count=len(clauses),
+        page_min=min(page_nums) if page_nums else None,
+        page_max=max(page_nums) if page_nums else None,
+        clauses=[ClauseOut.model_validate(c) for c in clauses],
+    )
+
+
+@docs_router.patch("/{doc_id}/clauses/{clause_id}", response_model=ClausePatchOut)
+def patch_clause(
+    doc_id: int,
+    clause_id: int,
+    payload: ClausePatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Inline-edit a clause's text (D-07 — user corrects AI-extracted content, #324).
+
+    First edit snapshots original_content from the AI extraction so the original
+    is always recoverable ("Xem bản gốc (AI)" toggle). Subsequent edits update
+    content without overwriting original_content.
+
+    Event payload is PII-safe per D-12 spirit: logs lengths, not raw content.
+    """
+    clause = (
+        db.query(Clause)
+        .filter(
+            Clause.id == clause_id,
+            Clause.document_id == doc_id,
+            Clause.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if clause is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clause not found")
+
+    old_length = len(clause.content) if clause.content else 0
+
+    # Snapshot original on first edit only (D-07).
+    if clause.original_content is None:
+        clause.original_content = clause.content
+
+    clause.content = payload.content
+    clause.edited_by_user = user.username
+    clause.edited_at = datetime.utcnow()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="clause_edited",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={
+            "clause_id": clause_id,
+            "clause_num": clause.clause_num,
+            "field": "content",
+            "old_value_length": old_length,
+            "new_value_length": len(payload.content),
+        },
+    )
+
+    db.refresh(clause)
+    return ClausePatchOut.model_validate(clause)
+
 
 @docs_router.get("/{doc_id}/file")
 def download_file(
@@ -815,10 +1002,29 @@ async def remap_document_type(
     # 5. Cost on the doc (#255) — remap spend tracked like extraction.
     doc.extraction_cost_vnd = (doc.extraction_cost_vnd or 0.0) + result.cost_vnd
 
-    # 6. Old obligations may carry the wrong obligation_type → rebuild (PM Q4).
-    db.query(Obligation).filter(
-        Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id
-    ).delete(synchronize_session=False)
+    # 6. Source-aware merge (#301, DEC-048 P1): keep user-manual / user-touched
+    #    obligations; only replace AI-derived pending ones.
+    #    FORWARD-GAP (QC F1): when fulfilled_at / evidence columns land (#302),
+    #    MUST add `or ob.fulfilled_at is not None` here — otherwise P1 silently
+    #    fails for fulfillment-pending obligations.
+    all_obs = (
+        db.query(Obligation)
+        .filter(Obligation.document_id == doc_id, Obligation.tenant_id == user.tenant_id)
+        .all()
+    )
+    kept_manual = 0
+    replaced_ai = 0
+    for ob in all_obs:
+        is_user_touched = (
+            ob.source == "user_manual"
+            or ob.status in ("done", "cancelled")
+            or getattr(ob, "fulfilled_at", None) is not None
+        )
+        if is_user_touched:
+            kept_manual += 1
+        else:
+            db.delete(ob)
+            replaced_ai += 1
 
     # 7. Audit (D-07) — commits the whole transaction above.
     _log_event(
@@ -830,16 +1036,173 @@ async def remap_document_type(
         payload={"from": old_type, "to": target, "provider": result.provider,
                  "remap_cost_vnd": result.cost_vnd,
                  "fields_remapped": remapped, "fields_null": nulls,
+                 "kept_manual": kept_manual, "replaced_ai": replaced_ai,
                  "warnings": result.warnings},
     )
 
-    # 8. Re-derive date-based obligations from the (now-current) Terms.
-    derive_obligations(db, user.tenant_id, doc_id)
+    # 8. Re-derive from new Terms. Step 6 already deleted AI-derived obligations
+    #    for THIS doc; derive_obligations also deletes pending non-user_manual
+    #    across the chain (sibling docs). Two-pass is intentional: step 6 handles
+    #    the remap-specific preservation predicate, step 8 handles chain cleanup.
+    derive_obligations(db, user.tenant_id, doc_id, source_label="ai_re_derived")
     # 9. Tenant cost aggregate (#255) — master.db, only on a real remap spend.
     quota.add_extraction_cost_standalone(user.tenant_id, result.cost_vnd)
 
     return RemapTypeOut(
         success=True, fields_remapped=remapped, fields_null=nulls, cost_vnd=result.cost_vnd,
+    )
+
+
+# ── Clause-scoped re-derive (#303) ──
+
+
+@docs_router.post("/{doc_id}/re-derive-clause", response_model=ReDeriveClauseOut)
+async def re_derive_clause(
+    doc_id: int,
+    body: ReDeriveClauseIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Clause-scoped obligation re-derive (#303, DEC-048 §13).
+
+    Accepts a ``clause_num`` (e.g. "Điều 8"), re-reads its text via a text-only
+    remap call (~2-3đ), updates Terms anchored to that clause, then re-derives
+    only the obligations that were sourced from that clause.
+
+    Source-aware merge (AC3): obligations with ``source=user_manual``,
+    ``status in (done, cancelled)``, or ``fulfilled_at IS NOT NULL`` are protected.
+    All other obligations tagged ``source_clause_num == clause_num`` are replaced.
+    Other clauses' obligations are UNTOUCHED (AC2 — no churn).
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    clause_row = (
+        db.query(Clause)
+        .filter(
+            Clause.document_id == doc_id,
+            Clause.tenant_id == user.tenant_id,
+            Clause.clause_num == body.clause_num,
+        )
+        .first()
+    )
+    if clause_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Clause '{body.clause_num}' not found in document {doc_id}",
+        )
+
+    # Source-aware merge: catalogue obligations linked to this clause.
+    existing_obs = (
+        db.query(Obligation)
+        .filter(
+            Obligation.document_id == doc_id,
+            Obligation.tenant_id == user.tenant_id,
+            Obligation.source_clause_num == body.clause_num,
+        )
+        .all()
+    )
+    protected_manual = 0
+    deleted = 0
+    for ob in existing_obs:
+        is_protected = (
+            ob.source == "user_manual"
+            or ob.status in ("done", "cancelled")
+            or ob.fulfilled_at is not None
+        )
+        if is_protected:
+            protected_manual += 1
+        else:
+            db.delete(ob)
+            deleted += 1
+    db.flush()
+
+    # Text-only remap on this single clause (~2-3đ, no vision call).
+    cost_vnd = 0.0
+    dtg_term = (
+        db.query(Term)
+        .filter(
+            Term.document_id == doc_id,
+            Term.tenant_id == user.tenant_id,
+            Term.field_name == "doc_type_group",
+        )
+        .first()
+    )
+    doc_type_group = dtg_term.field_value if dtg_term else None
+
+    if doc_type_group and doc_type_group in DOC_TYPE_GROUPS:
+        clauses = [ClauseItem(num=clause_row.clause_num, title=clause_row.title, content=clause_row.content or "")]
+        result = await remap_type(clauses, doc_type_group)
+        cost_vnd = result.cost_vnd
+
+        # Update Terms anchored to this clause with the new values.
+        for key, f in result.fields.items():
+            existing_term = (
+                db.query(Term)
+                .filter(
+                    Term.document_id == doc_id,
+                    Term.tenant_id == user.tenant_id,
+                    Term.field_name == key,
+                    Term.ref == body.clause_num,
+                )
+                .first()
+            )
+            if existing_term is not None:
+                existing_term.field_value = f.value
+                existing_term.confidence = f.confidence
+                existing_term.needs_review = f.needs_review
+                existing_term.source = "remap"
+            elif f.value is not None:
+                db.add(Term(
+                    tenant_id=user.tenant_id,
+                    document_id=doc_id,
+                    field_name=key,
+                    field_value=f.value,
+                    ref=body.clause_num,
+                    confidence=f.confidence,
+                    needs_review=f.needs_review,
+                    source="remap",
+                ))
+
+        doc.extraction_cost_vnd = (doc.extraction_cost_vnd or 0.0) + cost_vnd
+        db.flush()
+
+    # Re-derive obligation from Terms scoped to this clause.
+    derive_result = derive_obligation_from_clause(
+        db, user.tenant_id, doc_id, body.clause_num,
+        source_label="ai_re_derived", derived_from="user_edit",
+    )
+
+    _log_event(
+        db, user.tenant_id,
+        event_type="clause_re_derived",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={
+            "clause_num": body.clause_num,
+            "deleted": deleted,
+            "created": derive_result["created"],
+            "protected_manual": protected_manual,
+            "cost_vnd": cost_vnd,
+        },
+    )
+
+    if cost_vnd:
+        quota.add_extraction_cost_standalone(user.tenant_id, cost_vnd)
+
+    return ReDeriveClauseOut(
+        ok=True,
+        created=derive_result["created"],
+        skipped=derive_result["skipped"],
+        protected_manual=protected_manual,
+        deleted=deleted,
+        cost_vnd=cost_vnd,
     )
 
 
@@ -900,3 +1263,259 @@ def re_extract_document(
 
     _enqueue_extraction(background_tasks, doc_id, user.tenant_id, doc.doc_type)
     return {"ok": True, "doc_id": doc_id, "status": "processing"}
+
+
+@docs_router.get("/{doc_id}/events", response_model=EventListOut)
+def get_document_events(
+    doc_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return event history for a document (#281, D-07 audit trail).
+
+    Includes events where entity_type='document' AND entity_id=doc_id, plus
+    obligation events (entity_type='obligation') for all obligations that
+    belong to this document — so the full obligation lifecycle is visible.
+    All scoped to the current tenant.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    obligation_ids = [
+        ob.id for ob in db.query(Obligation.id).filter(
+            Obligation.tenant_id == user.tenant_id,
+            Obligation.document_id == doc_id,
+        ).all()
+    ]
+
+    query = db.query(Event).filter(
+        Event.tenant_id == user.tenant_id,
+        or_(
+            (Event.entity_type == "document") & (Event.entity_id == doc_id),
+            (Event.entity_type == "obligation") & (Event.entity_id.in_(obligation_ids))
+            if obligation_ids else False,
+        ),
+    )
+
+    total = query.count()
+    items = (
+        query.order_by(Event.created_at.desc(), Event.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return EventListOut(
+        document_id=doc_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[EventOut.model_validate(ev) for ev in items],
+    )
+
+
+# ── Re-read trigger helpers (#324 Task 2) ──
+
+def _derive_clause_proposal(
+    db: Session,
+    tenant_id: str,
+    doc_id: int,
+    clause_num: str | None,
+    file_name: str,
+) -> dict | None:
+    """Compute what derive_obligation_from_clause() WOULD produce — no DB write.
+
+    Returns a dict with keys: description, obligation_type, due_date, recurrence.
+    Returns None if derivation would be skipped (insufficient data).
+
+    NOTE (KHE_AI TODO): v1 derives from existing extracted Terms anchored to
+    clause_num (ref == clause_num). A future version should re-extract date fields
+    directly from the edited Clause.content text to reflect user corrections.
+    """
+    clause_terms = (
+        db.query(Term)
+        .filter(
+            Term.tenant_id == tenant_id,
+            Term.document_id == doc_id,
+            Term.ref == clause_num,
+            Term.field_value.isnot(None),
+            Term.is_superseded == False,
+        )
+        .all()
+    ) if clause_num else []
+
+    term_map: dict[str, Term] = {}
+    for t in clause_terms:
+        if t.field_name not in term_map or t.id > term_map[t.field_name].id:
+            term_map[t.field_name] = t
+
+    due_term = term_map.get(_DUE_FIELD)
+    start_term = term_map.get(_START_FIELD)
+    duration_term = term_map.get(_DURATION_FIELD)
+
+    due_value = due_term.field_value if due_term else None
+    start_value = start_term.field_value if start_term else None
+    duration_value = duration_term.field_value if duration_term else None
+
+    due_date = None
+    recurrence = "once"
+
+    if due_value:
+        due_date = parse_date(due_value)
+        if due_date is None:
+            return None
+    elif start_value and duration_value:
+        start_date = parse_date(start_value)
+        duration_months = parse_duration_months(duration_value)
+        if start_date is None:
+            return None
+        elif duration_months is None:
+            recurrence = "open_ended_review"
+        else:
+            due_date = add_months(start_date, duration_months)
+    else:
+        return None
+
+    due_str = due_date.strftime("%Y-%m-%d") if due_date else None
+    if recurrence == "open_ended_review":
+        description = f"Hợp đồng {file_name} vô thời hạn — cần review"
+    else:
+        description = f"Hợp đồng {file_name} hết hạn ngày {due_str}"
+
+    return {
+        "description": description,
+        "obligation_type": "expiration",
+        "due_date": due_str,
+        "recurrence": recurrence,
+    }
+
+
+@docs_router.post("/{doc_id}/reread", response_model=ReReadOut)
+def reread_document(
+    doc_id: int,
+    payload: ReReadIn | None = None,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """Compute obligation diffs from (re-)derived clause terms (#324 Task 2, D-02).
+
+    Returns diffs only — does NOT auto-apply. Frontend shows DiffConfirmModal; user
+    applies each diff via existing PATCH /obligations/{id}. Source-aware: obligations
+    with source='user_manual' have protected=True so the FE defaults to "Giữ của bạn".
+
+    Quota-gated (D-11): checks docs_used_month < doc_quota without consuming a slot.
+    Re-read is not an ingest, so no quota is consumed — the gate prevents abuse when
+    a future LLM re-extraction path is wired in.
+
+    KHE_AI TODO: v1 derives from existing Terms anchored to the clause (ref=clause_num).
+    v2 should re-extract date fields directly from Clause.content (edited text) via
+    a lightweight LLM call, then use those derived terms for the diff computation.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # D-11: quota gate — check remaining, don't consume (no ingest here).
+    qs = quota.get_quota_status(master_db, user.tenant_id)
+    if qs and qs["doc_quota"] and qs["docs_used_month"] >= qs["doc_quota"]:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Monthly document quota exceeded. Re-read unavailable until quota resets.",
+        )
+
+    clause_ids = (payload.clause_ids if payload else None) or None
+
+    # Load target clauses.
+    clause_query = db.query(Clause).filter(
+        Clause.document_id == doc_id,
+        Clause.tenant_id == user.tenant_id,
+    )
+    if clause_ids:
+        clause_query = clause_query.filter(Clause.id.in_(clause_ids))
+    clauses = clause_query.all()
+
+    diffs: list[ReReadDiff] = []
+
+    for clause in clauses:
+        proposed = _derive_clause_proposal(
+            db, user.tenant_id, doc_id, clause.clause_num, doc.file_name
+        )
+
+        # Existing non-terminal obligations anchored to this clause.
+        existing = (
+            db.query(Obligation)
+            .filter(
+                Obligation.tenant_id == user.tenant_id,
+                Obligation.document_id == doc_id,
+                Obligation.source_clause_num == clause.clause_num,
+                Obligation.status.not_in(["done", "cancelled"]),
+            )
+            .all()
+        )
+
+        if proposed is None:
+            # Derivation would skip — flag removals for non-manual obligations.
+            for ob in existing:
+                is_manual = ob.source == "user_manual"
+                diffs.append(ReReadDiff(
+                    action="remove",
+                    obligation_id=ob.id,
+                    description=ob.description,
+                    obligation_type=ob.obligation_type,
+                    due_date=ob.due_date,
+                    source_clause_num=clause.clause_num,
+                    protected=is_manual,
+                ))
+        else:
+            # Find matching existing obligation by type.
+            matched = next(
+                (ob for ob in existing if ob.obligation_type == proposed["obligation_type"]),
+                None,
+            )
+            if matched is None:
+                diffs.append(ReReadDiff(
+                    action="add",
+                    description=proposed["description"],
+                    obligation_type=proposed["obligation_type"],
+                    due_date=proposed["due_date"],
+                    source_clause_num=clause.clause_num,
+                    protected=False,
+                ))
+            else:
+                # Emit one diff per changed field.
+                is_manual = matched.source == "user_manual"
+                for field, old_val, new_val in (
+                    ("due_date", matched.due_date, proposed["due_date"]),
+                    ("description", matched.description, proposed["description"]),
+                ):
+                    if old_val != new_val:
+                        diffs.append(ReReadDiff(
+                            action="update",
+                            obligation_id=matched.id,
+                            field=field,
+                            old_value=old_val,
+                            new_value=new_val,
+                            description=matched.description,
+                            obligation_type=matched.obligation_type,
+                            due_date=matched.due_date,
+                            source_clause_num=clause.clause_num,
+                            protected=is_manual,
+                        ))
+
+    return ReReadOut(
+        document_id=doc_id,
+        clauses_checked=len(clauses),
+        diffs=diffs,
+    )

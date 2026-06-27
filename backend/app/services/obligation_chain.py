@@ -9,7 +9,7 @@ When an obligation is marked "done", any obligations waiting on it
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -18,8 +18,16 @@ from app.models.tenant import Obligation
 logger = logging.getLogger(__name__)
 
 
-def propagate_obligation_done(obligation_id: int, tenant_db: Session) -> int:
+def propagate_obligation_done(
+    obligation_id: int,
+    tenant_db: Session,
+    fulfilled_at: datetime | None = None,
+) -> int:
     """Activate obligations waiting on the given obligation.
+
+    ``fulfilled_at`` anchors the child due-date calculation (G1 fix #302):
+    use the parent's actual completion date, not today, so backfilled
+    historical milestones propagate the correct future date.
 
     Returns the count of activated dependents (for Frontend toast).
     """
@@ -32,14 +40,23 @@ def propagate_obligation_done(obligation_id: int, tenant_db: Session) -> int:
         .all()
     )
 
+    anchor = fulfilled_at.date() if fulfilled_at else date.today()
     today = date.today()
     for dep in dependents:
         if dep.trigger_delay_days:
-            dep.due_date = (today + timedelta(days=dep.trigger_delay_days)).isoformat()
+            child_due = anchor + timedelta(days=dep.trigger_delay_days)
         else:
-            dep.due_date = today.isoformat()
-        dep.status = "pending"
+            child_due = anchor
+        dep.due_date = child_due.isoformat()
         dep.milestone_trigger = "date"
+        # #313 (DEC-048 Option B): if the computed due date is already in the past
+        # (backfill scenario), set awaiting_confirmation instead of pending.
+        # D-02: SME must confirm whether this milestone was already completed —
+        # never flip it to overdue or fire a reminder on behalf of history.
+        if child_due < today:
+            dep.status = "awaiting_confirmation"
+        else:
+            dep.status = "pending"
 
     count = len(dependents)
     if count:

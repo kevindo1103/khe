@@ -1,7 +1,7 @@
 # KHE_Frontend_Admin — Session STATE
 
-*Owner: KHE_Frontend_Admin lead · Branch (current feature): `claude/feat-admin-m0-screens`*
-*Last updated: 2026-06-18 (session kickoff)*
+*Owner: KHE_Frontend_Admin lead · Branch (last feature): `claude/feat-documents-remap-type-ui` (merged staging)*
+*Last updated: 2026-06-25 (cycle-4 wrap-up — confirm flow / dashboard aggregate / remap UI shipped to staging)*
 
 ---
 
@@ -99,13 +99,53 @@ Stack: React + Vite + Tailwind CSS + React Router v6. **Plan + review only — K
 - Updated #86 comment with corrected nginx topology (no `/admin` block needed). Posted DOCS_INBOX #1.
 - **Awaiting:** merge #95 → Infra #70 deploy fix → e2e verify on staging.
 
+### 2026-06-24/25 — Sprint-1 cycle-4: confirm flow + dashboard aggregate + remap UI
+
+**Context note:** STATE skipped 06-20→06-23 (cycle-4 mega-batch ratified docs v0.6, DEC-027/028/029/030/040). Entries below cover the FE work landed in this session. Lead implemented directly (Windsurf not available; user-authorized per-task).
+
+- **#238 / DEC-040 — document-confirm flow (D-02).** Per-doc explicit confirm (`POST /documents/{id}/confirm`) + mandatory ReminderNudge. Self-party auto-derived from `legal_name`. Merged **#246** → staging (squash). Aligned copy/tokens to Designer #245. Don't-tag-failed-docs fix from #238 review.
+- **#251 — persistent unconfirmed visibility (after #249 first-confirm gate).** Journey now unlocks at FIRST confirm, so remaining unconfirmed docs must stay visible (D-02 per-doc audit intact, Khế silent until confirmed). Shipped: Dashboard persistent `X/N cần xác nhận` counter (non-dismissable, hides at 0, deep-links `?confirm=pending`); DocList "Cần xác nhận" filter chip; DocumentDetail warning banner + confirm CTA. `isUnconfirmed` single-sourced across counter/badge/filter. → in **#256**.
+- **#253/#254 — dashboard consumes `GET /obligations/summary`.** StageDashboard fetches server aggregate (`group_by=direction`, `active_only=true` default per #254) instead of pulling full obligation list + bucketing client-side. Renders server `groups[].label` verbatim (#227 consumer rule) → counts can't drift from chat aggregate #199. Two axes: direction=`groups`, status=`status_breakdown`. → in **#256**.
+- **#256 MERGED** → staging (squash `0df41de`). Branch `claude/feat-documents-unconfirmed-visibility` (note: original auto-spawn branch `claude/sweet-carson-zsx6xp` was non-compliant → recut compliant branch off fresh staging, cherry-picked the 2 net-new commits, dropped #238 commits already in staging via #246 squash). DOCS_INBOX #1 posted.
+- **#258 — BA remap clause (decision-review).** Posted FE scope-confirm comment: accept dropdown+"Map lại" scope, answer Q3 (unlimited remaps, no FE cap), flag contract dep, note #251 covers post-remap re-confirm loop.
+- **#262 / #266 — doc_type_group remap UI.** `doc_type_group` → editable `<select>` (11 DEC-029 options) in new "Loại hợp đồng" card; disabled+tooltip when `clause_count==0`; Modal confirm before destructive remap; `POST /documents/{id}/remap-type` via apiFetch; loading state; `load()` refetch on success; toast reports `fields_remapped`/`fields_null`; 409 (empty clauses) handled. Post-remap re-confirm loop free (reuses #251). New type `RemapTypeOut`. Toast render now honours `kind` (+`showToast` helper). **#266 MERGED** → staging (squash `79383a2`), branch `claude/feat-documents-remap-type-ui`. #262 → `done-staging`. DOCS_INBOX #1 posted.
+
+**Bug-pattern / lesson reinforced:** auto-spawn session branch name is non-compliant (`claude/<random>`) → STEP-0 must recut to `claude/<type>-<scope>-<desc>` off fresh `origin/staging` before first push (also avoids dragging already-squash-merged commits into a new PR).
+
+---
+
+## 🔖 NEXT SESSION PICKUP (2026-06-25)
+
+**Branch hygiene:** This session merged 3 PRs to staging via compliant feature branches. The auto-spawn branch `claude/sweet-carson-zsx6xp` is now stale on remote (its content shipped via #256) — safe to delete; left in place pending user OK.
+
+**Open `for:frontend` issues — triage (state CONFIRMED 2026-06-25):**
+
+| # | Status | My action |
+|---|---|---|
+| **#262** remap UI | `done-staging` | ✅ shipped (#266). Awaiting QC #187 manual verify on staging + promote staging→main. No FE action. |
+| **#251** unconfirmed counter | `status:planned` ⚠️ **STALE** | Code shipped via **#256** to staging. Label should be `done-staging` (like #262). **FIX: bump label + status comment.** |
+| **#258** BA remap parent | decision-review | FE half delivered (#262). Closeable once Backend/AI/QC slices land — PM/QC owns. |
+| **#249** journey-gate change | decision-review | **Backend** first-confirm gate (FE #251/#262 depend on it). Confirm it's live on staging (last check `documents.py` still `unconfirmed==0`). Not FE build. |
+| **#238** 🔴 journey-stuck | `blocker:human-needed` | Confirm flow shipped via #246 → likely **stale blocker**. QC-filed → QC/PM clears. |
+| **#264 / #265** chat adjacency / cardinality-tiered | `planned` / decision-review | **KHE_PWA_Chat scope** (`frontend/pwa/**`), NOT Admin. #265 also unratified proposal. Not mine. |
+| **#227 / #222 / #208** | handover / waiting-dep | Umbrella/older handovers — track-only, superseded by shipped work. |
+
+**Net: no new Admin build task queued.** Last actionable item = bump #251 label to `done-staging` (deferred to user OK).
+
+**Cross-cutting "Cần xác nhận" definition (single-sourced this cycle):** doc is unconfirmed ⟺ `confirmed_by_user_at IS NULL` (with terms present). Surfaced in 3 places: Dashboard counter, DocList badge+filter, DocumentDetail banner. Any new surface MUST reuse this gate, not re-derive.
+
+**Staging-verify queue (QC #187 owns, FE supports):**
+1. #251 — confirm 1 doc → nav unlocks → counter shows `16/17` (needs backend #249 first-confirm gate live).
+2. #262 — wrong type → "Map lại" → fields in correct schema → confirm (needs KHE_AI `remap_type()` end-to-end).
+
 ## Open dependencies
 
 | Dep | Status | Note |
 |---|---|---|
-| #24 design | ✅ MERGED | Design system + 5 admin mockups on main |
-| #25 ingest API shape | ⏳ backend in progress | `POST /ingest/upload`, `POST /ingest/bulk`, `GET /documents/{id}` — coordinate exact response shape via DOCS_INBOX |
-| #26 obligation API shape | ⏳ backend in progress | `GET /obligations?due_within=N`, mark-done endpoint — coordinate shape |
+| #25/#26 ingest+obligation API | ✅ MERGED | M0 contract live on staging (see Verified API contract below) |
+| #249 first-confirm journey gate (Backend) | ⏳ verify on staging | FE #251/#262 depend on `confirmed_count>=1` gate. Last check `documents.py` still `unconfirmed==0` — confirm live before #251 manual-verify can pass |
+| KHE_AI `remap_type()` | ✅ staging (per #262 ticket) | Needed for #262 end-to-end QC verify |
+| QC #187 manual verify | ⏳ pending | Owns staging verify for #251 + #262 |
 
 ## Known contract (ratified Sprint 0 #23)
 

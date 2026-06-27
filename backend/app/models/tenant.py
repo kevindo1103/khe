@@ -30,6 +30,10 @@ class Document(TenantBase):
     # User-explicit review confirm (#238, D-02). NULL = not yet confirmed → counts
     # toward the NEEDS_REVIEW gate; set on POST /documents/{id}/confirm.
     confirmed_by_user_at = Column(DateTime, nullable=True)
+    # Evidence doc flag (#302, DEC-048 P2): biên bản bàn giao/nghiệm thu. Skips
+    # full vision extraction (metadata + file link only). Conservative PII default.
+    is_evidence = Column(Boolean, default=False)
+    contains_personal_data = Column(Boolean, default=False)  # DEC-039 firm-gate guard
     # Extraction cost tracking (#255 pilot monitoring). NULL for pre-migration /
     # not-yet-extracted docs. Set on each successful extraction.
     extraction_provider = Column(String, nullable=True)    # "gemini_flash" | "claude_haiku" | "claude_sonnet"
@@ -68,6 +72,8 @@ class Term(TenantBase):
 
 OBLIGATION_STATUSES = [
     "pending", "in_progress", "partial", "done", "cancelled", "waiting_trigger",
+    # #313 cascade-past: child due in past → awaiting SME confirm ("đã xong?", D-02)
+    "awaiting_confirmation",
 ]
 
 
@@ -101,6 +107,15 @@ class Obligation(TenantBase):
     # NULL = not snoozed. Auto-expires (scheduler resumes once now() passes it) —
     # snooze never mutates status/due_date (D-07: obligation truth unchanged).
     snoozed_until = Column(DateTime, nullable=True)
+    # Provenance (#301): how this obligation originated.
+    source = Column(String, nullable=True)             # "ai_extracted" | "user_manual" | "ai_re_derived" | NULL(legacy)
+    # Fulfillment capture (#302, DEC-048 G2/P3): user-entered completion evidence.
+    fulfilled_at = Column(DateTime, nullable=True)     # authoritative completion date (T2)
+    fulfilled_by = Column(String, nullable=True)       # username or "operator-for-<username>" (P3)
+    evidence_doc_ids = Column(Text, nullable=True)     # JSON list[int] of evidence document IDs
+    # Clause provenance (#303, DEC-048 §13): links obligation to the clause that drove it.
+    source_clause_num = Column(String, nullable=True)  # FK-ish to Clause.clause_num in same doc
+    derived_from = Column(String, nullable=True)       # "original" | "user_edit"
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -172,9 +187,13 @@ class Clause(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     clause_num = Column(String, nullable=True)        # e.g. "Điều 8", "Khoản 2.3"
     title = Column(String, nullable=True)             # e.g. "Chấm dứt hợp đồng"
-    content = Column(Text, nullable=False)            # full clause text
+    content = Column(Text, nullable=False)            # full clause text (user-editable, D-07)
     page_num = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    # ── Inline edit (#324, D-07) ──
+    edited_by_user = Column(String, nullable=True)    # username who last edited
+    edited_at = Column(DateTime, nullable=True)       # when last edited
+    original_content = Column(Text, nullable=True)    # AI-extracted original (snapshot on first edit)
 
 
 class DocumentRelationship(TenantBase):

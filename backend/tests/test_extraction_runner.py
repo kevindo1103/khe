@@ -425,8 +425,12 @@ class TestPaymentScheduleObligations:
         for po in payment_obs:
             assert po["obligation_type"] == "payment"
             assert po["recurrence"] == "once"
-        # The item without due_date should NOT create an obligation
-        assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
+        # B3 (#282): date-triggered item without due_date is now persisted as
+        # waiting_trigger (previously skipped). Resolver won't resolve it without
+        # trigger_delay_days, so it stays waiting_trigger.
+        waiting = [o for o in obligations if "Theo thông báo" in o.get("description", "")]
+        assert len(waiting) == 1
+        assert waiting[0]["status"] == "waiting_trigger"
 
     def test_payment_schedule_no_due_date_skipped(self, auth_client):
         """Obligation schedule items without due_date (trigger=date) are skipped (no obligation created)."""
@@ -467,8 +471,12 @@ class TestPaymentScheduleObligations:
 
         data = auth_client.get(f"/documents/{doc_id}").json()
         obligations = data.get("obligations", [])
-        # Only the expiry obligation from derive_obligations, no payment obligation
-        assert not any("Theo thông báo" in o.get("description", "") for o in obligations)
+        # B3 (#282): date-triggered item without due_date is now persisted as
+        # waiting_trigger (previously skipped). No trigger_delay_days → resolver
+        # can't resolve → stays waiting_trigger.
+        waiting = [o for o in obligations if "Theo thông báo" in o.get("description", "")]
+        assert len(waiting) == 1
+        assert waiting[0]["status"] == "waiting_trigger"
 
     def test_payment_obligations_idempotent_on_re_extraction_skip_path(self, auth_client):
         """Re-extraction on a doc where derive_obligations skips (no derivable expiry)
@@ -526,3 +534,63 @@ class TestPaymentScheduleObligations:
         assert len(payment_obs2) == 2, (
             f"Expected 2 payment obligations after re-extraction (idempotent), got {len(payment_obs2)} — duplication bug"
         )
+
+    def test_obligation_schedule_provenance_fields_persisted(self, auth_client):
+        """source_clause_num + derived_from from LLM output are persisted on Obligation (#304)."""
+        from modules.extraction import (
+            DocType, ExtractedField, ExtractionResult, ObligationScheduleItem, TokenUsage,
+        )
+
+        result = ExtractionResult(
+            doc_type=DocType.LEASE,
+            doc_type_confidence=0.9,
+            fields={
+                "doi_tac": ExtractedField(value="Công ty B", confidence=0.9, needs_review=False),
+                "ngay_het_han": ExtractedField(value="2027-12-31", confidence=0.9, needs_review=False),
+            },
+            obligation_schedule=[
+                ObligationScheduleItem(
+                    obligation_type="payment",
+                    description="Tiền thuê đợt 1",
+                    amount_raw="50000000",
+                    due_date="2027-06-01",
+                    source_clause_num="Điều 5",
+                    derived_from="original",
+                ),
+                ObligationScheduleItem(
+                    obligation_type="handover",
+                    description="Bàn giao mặt bằng",
+                    amount_raw=None,
+                    due_date="2027-01-15",
+                    source_clause_num="Điều 3",
+                    derived_from="original",
+                ),
+            ],
+            provider="fake_provider",
+            model="fake-model",
+            latency_ms=100.0,
+            usage=TokenUsage(input_tokens=500, output_tokens=100),
+            cost_vnd=50.0,
+        )
+
+        fake = FakeProvider(result)
+        with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+            r = auth_client.post(
+                "/ingest/upload",
+                files={"file": ("provenance_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            )
+            assert r.status_code == 201
+            doc_id = r.json()["doc_id"]
+
+        data = auth_client.get(f"/documents/{doc_id}").json()
+        obligations = data.get("obligations", [])
+
+        payment = [o for o in obligations if "Tiền thuê" in o.get("description", "")]
+        assert len(payment) == 1
+        assert payment[0]["source_clause_num"] == "Điều 5"
+        assert payment[0]["derived_from"] == "original"
+
+        handover = [o for o in obligations if "Bàn giao" in o.get("description", "")]
+        assert len(handover) == 1
+        assert handover[0]["source_clause_num"] == "Điều 3"
+        assert handover[0]["derived_from"] == "original"
