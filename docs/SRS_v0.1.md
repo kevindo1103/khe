@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.4 |
-| Trạng thái | Fold cycle 4 — 16 entries (Sprint 1 staging-complete + DEC-027/028/029/030) |
+| Phiên bản | v0.5 |
+| Trạng thái | Fold cycle 5 — DEC-048 EPIC #300 production promote (ce48bbd) |
 | Owner | KHE_Docs |
-| Source of truth | BRD v0.6 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
+| Source of truth | BRD v0.8 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
 
 ---
 
@@ -23,6 +23,7 @@
 | v0.2 | 2026-06-19 | KHE_Docs | Cycle 3 fold (5 Backend + 1 AI + 1 PM comments). Add §2 ingest/documents/relationships API (PR #54 + #59 + #60 — staging live). Add §4 tenants quota columns (FR-TN). Update §5.2 terms CANONICAL_FIELDS 7 + §5.1 doc_type enum. Add §5.8 `document_relationships` table. Add §9 Extraction module API (`get_extraction_provider` factory, `ExtractionUnavailable`, `is_error` vs `needs_review`). Add §10 Audit Events (`extraction_performed` w/ `consent_reference`, term `updated` PII). |
 | v0.3 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §5.9 `clauses` table per-tenant (`doc_id` FK CASCADE, `clause_num`, `title`, `content`, `page_num`; idx_clauses_doc; migration `tenant_003_clauses.py` down_revision `tenant_002`). Populated từ `VisionExtractionResult.clauses[]` (same vision call). Powers `search_clauses` tool in FR-CQ-02. |
 | v0.4 | 2026-06-20 | KHE_Docs | **Cycle 4 fold.** §2 +`/obligations` GET/PATCH (PR #64), +`/chat/query` POST (PR #68), +`/reminders/test` (PR #66), +`/health/extraction` (PR #80 non-prod). §4 +`tenant_profile` table (Kevin choice: separate model, NOT tenants column — DEC-030 legal_name storage). §5.3 obligations schema rewrite: rename `obligation_type` (cadence) → `recurrence`; new `obligation_type` (category enum 8 per DEC-027); +`direction`, +`obligor`, +`source_doc_chain`, +`resolution_method`; status enum corrected to `{pending,done,cancelled}`. §5.2 terms expanded to 12 CANONICAL_FIELDS + type-specific via NamedExtractedField (DEC-029). §5.10 NEW `parties` schema with role_label (DEC-030). §6 +6.3 payment_schedule derivation (DEC-027), +6.4 direction derivation (DEC-030). §9 2-tier extraction schema (Claude lean / Gemini full). §10 +chat_query_logged Event (DEC-028 compliance debt) + reminder_*. |
+| v0.5 | 2026-06-27 | KHE_Docs | **Cycle 5 fold — DEC-048 EPIC #300 production.** §2.7 PATCH /obligations expanded (fulfilled_at/by/evidence_doc_ids; awaiting_confirmation status). §2.12 NEW endpoints: PATCH /documents/{id}/clauses/{clause_id} (clause edit + original_content snapshot, PR #325 migration tenant_018), POST /documents/{id}/reread (clause-scoped re-derive diff-confirm D-02, PR #326), POST /documents/{id}/re-derive-clause (PR #303 tenant_017), GET /documents/{id}/clauses (PR #320), GET /documents/{id}/events (PR #323 audit). §5.1 documents +`is_evidence` BOOL. §5.3 obligations REWRITE: +fulfilled_at/by/evidence_doc_ids, status enum +awaiting_confirmation +waiting_trigger, +source_clause_num, +derived_from, +source (P1). §5.9 clauses +`original_content` immutable +`edited_by_user` +`edited_at` (tenant_018). §6.5 NEW cascade chain anchor rule (fulfilled_at G1). §6.6 NEW date-anchored resolver (FR-OB-13). §6.7 NEW P1 source-aware merge + derive delete path-2 guard. §10 Audit Events +obligation_fulfilled/reverted, cascade_triggered, clause_edited (PII-safe), evidence_attached, obligation_date_resolved, re_read_triggered. |
 | v0.4.1 | 2026-06-20 | KHE_Docs | **Cycle 4.1 fix-up fold** (2 entries: Backend lead response + PR #138). §4.5 `tenant_profile` → `tenant_profiles` (plural) với Backend lead exact spec (`id` integer PK + `tenant_id` UNIQUE FK). §6.3 staging caveat: PR #141 `obligation_type="once"` pre-#145, flip post-migration. §3.3 SQLite Unicode `lower()` override (PR #138) for VN diacritics support. |
 
 ---
@@ -136,14 +137,26 @@ Body: `{confirmed_by_sme: true}` — only `true` accepted.
 ### 2.7 Obligation endpoints (Backend PR #64)
 
 #### `GET /obligations?due_within=<days>&status=<…>&doc_type_filter=<group>&direction=<…>&due_from=<iso>&due_to=<iso>&page&page_size`
-- **200:** `{items: [{id, document_id, description, obligation_type, recurrence, due_date, status, direction, obligor, remind_before_days, source_doc_chain, ...}], page, page_size, total}`
-- `due_within` forward-only (`due_date >= today`).
+- **200:** `{items: [{id, document_id, description, obligation_type, recurrence, due_date, status, direction, obligor, remind_before_days, source_doc_chain, source_clause_num, derived_from, source, fulfilled_at, fulfilled_by, evidence_doc_ids, ...}], page, page_size, total}`
+- `due_within` forward-only (`due_date >= today`); excludes `awaiting_confirmation` + `waiting_trigger` + `fulfilled_at IS NOT NULL` (FR-RM-07).
+- `status` extended (DEC-048): `pending` | `done` | `cancelled` | `awaiting_confirmation` (cascade-past D-02) | `waiting_trigger` (FR-OB-13 unresolved date anchor).
 - `direction` (DEC-030): `nghĩa_vụ` / `quyền_lợi` / `null`.
 
-#### `PATCH /obligations/{id}`
-Body: `{status: "pending" | "done" | "cancelled"}` — status-only edit MVP (reschedule `due_date` deferred Sprint 2 per PR #64).
-- **200:** updated row + `updated` Event logged (D-02).
-- **400:** invalid status. **404:** cross-tenant.
+#### `PATCH /obligations/{id}` (DEC-048 expanded — PR #311 + #335)
+Body now accepts fulfillment fields:
+```json
+{
+  "status": "done",
+  "fulfilled_at": "2026-06-25T14:30:00",
+  "fulfilled_by": "Nguyễn Văn A",
+  "evidence_doc_ids": [42, 43]
+}
+```
+- Status-only edit (legacy) still supported: `{status: "pending"|"done"|"cancelled"|"awaiting_confirmation"}`.
+- **Side effects:** Event `obligation_fulfilled` (with `purpose=obligation_fulfillment`, no consent gate per KHE_Compliance §A.1); if obligation is parent in cascade chain → `propagate_obligation_done()` activates children with anchor = `fulfilled_at` (G1 fix); backfill child due < today → child `awaiting_confirmation` + `cascade_triggered` Event.
+- Revert (status `done` → `pending` or `cancelled`): `obligation_fulfillment_reverted` Event; child cascade rolled back conservatively.
+- **200:** updated row + Events logged.
+- **400:** invalid status, `fulfilled_at` future. **404:** cross-tenant.
 
 ### 2.8 Chat query (Backend PR #68, refactored PR #104 + #115/#125/#132)
 
@@ -167,6 +180,40 @@ Scheduler: APScheduler daily sweep 08:00 ICT, multi-tenant. Routing per FR-RM-05
 
 - **200:** `{environment, any_provider_configured, providers: [{name, env_vars: [...], configured: bool, present_per_var: {KEY: bool, ...}}], hint}`
 - **Locked invariant:** NEVER echoes key VALUES — only env-var NAMES + presence booleans. Test `test_diagnostic_with_gemini` asserts no key value in response.
+
+### 2.12 DEC-048 Clause + Re-read + Audit endpoints (cycle 5)
+
+#### `GET /documents/{doc_id}/clauses` (Backend PR #320)
+- **200:** `{clauses: [{id, clause_num, title, content, page_num, original_content, edited_by_user, edited_at}], clause_count, document_id, page_min, page_max}`
+- Empty clauses → `200` with empty array (Claude fallback docs valid case, not 404).
+
+#### `PATCH /documents/{doc_id}/clauses/{clause_id}` (Backend PR #325, migration `tenant_018`)
+Body: `{content: "<new text>"}`.
+- **D-07 snapshot:** lần edit đầu tiên preserve AI-extracted content vào `original_content` column (immutable sau first write).
+- Sets `edited_by_user` (JWT sub) + `edited_at` (DATETIME).
+- Logs `clause_edited` Event (D-12 PII-safe: content lengths only, KHÔNG raw text).
+- **200:** `{id, clause_num, content, original_content, edited_by_user, edited_at}` (`ClausePatchOut`).
+
+#### `POST /documents/{doc_id}/reread` (Backend PR #326)
+Body: `{clause_ids?: int[]}` (omit → re-read all edited clauses since last re-read).
+- D-02 diff-confirm gate: returns proposed diffs **WITHOUT** auto-applying.
+- Source-aware: obligations with `source=user_manual` marked `protected=true` in diffs.
+- Quota-gated (D-11) — 429 if doc_quota exceeded.
+- **v1 scope:** derives from existing Terms (`ref=clause_num`). Full LLM re-extraction from edited clause text = KHE_AI TODO.
+- **200:** `{re_read_at, diffs: [{obligation_id?, action: "add"|"update"|"remove", before?, after?, protected?, source_clause_num}]}` (`ReReadOut`).
+
+#### `POST /documents/{doc_id}/re-derive-clause` (Backend PR #303 + #314, migration `tenant_017`)
+Body: `{clause_num: "Điều X"}`.
+- Clause-scoped re-derive — deletes+recreates ONLY obligations tagged to that clause via `source_clause_num`.
+- Source-aware merge: `user_manual` / `done` / `cancelled` / `fulfilled_at IS NOT NULL` obligations protected.
+- Sets `derived_from="user_edit"` cho re-derive path; AI extraction path sets `"original"`.
+- No-churn guarantee: obligations từ clause khác KHÔNG bị touch.
+- **200:** `{deleted_count, created_count, obligation_ids: [...]}`. **404:** clause_num not found.
+
+#### `GET /documents/{doc_id}/events?limit&offset` (Backend PR #323 — D-07 audit history)
+- **200:** `{events: [{id, event_type, entity_type, entity_id, payload (JSON), actor, created_at}], total}`
+- Document-scoped + obligation-scoped events (tenant-isolated). Ordered `created_at DESC`.
+- Surfaces `clause_edited`, `obligation_fulfilled`, `cascade_triggered`, etc. for UI audit timeline.
 
 ### 2.11 Public API surface boundary
 
@@ -297,6 +344,8 @@ File metadata + phân loại.
 | `doc_type` | `DocType` enum (M0 contract): `hd_thue_mat_bang` (lease), `hd_nha_cung_cap` (supplier), `hd_lao_dong` (labor), `khac` (other) |
 | `status` | `processing` (BG task pending) / `extracted` (Terms populated) / `failed` (extraction error per D-08) |
 | `needs_review` | Aggregate flag — `true` if any child Term has `needs_review=true` |
+| `is_evidence` | BOOLEAN DEFAULT `false`. DEC-048 — biên bản/nghiệm thu đính kèm fulfillment. Khi `true` → skip `provider.extract()` server-side (P2) + `contains_personal_data` default `true` conservative. |
+| `contains_personal_data` | BOOLEAN — NĐ 13 PII flag; DEC-039 firm gate uses to restrict firm portal visibility to metadata-only |
 | `created_at` | Upload timestamp |
 
 ### 5.2 `terms` — EAV with CANONICAL_FIELDS vocab v2 (DEC-029 Backend PR #135)
@@ -346,13 +395,19 @@ Per-Document extracted Term rows. Schema is **EAV** (entity-attribute-value); `f
 | **`obligation_type`** | **Category enum 8 (DEC-027):** `payment` · `delivery` · `handover` · `expiration` · `renewal` · `review` · `warranty` · `other`. *Renamed concept: trước v0.4 `obligation_type` = cadence; per #122 Option B → cadence moved to `recurrence`.* |
 | **`recurrence`** | **Cadence enum (renamed from old `obligation_type`):** `once` · `monthly` · `quarterly` · `yearly` · `open_ended_review`. `open_ended_review` = `thoi_han_hd` phi-số case (DEC-020), `due_date=NULL`. Migration `tenant_005` per PM relay. |
 | `due_date` | DATE — derived per FR-OB-01 hoặc từ `payment_schedule[].due_date`. NULL khi `recurrence=open_ended_review`. |
-| `status` | **Enum {`pending`, `done`, `cancelled`}** per FE PR #69 ratification. **`overdue` KHÔNG phải status** — FE-derived urgency bucket từ `due_date` so với hôm nay. |
+| `status` | **Enum extended DEC-048:** `pending` · `done` · `cancelled` · `awaiting_confirmation` (cascade-past D-02 backfill) · `waiting_trigger` (FR-OB-13 unresolved date anchor). **`overdue` KHÔNG phải status** — FE-derived urgency bucket. |
 | `remind_before_days` | INTEGER (default 30, 7) |
 | **`direction`** (DEC-030) | `nghĩa_vụ` / `quyền_lợi` / `NULL`. Derived per FR-OB-07 (legal_name auto-match). NULL → `needs_review=true`. |
 | **`obligor`** (DEC-030) | VARCHAR — bên chịu nghĩa vụ (party name từ `parties[]`). NULL hợp lệ khi AI không xác định (D-08). |
 | `source_doc_chain` | TEXT JSON array of doc_ids per chain (DEC-019/020/021). Derived obligations luôn set; payment rows từ `payment_schedule[]` KHÔNG set (idempotency key) |
 | `resolution_method` | VARCHAR — `"last_writer_wins"` (Backend PR #59) |
 | `needs_review` | BOOLEAN — flag cho user verify (D-02), vd `direction=NULL` |
+| **`fulfilled_at`** (DEC-048) | DATETIME NULLABLE — ngày SME thực sự hoàn thành. Dùng làm **anchor** cho cascade chain (G1 fix per DEC-048: NOT `date.today()`). Scheduler exclude từ overdue flip + reminder khi `IS NOT NULL` (FR-RM-07). |
+| **`fulfilled_by`** (DEC-048) | VARCHAR NULLABLE — actor name (SME user hoặc concierge) |
+| **`evidence_doc_ids`** (DEC-048) | TEXT JSON array of doc_ids — link tới documents với `is_evidence=true` (FR-IN-05) |
+| **`source_clause_num`** (Kevin Option B 0a, migration `tenant_017`) | VARCHAR NULLABLE — clause gốc sinh obligation (FR-OB-11). Set từ winning Term's `ref` field trong `derive_obligations()`. Enables clause-scoped re-derive. |
+| **`derived_from`** (PR #303) | VARCHAR NULLABLE — `"original"` (AI initial extraction) / `"user_edit"` (clause edit triggered re-derive) / `"ai_re_derived"` (POST /reread path). |
+| **`source`** (P1 merge rule) | VARCHAR — `ai_extracted` / `user_manual` / `ai_re_derived`. **`user_manual` obligations protected from re-derive delete** (FR-OB-12). |
 
 ### 5.4 `parties` — **schema update DEC-030**
 
@@ -410,10 +465,15 @@ Per-Document clause storage — text nguyên gốc (text-as-extracted), phục v
 | `content` | TEXT | NOT NULL — text nguyên gốc, đầy đủ |
 | `page_num` | INTEGER | NULLABLE — vị trí trong file gốc |
 | `created_at` | DATETIME | DEFAULT `CURRENT_TIMESTAMP` |
+| **`original_content`** (DEC-048 §13 addendum, migration `tenant_018`) | TEXT | NULLABLE — snapshot AI-extracted content lần edit đầu tiên. **Immutable sau first write** (D-07). NULL = chưa edit. |
+| **`edited_by_user`** (`tenant_018`) | VARCHAR | NULLABLE — JWT sub của user sửa lần gần nhất |
+| **`edited_at`** (`tenant_018`) | DATETIME | NULLABLE — timestamp edit gần nhất |
 
-**Index:** `idx_clauses_doc ON clauses(doc_id)`.
+**Indexes:** `idx_clauses_doc ON clauses(doc_id)`.
 
-**Migration:** `tenant_003_clauses.py` (`down_revision = "tenant_002"`).
+**Migration revisions:**
+- `tenant_003_clauses.py` (`down_revision = "tenant_002"`) — initial clauses table (DEC-026)
+- `tenant_018_clause_edit_fields.py` — adds `original_content` + `edited_by_user` + `edited_at` (PR #325)
 
 **Distinction vs `terms`:**
 - `terms` = EAV structured fields (CANONICAL_FIELDS vocab, date/numeric coercion).
@@ -492,6 +552,62 @@ ELSE:  # obligor NULL → AI không xác định
 **Auto-match fail behavior (Kevin cycle 4 q3 ratify):** `direction=NULL` + `needs_review=true`. User confirm via UI extraction review screen (D-02). NOT block extraction, NOT default to `nghĩa_vụ`.
 
 **Re-derivation:** when `tenant_profile.legal_name` changes, background task re-derive direction across all obligations. Open task — implementation deferred Sprint 2.
+
+### 6.5 Cascade chain anchor (DEC-048 — G1 fix, Backend PR #313/#319)
+
+`propagate_obligation_done(parent_obligation)` invoked when parent flips to `done`:
+
+```
+For each child in chain_dependents(parent):
+   delay_days = child.trigger_delay_days  # vd 30 ngày
+   anchor    = parent.fulfilled_at        # G1 fix: NOT date.today()
+   child.due_date = anchor + delay_days
+   IF child.due_date < today:
+      child.status = "awaiting_confirmation"  # D-02 SME confirm
+   ELSE:
+      child.status = "pending"
+   Log Event("cascade_triggered", payload={parent_id, child_id, anchor, delay_days})
+```
+
+**G1 rationale:** if anchor were `date.today()`, replaying a historical parent fulfillment would generate due dates relative to NOW instead of the actual fulfillment date — breaks audit reconstruction.
+
+**Reminder integration (FR-RM-07):** `_flip_overdue_status()` + `compute_due_window()` exclude `awaiting_confirmation` + `fulfilled_at IS NOT NULL` via `status == "pending"` filter — no code change needed, just documented invariant.
+
+### 6.6 Date-anchored obligation resolver (FR-OB-13, Backend PR #322)
+
+Obligations with text trigger ("30 ngày từ ngày ký", "60 ngày sau ngày hiệu lực") that lack `due_date` at extraction time persist as `status="waiting_trigger"`, then resolved when anchor Term exists.
+
+```
+resolve_date_anchored_obligations(tenant_session):
+   For each obligation with status="waiting_trigger":
+      anchor_field = _detect_anchor_field(obligation.trigger_condition)
+      # Currently maps: "ngày ký" → "ngay_ky", "ngày hiệu lực" → "ngay_hieu_luc"
+      IF anchor_field is None:
+         continue  # D-08: don't guess
+      anchor_term = find_term(tenant, doc_id=obligation.document_id, field_name=anchor_field)
+      IF anchor_term and anchor_term.field_value parses to date:
+         obligation.due_date = parse(anchor_term.field_value) + obligation.trigger_delay_days
+         obligation.status = "pending"
+         Log Event("obligation_date_resolved", payload={anchor_field, anchor_value, computed_due})
+```
+
+**Conservative scope:** only `ngay_ky` + `ngay_hieu_luc` anchors mapped MVP. Event-triggered anchors (`ngay_ban_giao`, `ngay_nghiem_thu`) handled by FR-OB-10 cascade chain qua `fulfilled_at`.
+
+### 6.7 P1 source-aware merge + derive delete path-2 guard (Backend PR #311)
+
+Khi re-derive (clause edit / re-read / re-extraction):
+
+```
+# Cleanup phase (DELETE existing derived obligations before re-create)
+DELETE FROM obligations
+WHERE document_id = ? AND source_clause_num = ?
+  AND source != "user_manual"
+  AND fulfilled_at IS NULL        # ← path-2 guard, PR #311 V1 fix
+```
+
+**Rationale:** user_manual obligations represent SME's explicit intent → never overwrite. `fulfilled_at IS NOT NULL` means SME has captured fulfillment with evidence → audit-immutable.
+
+**Re-create phase** sets new obligations with `derived_from = "user_edit"` (re-derive endpoint) hoặc `"ai_re_derived"` (re-read endpoint). `source_clause_num` propagated từ winning Term `ref`.
 
 ---
 
@@ -605,6 +721,13 @@ Events in per-tenant `events` ledger. Append-only.
 | `reminder_batch` | `tenant` | `"system"` | Daily 08:00 ICT sweep | `{total_sent, total_failed, scheduler_run_id}` |
 | `obligation_overdue` | `obligation` | `"system"` | Status flip when `due_date < today` | `{previous_status}` |
 | `chat_query_logged` (DEC-028) | `tenant` | User | Every `/chat/query` | **PII-safe (FR-CQ-05):** `{tool_name, field_name_canonical, arg_keys_present, found, source_count}`. **NEVER** raw `question` or filter values. **🔴 COMPLIANCE DEBT:** assume-consent bypass; must add explicit consent gate before prod (KHE_Compliance #119). |
+| `obligation_fulfilled` (DEC-048) | `obligation` | User | PATCH `/obligations/{id}` with fulfillment fields | `{previous_status, fulfilled_at, fulfilled_by, evidence_doc_ids, purpose: "obligation_fulfillment"}` — purpose enum closed-set (KHE_Compliance §A.1). No consent gate (storage-only, no LLM transit). |
+| `obligation_fulfillment_reverted` (DEC-048) | `obligation` | User | PATCH `done` → `pending` / `cancelled` | `{previous_fulfilled_at, previous_fulfilled_by, evidence_doc_ids_cleared}` — child cascade rolled back conservatively. |
+| `cascade_triggered` (DEC-048) | `obligation` | `"system"` | `propagate_obligation_done()` activates child | `{parent_obligation_id, child_obligation_id, anchor (= parent.fulfilled_at), delay_days, child_due_computed, child_status (pending or awaiting_confirmation)}` |
+| `clause_edited` (DEC-048 §13) | `clause` | User | PATCH `/documents/{id}/clauses/{clause_id}` | **PII-safe (D-12):** `{clause_id, clause_num, original_content_length, edited_content_length, is_first_edit, edited_by_user}` — **NEVER** raw content text. |
+| `re_read_triggered` (DEC-048 §13) | `document` | User | POST `/documents/{id}/reread` | `{clause_ids_scope, diffs_count_by_action: {add, update, remove}, cost_vnd}` |
+| `obligation_date_resolved` (FR-OB-13) | `obligation` | `"system"` | Background resolver maps trigger phrase → Term anchor | `{anchor_field, anchor_value, trigger_delay_days, computed_due_date}` |
+| `evidence_attached` (KHE_Compliance §G) | `document` | User | Upload với `is_evidence=true` | `{document_id, contains_personal_data, purpose: "obligation_fulfillment"}` — no consent gate per §A.1; metadata-only firm visibility per DEC-039 §G.2. |
 | `updated` | `term` | User | PATCH term (D-07) | `{old, new}` — **PII flag:** carries extracted contract values, intended NĐ 13 audit trail per PR #54 ack |
 
 **Compliance pipeline:** `consent_granted` (logged) → `extraction_performed` (with back-link via `consent_reference`) → `updated` (term edits with old/new PII). End-to-end traceability who-changed-what.
@@ -622,5 +745,7 @@ Events in per-tenant `events` ledger. Append-only.
 | O-5 | `regen_openapi.py` run khi `docs/openapi.json` ready | KHE_Backend |
 
 ---
+
+*Hết v0.5 — cycle 5 DEC-048 EPIC #300 production fold (fulfillment + cascade chain + clause edit/re-read + provenance + evidence + date-anchored resolver). Bước kế tiếp: Document.provider column ratify (clause-gap), open_ended recurrence handling, NĐ 13 chat consent close pre-prod, KHE_AI LLM re-extraction path cho POST /reread v2.*
 
 *Hết v0.4 — cycle 4 mega-fold (DEC-027/028/029/030 + Sprint 1 staging-complete). Bước kế tiếp: re-extraction script post-promote, `Document.provider` column ratify (clause-gap), open_ended_review recurrence handling Sprint 2, NĐ 13 chat learning consent close pre-prod.*
