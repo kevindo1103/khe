@@ -6,17 +6,29 @@ doing OCR+understanding simultaneously. Hybrid separates the two:
   Pass 2: LLM (structured extraction from TEXT, not images)
 
 Usage (on VPS, with venv activated + .env sourced):
-    # Phase 1: Gemini as OCR — does it see more in raw-text mode?
+    # Gemini as OCR (raw text, no structured output)
     python3 scripts/benchmark_hybrid.py --doc-id 22 --tenant uat-demo --mode gemini-ocr
 
-    # Phase 2: Full hybrid — OCR text → structured extraction
+    # Cloud Vision OCR (dedicated OCR engine, ~$1.50/1000 pages)
+    python3 scripts/benchmark_hybrid.py --doc-id 22 --tenant uat-demo --mode cloud-ocr
+
+    # Hybrid: Gemini OCR text -> Gemini structured extraction
     python3 scripts/benchmark_hybrid.py --doc-id 22 --tenant uat-demo --mode hybrid
 
-    # Phase 3: Vision-only baseline (same as benchmark_provider.py)
+    # Hybrid: Cloud Vision OCR -> Gemini structured extraction
+    python3 scripts/benchmark_hybrid.py --doc-id 22 --tenant uat-demo --mode cloud-hybrid
+
+    # Vision-only baseline (current production)
     python3 scripts/benchmark_hybrid.py --doc-id 22 --tenant uat-demo --mode vision
+
+Env vars:
+    GEMINI_API_KEY          — required for gemini-ocr, hybrid, cloud-hybrid, vision
+    CLOUD_VISION_API_KEY    — required for cloud-ocr, cloud-hybrid
+                              (GCP API key with Cloud Vision API enabled)
 """
 import argparse
 import asyncio
+import base64
 import json
 import os
 import re
@@ -30,8 +42,15 @@ from app.db.database import get_tenant_session
 from app.models.tenant import Document
 
 
+def _count_dieu(text: str) -> tuple[list[str], int]:
+    """Find unique Điều N references in text."""
+    matches = re.findall(r"(?:ĐIỀU|Điều|điều)\s+\d+", text)
+    unique = sorted(set(matches), key=lambda x: int(re.search(r"\d+", x).group()))
+    return unique, len(unique)
+
+
 async def gemini_ocr(file_bytes: bytes, mime: str) -> dict:
-    """Pass 1: Ask Gemini to extract ALL text from document — no structured output."""
+    """Pass 1a: Ask Gemini to extract ALL text from document — no structured output."""
     from google import genai
     from google.genai import types
 
@@ -54,9 +73,7 @@ async def gemini_ocr(file_bytes: bytes, mime: str) -> dict:
     elapsed = time.time() - t0
     meta = resp.usage_metadata
     text = resp.text or ""
-
-    dieu_matches = re.findall(r"(?:ĐIỀU|Điều|điều)\s+\d+", text, re.IGNORECASE)
-    dieu_unique = sorted(set(dieu_matches), key=lambda x: int(re.search(r"\d+", x).group()))
+    dieu_unique, dieu_count = _count_dieu(text)
 
     return {
         "text": text,
@@ -64,8 +81,108 @@ async def gemini_ocr(file_bytes: bytes, mime: str) -> dict:
         "output_tokens": meta.candidates_token_count,
         "latency_s": elapsed,
         "dieu_found": dieu_unique,
-        "dieu_count": len(dieu_unique),
+        "dieu_count": dieu_count,
         "text_length": len(text),
+    }
+
+
+async def cloud_vision_ocr(file_bytes: bytes, mime: str) -> dict | None:
+    """Pass 1b: Google Cloud Vision API OCR — dedicated engine, ~$1.50/1000 pages."""
+    try:
+        import httpx
+    except ImportError:
+        print("ERROR: httpx not installed. Run: pip install httpx")
+        return None
+
+    api_key = os.environ.get("CLOUD_VISION_API_KEY")
+    if not api_key:
+        print("ERROR: Set CLOUD_VISION_API_KEY env var")
+        print("  1. Enable Cloud Vision API on your GCP project")
+        print("  2. Create API key: https://console.cloud.google.com/apis/credentials")
+        print("  3. export CLOUD_VISION_API_KEY=your_key")
+        return None
+
+    b64 = base64.b64encode(file_bytes).decode()
+    t0 = time.time()
+    all_pages_text = []
+    total_pages = 0
+
+    if mime == "application/pdf":
+        url = f"https://vision.googleapis.com/v1/files:annotate?key={api_key}"
+        batch = 0
+        while True:
+            pages = list(range(batch * 5 + 1, batch * 5 + 6))
+            payload = {
+                "requests": [{
+                    "inputConfig": {"content": b64, "mimeType": mime},
+                    "features": [{"type": "DOCUMENT_TEXT_DETECTION"}],
+                    "pages": pages,
+                }]
+            }
+            async with httpx.AsyncClient(timeout=180) as http:
+                resp = await http.post(url, json=payload)
+            if resp.status_code != 200:
+                print(f"Cloud Vision API error {resp.status_code}: {resp.text[:500]}")
+                return None
+
+            data = resp.json()
+            file_resps = data.get("responses", [])
+            if not file_resps:
+                break
+
+            fr = file_resps[0]
+            if "error" in fr:
+                print(f"Cloud Vision error: {fr['error']}")
+                return None
+
+            total_pages = fr.get("totalPages", total_pages)
+            page_resps = fr.get("responses", [])
+
+            for i, pr in enumerate(page_resps):
+                fta = pr.get("fullTextAnnotation", {})
+                text = fta.get("text", "")
+                page_n = batch * 5 + i + 1
+                all_pages_text.append(f"[Trang {page_n}]\n{text}")
+
+            if (batch + 1) * 5 >= total_pages:
+                break
+            batch += 1
+    else:
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+        payload = {
+            "requests": [{
+                "image": {"content": b64},
+                "features": [{"type": "DOCUMENT_TEXT_DETECTION"}],
+            }]
+        }
+        async with httpx.AsyncClient(timeout=120) as http:
+            resp = await http.post(url, json=payload)
+        if resp.status_code != 200:
+            print(f"Cloud Vision API error {resp.status_code}: {resp.text[:500]}")
+            return None
+        data = resp.json()
+        resps = data.get("responses", [{}])
+        if resps:
+            fta = resps[0].get("fullTextAnnotation", {})
+            text = fta.get("text", "")
+            all_pages_text.append(text)
+            total_pages = 1
+
+    elapsed = time.time() - t0
+    full_text = "\n\n".join(all_pages_text)
+    cost_usd = total_pages * 1.50 / 1000
+    cost_vnd = cost_usd * 25_400
+    dieu_unique, dieu_count = _count_dieu(full_text)
+
+    return {
+        "text": full_text,
+        "pages": total_pages,
+        "latency_s": elapsed,
+        "text_length": len(full_text),
+        "dieu_found": dieu_unique,
+        "dieu_count": dieu_count,
+        "cost_usd": cost_usd,
+        "cost_vnd": cost_vnd,
     }
 
 
@@ -123,7 +240,6 @@ async def hybrid_extract(ocr_text: str) -> dict:
 async def vision_extract(file_bytes: bytes, mime: str) -> dict:
     """Baseline: current vision-only approach (same as production)."""
     from modules.extraction.factory import get_extraction_provider
-    from modules.extraction.providers.base import cost_vnd
 
     provider = get_extraction_provider(prefer="gemini_flash")
     t0 = time.time()
@@ -149,6 +265,32 @@ def _cost_vnd(input_tokens, output_tokens, in_rate=0.30, out_rate=2.50):
     return usd * 25_400
 
 
+def _print_extraction(ext: dict):
+    """Print structured extraction results."""
+    print(f"\nClauses:")
+    for num, title in ext["clauses"]:
+        print(f"  {num}: {title}")
+    print(f"\nParties:")
+    for name, role in ext["parties"]:
+        print(f"  {name} ({role})")
+    print(f"\nObligations:")
+    for otype, desc, due in ext["obligations"]:
+        print(f"  [{otype}] {desc} — due: {due}")
+
+
+def _print_ocr_result(label: str, ocr: dict, cost_vnd: float):
+    """Print OCR-only results."""
+    print(f"OCR:          {label}")
+    print(f"Latency:      {ocr['latency_s']:.1f}s")
+    if "pages" in ocr:
+        print(f"Pages:        {ocr['pages']}")
+    if "input_tokens" in ocr:
+        print(f"Tokens:       in={ocr['input_tokens']:,}  out={ocr['output_tokens']:,}")
+    print(f"Cost:         {cost_vnd:,.1f}đ")
+    print(f"Text length:  {ocr['text_length']:,} chars")
+    print(f"Điều found:   {ocr['dieu_count']} — {ocr['dieu_found']}")
+
+
 async def run(doc_id: int, tenant_id: str, mode: str):
     db = get_tenant_session(tenant_id)
     try:
@@ -163,25 +305,31 @@ async def run(doc_id: int, tenant_id: str, mode: str):
         db.close()
 
     if mode == "gemini-ocr":
-        print("\n=== PHASE 1: Gemini OCR (raw text extraction) ===")
+        print("\n=== Gemini OCR (raw text extraction) ===")
         r = await gemini_ocr(file_bytes, mime)
         cost = _cost_vnd(r["input_tokens"], r["output_tokens"])
-        print(f"Latency:      {r['latency_s']:.1f}s")
-        print(f"Tokens:       in={r['input_tokens']:,}  out={r['output_tokens']:,}")
-        print(f"Cost:         {cost:,.0f}đ")
-        print(f"Text length:  {r['text_length']:,} chars")
-        print(f"Điều found:   {r['dieu_count']} — {r['dieu_found']}")
+        _print_ocr_result("Gemini Flash", r, cost)
+        print(f"\n--- First 2000 chars ---")
+        print(r["text"][:2000])
+
+    elif mode == "cloud-ocr":
+        print("\n=== Cloud Vision OCR ===")
+        r = await cloud_vision_ocr(file_bytes, mime)
+        if not r:
+            return
+        _print_ocr_result("Cloud Vision", r, r["cost_vnd"])
+        print(f"Cost (USD):   ${r['cost_usd']:.4f}")
         print(f"\n--- First 2000 chars ---")
         print(r["text"][:2000])
 
     elif mode == "hybrid":
-        print("\n=== PHASE 1: Gemini OCR ===")
+        print("\n=== HYBRID: Gemini OCR → Gemini structured ===")
+        print("\n--- Pass 1: Gemini OCR ---")
         ocr = await gemini_ocr(file_bytes, mime)
         ocr_cost = _cost_vnd(ocr["input_tokens"], ocr["output_tokens"])
-        print(f"OCR: {ocr['latency_s']:.1f}s, {ocr['input_tokens']:,}+{ocr['output_tokens']:,} tokens, {ocr_cost:,.0f}đ")
-        print(f"Điều found in OCR: {ocr['dieu_count']} — {ocr['dieu_found']}")
+        _print_ocr_result("Gemini Flash", ocr, ocr_cost)
 
-        print(f"\n=== PHASE 2: Structured extraction from OCR text ===")
+        print(f"\n--- Pass 2: Structured extraction from text ---")
         ext = await hybrid_extract(ocr["text"])
         ext_cost = _cost_vnd(ext["input_tokens"], ext["output_tokens"])
         total_cost = ocr_cost + ext_cost
@@ -194,16 +342,30 @@ async def run(doc_id: int, tenant_id: str, mode: str):
         print(f"\n{'='*60}")
         print(f"TOTAL COST:   {total_cost:,.0f}đ (OCR {ocr_cost:,.0f} + LLM {ext_cost:,.0f})")
         print(f"TOTAL LATENCY: {ocr['latency_s'] + ext['latency_s']:.1f}s")
+        _print_extraction(ext)
 
-        print(f"\nClauses:")
-        for num, title in ext["clauses"]:
-            print(f"  {num}: {title}")
-        print(f"\nParties:")
-        for name, role in ext["parties"]:
-            print(f"  {name} ({role})")
-        print(f"\nObligations:")
-        for otype, desc, due in ext["obligations"]:
-            print(f"  [{otype}] {desc} — due: {due}")
+    elif mode == "cloud-hybrid":
+        print("\n=== HYBRID: Cloud Vision OCR → Gemini structured ===")
+        print("\n--- Pass 1: Cloud Vision OCR ---")
+        ocr = await cloud_vision_ocr(file_bytes, mime)
+        if not ocr:
+            return
+        _print_ocr_result("Cloud Vision", ocr, ocr["cost_vnd"])
+
+        print(f"\n--- Pass 2: Structured extraction from text ---")
+        ext = await hybrid_extract(ocr["text"])
+        ext_cost = _cost_vnd(ext["input_tokens"], ext["output_tokens"])
+        total_cost = ocr["cost_vnd"] + ext_cost
+        print(f"LLM: {ext['latency_s']:.1f}s, {ext['input_tokens']:,}+{ext['output_tokens']:,} tokens, {ext_cost:,.0f}đ")
+        print(f"Parsed OK:    {ext['parsed_ok']}")
+        print(f"Clauses:      {ext['clauses_count']}")
+        print(f"Parties:      {ext['parties_count']}")
+        print(f"Obligations:  {ext['obligations_count']}")
+
+        print(f"\n{'='*60}")
+        print(f"TOTAL COST:   {total_cost:,.1f}đ (OCR {ocr['cost_vnd']:.1f} + LLM {ext_cost:,.0f})")
+        print(f"TOTAL LATENCY: {ocr['latency_s'] + ext['latency_s']:.1f}s")
+        _print_extraction(ext)
 
     elif mode == "vision":
         print("\n=== BASELINE: Vision-only (current production) ===")
@@ -214,24 +376,18 @@ async def run(doc_id: int, tenant_id: str, mode: str):
         print(f"Clauses:      {r['clauses_count']}")
         print(f"Parties:      {r['parties_count']}")
         print(f"Obligations:  {r['obligations_count']}")
-        print(f"\nClauses:")
-        for num, title in r["clauses"]:
-            print(f"  {num}: {title}")
-        print(f"\nParties:")
-        for name, role in r["parties"]:
-            print(f"  {name} ({role})")
-        print(f"\nObligations:")
-        for otype, desc, due in r["obligations"]:
-            print(f"  [{otype}] {desc} — due: {due}")
+        _print_extraction(r)
 
     else:
-        print(f"Unknown mode: {mode}. Use: gemini-ocr, hybrid, vision")
+        print(f"Unknown mode: {mode}")
+        print("Available: gemini-ocr, cloud-ocr, hybrid, cloud-hybrid, vision")
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(description="Hybrid OCR+LLM extraction benchmark")
     p.add_argument("--doc-id", type=int, required=True)
     p.add_argument("--tenant", default="uat-demo")
-    p.add_argument("--mode", required=True, choices=["gemini-ocr", "hybrid", "vision"])
+    p.add_argument("--mode", required=True,
+                   choices=["gemini-ocr", "cloud-ocr", "hybrid", "cloud-hybrid", "vision"])
     a = p.parse_args()
     asyncio.run(run(a.doc_id, a.tenant, a.mode))
