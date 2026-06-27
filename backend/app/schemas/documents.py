@@ -124,6 +124,25 @@ class BulkUploadOut(BaseModel):
     documents: list[UploadOut]
 
 
+# ── Clause list (#284) ──
+
+
+class ClauseOut(BaseModel):
+    clause_num: str | None = None
+    title: str | None = None
+    content: str
+    page_num: int | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClauseListOut(BaseModel):
+    document_id: int
+    clause_count: int
+    page_min: int | None = None
+    page_max: int | None = None
+    clauses: list[ClauseOut]
+
+
 # ── Clause-scoped re-derive (#303, DEC-048 §13) ──
 
 
