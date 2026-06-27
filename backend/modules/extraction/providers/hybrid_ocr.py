@@ -73,14 +73,23 @@ class HybridOCRProvider:
         started = time.perf_counter()
 
         is_pdf = image_bytes[:4] == b"%PDF"
-        scanned = is_pdf and is_scanned_pdf(image_bytes)
+        if not is_pdf:
+            latency_ms = (time.perf_counter() - started) * 1000
+            return empty_result(
+                provider=self.name,
+                model=self.model,
+                latency_ms=latency_ms,
+                warning="hybrid_ocr is PDF-only — use gemini_flash for image inputs.",
+            )
+
+        scanned = is_scanned_pdf(image_bytes)
 
         ocr_text: str | None = None
         ocr_cost_vnd = 0.0
         ocr_page_count = 0
         ocr_warnings: list[str] = []
 
-        if is_pdf and not scanned:
+        if not scanned:
             ocr_text = extract_embedded_text(image_bytes)
             if not ocr_text:
                 scanned = True

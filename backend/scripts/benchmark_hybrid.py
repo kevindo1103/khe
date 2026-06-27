@@ -284,10 +284,10 @@ async def hybrid_extract(ocr_text: str) -> dict:
     from google import genai
     from google.genai import types
     from modules.extraction.schemas import ContractExtractionLLMFull
-    from modules.extraction.prompts import SYSTEM_GUARDRAIL, build_instruction
+    from modules.extraction.prompts import SYSTEM_GUARDRAIL, build_text_instruction
 
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    instruction = build_instruction("auto")
+    instruction = build_text_instruction("auto")
     user_prompt = (
         f"Dưới đây là toàn bộ văn bản đã OCR từ tài liệu hợp đồng.\n"
         f"Đọc kỹ và bóc tách thông tin theo schema JSON yêu cầu.\n\n"

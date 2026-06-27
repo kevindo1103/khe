@@ -62,6 +62,10 @@ def _extract_text_pdftotext(file_bytes: bytes) -> tuple[str, int]:
             ["pdftotext", "-layout", tmp.name, "-"],
             capture_output=True, text=True, timeout=30,
         )
+        if result.returncode != 0:
+            raise subprocess.SubprocessError(
+                f"pdftotext exited with code {result.returncode}"
+            )
         text = result.stdout
 
         info = subprocess.run(
