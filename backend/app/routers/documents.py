@@ -36,6 +36,8 @@ from app.models.master import Tenant, TenantProfile, TenantUser
 from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
+    ClauseListOut,
+    ClauseOut,
     ConfirmDocumentOut,
     ReDeriveClauseIn,
     ReDeriveClauseOut,
@@ -612,6 +614,42 @@ def get_document(
 
 
 # ── File download (documents) ──
+
+@docs_router.get("/{doc_id}/clauses", response_model=ClauseListOut)
+def get_document_clauses(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return full clause array for a document (#284).
+
+    Empty result (clause_count=0) is valid — Claude-fallback docs have no clauses.
+    Ordered by page_num ASC NULLS LAST, then id ASC (extraction order).
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    clauses = (
+        db.query(Clause)
+        .filter(Clause.document_id == doc_id, Clause.tenant_id == user.tenant_id)
+        .order_by(Clause.page_num.asc().nulls_last(), Clause.id.asc())
+        .all()
+    )
+
+    page_nums = [c.page_num for c in clauses if c.page_num is not None]
+    return ClauseListOut(
+        document_id=doc_id,
+        clause_count=len(clauses),
+        page_min=min(page_nums) if page_nums else None,
+        page_max=max(page_nums) if page_nums else None,
+        clauses=[ClauseOut.model_validate(c) for c in clauses],
+    )
+
 
 @docs_router.get("/{doc_id}/file")
 def download_file(
