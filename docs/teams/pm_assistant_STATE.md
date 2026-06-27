@@ -1,7 +1,8 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-27 | v4.1*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-27 | v4.2*
 
+> **2026-06-27 (d):** PR #341 merged staging — **DEC-049 phase 1** (scan-detect + HybridOCRProvider + embedded-text + factory). Gates filed: **#344** (AI G1-G5 validation + free-tier verify) · **#343** (Infra G7 poppler-utils deploy) · **#342 🔴 INC-01 URGENT** (rotate GCP DocAI key lộ trong chat). **G6 default-vs-opt-in routing = PENDING Kevin.** DEC-002 final revision + DEC-011 GM re-model chờ #344 đóng.
 > **2026-06-27 (c):** ✅ **#340 → DocAI hybrid direction RATIFIED (Kevin) = DEC-049.** Benchmark doc 22: DocAI OCR+LLM đọc **15/15 Điều** (vs vision 8/15), 16 obligation, 2 party tách đúng, 966đ/10p (585đ pilot). Routing: scan→DocAI hybrid · digital→embedded-text+LLM · vision fallback. **Build authorized song song validation.** DEC-002 = revision-pending tới khi đóng 5 gate (>15p batch · multi-doc · 14-vs-15 reconcile · G2 dedup · p90). ⚠️ Cost ĐI LÊN (đắt hơn vision, đúng hơn) → DEC-011 GM re-model; "free tier cover pilot" cần verify (1,000 trang/tháng TỔNG, backfill 20 SME vượt ngay). Decision posted #340.
 > **2026-06-27 (b):** 🔴 **#340 pilot benchmark lật DEC-002.** Gemini Vision miss ~50% clause trên **scan** (8/15 điều doc 22, verified isolation test — KHÔNG phải truncation, là vision quality trên scan) + cost thật **500-2,500đ/doc (~350đ/trang)** vs giả định 59-177đ. **Decision (Kevin 2026-06-27):** AI prototype **hybrid OCR+LLM** → lấy data so sánh → ratify DEC-002 revision sau (KHÔNG ratify mù). Giữ Protocol, add `HybridOCRProvider`, route theo scan-detection. **Pre-pilot blocker:** hold concierge onboard tài liệu scan tới khi hybrid verified; lấy sample doc Trần Thái (#336) đo scan-ratio trước; doc native vẫn onboard được. ⚠️ **Economics exposure:** real cost ám chỉ DEC-011 GM (82.3% @ 177đ) có thể ~0%/âm → cost-per-doc giờ là **pricing-model gate**. DOCS_INBOX fold HOÃN tới ratify (tránh clobber canonical bằng số chưa verify). PM rubric posted #340.
 > **2026-06-27 (a):** EPIC #300 → production (PR #335, sha `ce48bbd`). Tenant pilot `tran-thai-cam-ranh` tạo (#336).
@@ -125,7 +126,10 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 | Team | Issue | What | Gates |
 |---|---|---|---|
 | **KHE_AI** | ~~#230~~ ✅ | page_num/ref/bbox anchors — DONE (PR #232, staging green) | — |
-| **KHE_AI + Backend** 🔴 | **#340** | **Hybrid extraction (DEC-049 direction ratified)** — benchmark doc 22: DocAI OCR+LLM 15/15 Điều vs vision 8/15. **Build authorized** (scan-detect · DocAI provider · embedded-text path · batch >15p) song song 5 validation gates. DEC-002 revision + DEC-011 re-model pending validation. Free-tier scope cần verify. | **🔴 Build in progress — gates #336 scan-doc onboard** |
+| **KHE_AI + Backend** 🔴 | **#340** | **Hybrid extraction (DEC-049)** — benchmark doc 22: DocAI 15/15 Điều vs vision 8/15. **PR #341 merged staging** (phase 1: scan-detect + HybridOCRProvider + embedded-text + factory). DEC-002 revision + DEC-011 re-model pending #344. **G6 routing default-vs-opt-in = pending Kevin.** | **Phase 1 merged — validation + G6 pending** |
+| **KHE_AI** | **#344** | DEC-049 validation gates G1-G5 (batch >15p · multi-doc · 14-vs-15 reconcile · embedded-text benchmark · p90) + free-tier scope verify | **Gates DEC-002 final ratify** |
+| **KHE_Infra** | **#343** | G7 poppler-utils trong deploy bootstrap (pdftotext dep — DEC-049) | **Gates DEC-049 prod** |
+| **KHE_Infra** 🔴 | **#342** | **INC-01 URGENT** — rotate GCP DocAI service account key (lộ trong chat) | **🔴 Urgent — before further DocAI runs** |
 | **Backend** | **#336** | Tạo SME tenant prod `tran-thai-cam-ranh` (Công ty CP Trần Thái Cam Ranh). Password qua channel riêng. **⚠️ onboard full bộ gated trên scan-ratio (#340).** | **Pilot setup** |
 | **Frontend** | #238 | 4 items: confirm button, Home CTA chip, `journey_advanced` refetch, DocList badge | Nav-lock live end-to-end |
 | **Frontend** | #238 | MANDATORY: ReminderNudge + "X/Y bước" chip for CONFIRMED-without-channel | DEC-040 mitigation |
@@ -447,7 +451,9 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 
 ## INC Log / FM Log
 
-*No incidents or failure modes yet.*
+| ID | Date | Incident | Root cause | Fix | Status |
+|---|---|---|---|---|---|
+| **INC-01** | 2026-06-27 | GCP Document AI service account key exposed in chat (DEC-049 prototyping, #340) | Credential pasted in session chat during DocAI setup | Rotate key + re-inject via deploy secret only (#342). Audit repo/issue exposure. | 🔴 OPEN — urgent, Infra+Kevin |
 
 ---
 
