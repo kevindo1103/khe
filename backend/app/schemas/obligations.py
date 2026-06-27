@@ -82,3 +82,12 @@ class ObligationPatchOut(BaseModel):
     ok: bool
     obligation: ObligationOut
     activated_count: int = 0
+
+
+class MarkCompleteIn(BaseModel):
+    fulfilled_by: str | None = None   # free-text actor note; defaults to authenticated username
+
+
+class MarkCompleteOut(BaseModel):
+    ok: bool = True
+    obligation: ObligationOut

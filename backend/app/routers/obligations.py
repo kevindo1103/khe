@@ -17,6 +17,8 @@ from app.models.master import TenantUser
 from app.models.tenant import Document, Event, Obligation, OBLIGATION_STATUSES
 from app.services.obligation_chain import propagate_obligation_done
 from app.schemas.obligations import (
+    MarkCompleteIn,
+    MarkCompleteOut,
     ObligationListOut,
     ObligationOut,
     ObligationPatchIn,
@@ -270,3 +272,67 @@ def snooze_obligation(
 
     db.commit()
     return SnoozeOut(ok=True, snoozed_until=snoozed_until)
+
+
+@router.post("/{obligation_id}/mark-complete", response_model=MarkCompleteOut)
+def mark_obligation_complete(
+    obligation_id: int,
+    payload: MarkCompleteIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark an obligation as done from a detail-page CTA (#281, D-02 user confirm).
+
+    Convenience endpoint for "Đánh dấu đã trả" / "Đánh dấu đã bàn giao" CTAs —
+    sets status="done" and fulfilled_at=utcnow() without requiring the caller to
+    supply a timestamp (unlike PATCH which requires fulfilled_at for audit reasons).
+
+    Guards:
+    - status in ("done", "cancelled") → 409 Conflict (already terminal)
+    - status == "waiting_trigger" → 400 Bad Request (trigger event first)
+    - status in ("pending", "awaiting_confirmation", "in_progress", "partial") → allowed
+    """
+    ob = (
+        db.query(Obligation)
+        .filter(Obligation.id == obligation_id, Obligation.tenant_id == user.tenant_id)
+        .first()
+    )
+    if ob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obligation not found")
+
+    if ob.status in ("done", "cancelled"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Obligation already in terminal status: {ob.status!r}",
+        )
+    if ob.status == "waiting_trigger":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot mark complete: obligation is waiting for a trigger event. "
+                   "Use POST /obligations/{id}/trigger-event first.",
+        )
+
+    old_status = ob.status
+    ob.status = "done"
+    ob.fulfilled_at = datetime.utcnow()
+    ob.fulfilled_by = payload.fulfilled_by or user.username
+    if not ob.source:
+        ob.source = "user_manual"
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="obligation_fulfilled",
+        entity_type="obligation",
+        entity_id=ob.id,
+        actor=user.username,
+        payload={
+            "obligation_id": ob.id,
+            "previous_status": old_status,
+            "fulfilled_by": ob.fulfilled_by,
+        },
+    )
+
+    db.commit()
+    db.refresh(ob)
+    return MarkCompleteOut(obligation=ObligationOut.model_validate(ob))
