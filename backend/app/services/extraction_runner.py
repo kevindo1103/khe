@@ -315,6 +315,8 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 trigger_condition=item.trigger_condition,
                 trigger_delay_days=item.trigger_delay_days,
                 amount_raw=item.amount_raw,
+                source_clause_num=item.source_clause_num,
+                derived_from=item.derived_from,
             ))
             created_items.append({"description": item.description, "obligation_type": obl_type, "due_date": due_date, "trigger": trigger})
         if created_items:
