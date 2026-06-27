@@ -1482,6 +1482,7 @@ async def reread_document(
     ))
     db.commit()
 
+
     return ReReadOut(
         document_id=doc_id,
         clauses_checked=len(clauses),
