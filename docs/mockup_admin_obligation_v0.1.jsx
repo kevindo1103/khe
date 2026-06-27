@@ -1,4 +1,7 @@
 /**
+ * ⚠️ SUPERSEDED by mockup_admin_obligation_v0.2.jsx (DEC-030 revamp — direction
+ *    tabs + series groups + waiting_trigger/open-ended buckets). Kept for history.
+ *
  * Khế — Admin · Obligations  (mockup_admin_obligation_v0.1.jsx)
  * KHE_Designer · Phase 2 · issue #24
  * STATIC PROTOTYPE — scope docs/mockup_*.jsx. Imports Design System v0.1.
@@ -10,7 +13,7 @@
  *   - deterministic "what's due in [range]" — NOT an AI guess (FR-OB-03)
  */
 import React, { useState } from "react";
-import { tokens as t, Button, Card, Badge, Toast, EmptyState } from "./mockup_design_system_v0.1.jsx";
+import { tokens as t, Button, Card, Badge, Toast, EmptyState } from "./mockup_design_system_v0.2.jsx";
 
 const SEED = [
   { id: 1, mo_ta: "Gia hạn/chấm dứt HĐ thuê Q7 (báo trước 60 ngày)", doc: "HĐ thuê mặt bằng Q7", han: "01/08/2026", loai: "một lần", bucket: "overdue", status: "pending" },

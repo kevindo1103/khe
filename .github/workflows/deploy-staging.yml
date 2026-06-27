@@ -78,11 +78,10 @@ jobs:
             ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend-staging/"
 
           # Write secrets to .env on VPS via stdin pipe (values masked by GH Actions in logs)
-          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\nENVIRONMENT=%s\n' \
+          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\n' \
             "$GEMINI_API_KEY" "$CLAUDE_API_KEY" "$JWT_SECRET" "$TELEGRAM_BOT_TOKEN" \
             "https://staging.khe.iceflow.cloud" \
             "/opt/khe/data-staging" \
-            "staging" \
             | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
               "cat > /opt/khe/backend-staging/.env && chmod 600 /opt/khe/backend-staging/.env"
 
@@ -148,3 +147,34 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
             "sudo systemctl reload nginx && echo '✅ nginx reloaded (staging)'"
+
+      # ── PWA deploy ───────────────────────────────────────────────────
+      - name: Build & deploy PWA to staging
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ ! -d "frontend/pwa" ]; then
+            echo "⚠️  frontend/pwa/ not found — skipping"
+            exit 0
+          fi
+          if [ -z "$VPS_HOST" ]; then
+            echo "⚠️  VPS_HOST secret not set — skipping"
+            exit 0
+          fi
+
+          cd frontend/pwa
+          npm ci --quiet
+          VITE_API_BASE_URL=https://staging.khe.iceflow.cloud/api npm run build
+
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./dist/ "$VPS_USER@$VPS_HOST:/opt/khe/pwa-staging/"
+
+          echo "✅ PWA deployed to /opt/khe/pwa-staging/ — nginx routing update pending Frontend_Admin base path fix (#86)"
