@@ -41,13 +41,22 @@ def propagate_obligation_done(
     )
 
     anchor = fulfilled_at.date() if fulfilled_at else date.today()
+    today = date.today()
     for dep in dependents:
         if dep.trigger_delay_days:
-            dep.due_date = (anchor + timedelta(days=dep.trigger_delay_days)).isoformat()
+            child_due = anchor + timedelta(days=dep.trigger_delay_days)
         else:
-            dep.due_date = anchor.isoformat()
-        dep.status = "pending"
+            child_due = anchor
+        dep.due_date = child_due.isoformat()
         dep.milestone_trigger = "date"
+        # #313 (DEC-048 Option B): if the computed due date is already in the past
+        # (backfill scenario), set awaiting_confirmation instead of pending.
+        # D-02: SME must confirm whether this milestone was already completed —
+        # never flip it to overdue or fire a reminder on behalf of history.
+        if child_due < today:
+            dep.status = "awaiting_confirmation"
+        else:
+            dep.status = "pending"
 
     count = len(dependents)
     if count:
