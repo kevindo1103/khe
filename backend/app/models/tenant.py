@@ -40,6 +40,10 @@ class Document(TenantBase):
     extraction_tokens_in = Column(Integer, nullable=True)
     extraction_tokens_out = Column(Integer, nullable=True)
     extraction_cost_vnd = Column(Float, nullable=True)
+    # ── tenant_019: extraction metrics (#346) ──
+    extraction_model = Column(String, nullable=True)       # "gemini-2.5-flash" / "claude-haiku-4.5"
+    extraction_latency_ms = Column(Float, nullable=True)   # total extraction latency in ms
+    extraction_warnings = Column(Text, nullable=True)      # JSON array of warning strings
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

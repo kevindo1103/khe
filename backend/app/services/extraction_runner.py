@@ -235,6 +235,10 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         doc.extraction_tokens_in = result.usage.input_tokens
         doc.extraction_tokens_out = result.usage.output_tokens
         doc.extraction_cost_vnd = result.cost_vnd
+        # Extraction metrics (#346): model, latency, warnings — forward-only.
+        doc.extraction_model = result.model or None
+        doc.extraction_latency_ms = result.latency_ms or None
+        doc.extraction_warnings = json.dumps(result.warnings) if result.warnings else None
 
         # 10. Audit event.
         event = Event(
