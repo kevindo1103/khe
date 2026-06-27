@@ -187,9 +187,13 @@ class Clause(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     clause_num = Column(String, nullable=True)        # e.g. "Điều 8", "Khoản 2.3"
     title = Column(String, nullable=True)             # e.g. "Chấm dứt hợp đồng"
-    content = Column(Text, nullable=False)            # full clause text
+    content = Column(Text, nullable=False)            # full clause text (user-editable, D-07)
     page_num = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    # ── Inline edit (#324, D-07) ──
+    edited_by_user = Column(String, nullable=True)    # username who last edited
+    edited_at = Column(DateTime, nullable=True)       # when last edited
+    original_content = Column(Text, nullable=True)    # AI-extracted original (snapshot on first edit)
 
 
 class DocumentRelationship(TenantBase):

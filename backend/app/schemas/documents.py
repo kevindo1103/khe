@@ -144,6 +144,22 @@ class ClauseListOut(BaseModel):
     clauses: list[ClauseOut]
 
 
+class ClausePatchIn(BaseModel):
+    content: str
+
+
+class ClausePatchOut(BaseModel):
+    id: int
+    clause_num: str | None = None
+    title: str | None = None
+    page_num: int | None = None
+    content: str
+    edited_by_user: str | None = None
+    edited_at: datetime | None = None
+    original_content: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ── Clause-scoped re-derive (#303, DEC-048 §13) ──
 
 
