@@ -72,6 +72,8 @@ class Term(TenantBase):
 
 OBLIGATION_STATUSES = [
     "pending", "in_progress", "partial", "done", "cancelled", "waiting_trigger",
+    # #313 cascade-past: child due in past → awaiting SME confirm ("đã xong?", D-02)
+    "awaiting_confirmation",
 ]
 
 

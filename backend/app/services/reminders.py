@@ -316,6 +316,8 @@ def _flip_overdue_status(
             # confirmation). Never flip these to overdue — they need SME confirm,
             # not a false alarm. See "cần xác nhận đã hoàn thành?" UX spec.
             Obligation.fulfilled_at.is_(None),
+            # #313 (DEC-048 Option B): cascade-past children get status=awaiting_confirmation
+            # (not "pending") — already excluded by the status=="pending" filter above.
         )
         .all()
     )
@@ -359,6 +361,8 @@ def compute_due_window(
             # P5 (#302): suppress reminders for already-fulfilled obligations pending
             # formal confirmation. fulfilled_at IS NOT NULL = awaiting SME confirm.
             Obligation.fulfilled_at.is_(None),
+            # #313 (DEC-048 Option B): cascade-past children get status=awaiting_confirmation
+            # (not "pending") — already excluded by the status=="pending" filter above.
         )
         .all()
     )
