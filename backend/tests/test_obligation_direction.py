@@ -133,6 +133,62 @@ class TestDeriveDirection:
             result = _derive_direction("test-tenant", "Bên thuê", FakeResult())
         assert result == "nghĩa_vụ"
 
+    def test_diacritics_normalization_legal_name(self):
+        """legal_name without diacritics matches extracted party name with diacritics (B1 #282)."""
+        class FakeResult:
+            parties = [PartyItem(name="Công ty TNHH Test ABC", role_label="Bên A")]
+
+        with patch(
+            "app.services.extraction_runner._get_tenant_legal_name",
+            return_value="Cong ty TNHH Test ABC",  # no diacritics — common user input
+        ):
+            result = _derive_direction("test-tenant", "Bên A", FakeResult())
+        assert result == "nghĩa_vụ"
+
+    def test_obligor_matches_party_name_not_only_role_label(self):
+        """Obligor = full company name (not role_label) → still resolves direction (B1 #282)."""
+        class FakeResult:
+            parties = [
+                PartyItem(name="Công ty TNHH Test ABC", role_label="Bên A"),
+                PartyItem(name="Công ty XYZ", role_label="Bên B"),
+            ]
+
+        with patch(
+            "app.services.extraction_runner._get_tenant_legal_name",
+            return_value="Công ty TNHH Test ABC",
+        ):
+            # LLM emitted full company name as obligor instead of role_label
+            result = _derive_direction("test-tenant", "Công ty TNHH Test ABC", FakeResult())
+        assert result == "nghĩa_vụ"
+
+    def test_counterparty_by_name_returns_quyen_loi(self):
+        """Obligor = counterparty's full name → quyền_lợi."""
+        class FakeResult:
+            parties = [
+                PartyItem(name="Công ty TNHH Test ABC", role_label="Bên A"),
+                PartyItem(name="Công ty XYZ", role_label="Bên B"),
+            ]
+
+        with patch(
+            "app.services.extraction_runner._get_tenant_legal_name",
+            return_value="Công ty TNHH Test ABC",
+        ):
+            result = _derive_direction("test-tenant", "Công ty XYZ", FakeResult())
+        assert result == "quyền_lợi"
+
+    def test_diacritics_normalization_obligor(self):
+        """Obligor without diacritics matches normalized role_label with diacritics."""
+        class FakeResult:
+            parties = [PartyItem(name="Công ty TNHH Test ABC", role_label="Bên mua")]
+
+        with patch(
+            "app.services.extraction_runner._get_tenant_legal_name",
+            return_value="Công ty TNHH Test ABC",
+        ):
+            # obligor without diacritics on "Bên mua" → "Ben mua" matches "ben mua"
+            result = _derive_direction("test-tenant", "Ben mua", FakeResult())
+        assert result == "nghĩa_vụ"
+
 
 # ── Full extraction flow with direction ──────────────────────────────────
 
