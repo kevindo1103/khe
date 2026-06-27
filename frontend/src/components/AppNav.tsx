@@ -43,6 +43,10 @@ export const NAV_SECTIONS: NavSection[] = [
     group: 'Trợ lý',
     items: [{ key: 'chat', label: 'Hỏi-đáp', icon: '✦', to: '/admin/chat', primary: true }],
   },
+  {
+    group: 'Quản trị',
+    items: [{ key: 'extraction-metrics', label: 'Extraction Metrics', icon: '📊', to: '/admin/extraction-metrics' }],
+  },
 ];
 const ALL_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
 export const SETTINGS_ITEM: NavItem = { key: 'settings', label: 'Cài đặt', icon: '⚙', to: '/admin/settings' };
@@ -60,6 +64,7 @@ function useActiveKey(): string {
   if (pathname.startsWith('/admin/upload')) return 'upload';
   if (pathname.startsWith('/admin/chat')) return 'chat';
   if (pathname.startsWith('/admin/settings')) return 'settings';
+  if (pathname.startsWith('/admin/extraction-metrics')) return 'extraction-metrics';
   return 'home';
 }
 
