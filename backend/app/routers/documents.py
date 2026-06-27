@@ -38,6 +38,8 @@ from app.schemas.documents import (
     BulkUploadOut,
     ClauseListOut,
     ClauseOut,
+    ClausePatchIn,
+    ClausePatchOut,
     ConfirmDocumentOut,
     EventListOut,
     EventOut,
@@ -651,6 +653,64 @@ def get_document_clauses(
         page_max=max(page_nums) if page_nums else None,
         clauses=[ClauseOut.model_validate(c) for c in clauses],
     )
+
+
+@docs_router.patch("/{doc_id}/clauses/{clause_id}", response_model=ClausePatchOut)
+def patch_clause(
+    doc_id: int,
+    clause_id: int,
+    payload: ClausePatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Inline-edit a clause's text (D-07 — user corrects AI-extracted content, #324).
+
+    First edit snapshots original_content from the AI extraction so the original
+    is always recoverable ("Xem bản gốc (AI)" toggle). Subsequent edits update
+    content without overwriting original_content.
+
+    Event payload is PII-safe per D-12 spirit: logs lengths, not raw content.
+    """
+    clause = (
+        db.query(Clause)
+        .filter(
+            Clause.id == clause_id,
+            Clause.document_id == doc_id,
+            Clause.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if clause is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clause not found")
+
+    old_length = len(clause.content) if clause.content else 0
+
+    # Snapshot original on first edit only (D-07).
+    if clause.original_content is None:
+        clause.original_content = clause.content
+
+    clause.content = payload.content
+    clause.edited_by_user = user.username
+    clause.edited_at = datetime.utcnow()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="clause_edited",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        payload={
+            "clause_id": clause_id,
+            "clause_num": clause.clause_num,
+            "field": "content",
+            "old_value_length": old_length,
+            "new_value_length": len(payload.content),
+        },
+    )
+
+    db.refresh(clause)
+    return ClausePatchOut.model_validate(clause)
 
 
 @docs_router.get("/{doc_id}/file")
