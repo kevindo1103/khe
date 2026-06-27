@@ -1,6 +1,6 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-27 | v3.8*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-27 | v3.9*
 
 > **2026-06-26 (b):** Kevin approved **"Nội dung hợp đồng" tab** on doc-detail page. Posted: #281 addendum spec ([comment](https://github.com/kevindo1103/khe/issues/281#issuecomment-4810615167)) + **#284** new Backend issue (`GET /documents/{id}/clauses`). Doc-detail IA = 3 tabs: Tổng quan / Nghĩa vụ & Quyền lợi / Nội dung hợp đồng. Clause↔obligation cross-nav = fast-follow (no `source_clause_num` on Obligation today, verified staging `05f20bd`).
 
@@ -142,7 +142,7 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 | **Frontend** | **PR #288 ⛔ BLOCKED** | Document list v2 PR — scope sprawl: 26 files across 4 lanes. QC REQUEST CHANGES (#289). PM ratified hard enforce (DEC-047). FE dev must rebase on staging + strip non-frontend files + rename branch. | **Blocked on cleanup** |
 | **Infra** | **#293** ✅ filed | PR scope-lock CI check — `pr-quality-gate.yml` blocks docs/infra files from wrong branches (DEC-047) | **This week** |
 | **QC** | **#297** ✅ filed | Obligation Fulfillment & Dependency Chain BA — core feature (DEC-048 proposed). QC pressure-test 10 open Qs → Kevin ratify → fold to #282/#281/KHE_AI | **Pre-pilot core (DEC-043)** |
-| **ALL** | **#300** ✅ EPIC | **Document Detail Screen EPIC — 🟢 PRE-PILOT SCOPE COMPLETE (QC 2026-06-27).** 9/10 AC ✅. AC5 (chain resolve G4 AI Tier 1) = gated on AI benchmark, NOT pre-pilot blocker per DEC-048 phasing. Sub-issues closed: #301/#302/#303/#304/#305/#306/#307/#313/#324/#327/#333. Non-blockers open: #282 B6-B8 (fast-follow). **QC recommend: promote staging → main.** PRs merged: #310/#311/#316/#317/#318/#319/#320/#321/#322/#323/#325/#326/#328/#329/#333. | **🟢 COMPLETE — Kevin promote decision pending** |
+| **ALL** | **#300** ✅ EPIC | **Document Detail Screen EPIC — 🟢 SHIPPED TO PRODUCTION (2026-06-27).** 9/10 AC ✅. **PR #335 staging→main MERGED** (sha `ce48bbd`, Kevin authorized). `deploy-main.yml` triggered → production port 8000. AC5 (chain resolve G4 AI Tier 1) = gated benchmark, post-pilot. Non-blockers: #282 B6-B8 fast-follow. | **✅ PRODUCTION** |
 | **Backend** | ~~#301~~ ✅ | **[EPIC #300] P1 — remap-preservation by `source`** | ✅ Closed |
 | **Backend** | ~~#302~~ ✅ | **[EPIC #300] Fulfillment capture + chain resolve + P2/P3/P5(a)** — PR #311 merged. | ✅ Closed (PR #311) |
 | **Backend** | ~~#303~~ ✅ | **[EPIC #300] `source_clause_num` column + Clauses API** | ✅ Closed |
