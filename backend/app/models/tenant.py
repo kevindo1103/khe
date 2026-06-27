@@ -72,6 +72,8 @@ class Term(TenantBase):
 
 OBLIGATION_STATUSES = [
     "pending", "in_progress", "partial", "done", "cancelled", "waiting_trigger",
+    # #313 cascade-past: child due in past → awaiting SME confirm ("đã xong?", D-02)
+    "awaiting_confirmation",
 ]
 
 
@@ -111,6 +113,9 @@ class Obligation(TenantBase):
     fulfilled_at = Column(DateTime, nullable=True)     # authoritative completion date (T2)
     fulfilled_by = Column(String, nullable=True)       # username or "operator-for-<username>" (P3)
     evidence_doc_ids = Column(Text, nullable=True)     # JSON list[int] of evidence document IDs
+    # Clause provenance (#303, DEC-048 §13): links obligation to the clause that drove it.
+    source_clause_num = Column(String, nullable=True)  # FK-ish to Clause.clause_num in same doc
+    derived_from = Column(String, nullable=True)       # "original" | "user_edit"
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -182,9 +187,13 @@ class Clause(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     clause_num = Column(String, nullable=True)        # e.g. "Điều 8", "Khoản 2.3"
     title = Column(String, nullable=True)             # e.g. "Chấm dứt hợp đồng"
-    content = Column(Text, nullable=False)            # full clause text
+    content = Column(Text, nullable=False)            # full clause text (user-editable, D-07)
     page_num = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    # ── Inline edit (#324, D-07) ──
+    edited_by_user = Column(String, nullable=True)    # username who last edited
+    edited_at = Column(DateTime, nullable=True)       # when last edited
+    original_content = Column(Text, nullable=True)    # AI-extracted original (snapshot on first edit)
 
 
 class DocumentRelationship(TenantBase):

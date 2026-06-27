@@ -124,6 +124,84 @@ class BulkUploadOut(BaseModel):
     documents: list[UploadOut]
 
 
+# ── Clause list (#284) ──
+
+
+class ClauseOut(BaseModel):
+    id: int
+    clause_num: str | None = None
+    title: str | None = None
+    content: str
+    page_num: int | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClauseListOut(BaseModel):
+    document_id: int
+    clause_count: int
+    page_min: int | None = None
+    page_max: int | None = None
+    clauses: list[ClauseOut]
+
+
+class ClausePatchIn(BaseModel):
+    content: str
+
+
+class ClausePatchOut(BaseModel):
+    id: int
+    clause_num: str | None = None
+    title: str | None = None
+    page_num: int | None = None
+    content: str
+    edited_by_user: str | None = None
+    edited_at: datetime | None = None
+    original_content: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Clause-scoped re-derive (#303, DEC-048 §13) ──
+
+
+class ReDeriveClauseIn(BaseModel):
+    clause_num: str
+
+
+class ReDeriveClauseOut(BaseModel):
+    ok: bool = True
+    created: int
+    skipped: bool
+    protected_manual: int
+    deleted: int
+    cost_vnd: float = 0.0
+
+
+# ── Re-read trigger (#324 Task 2, DEC-048 §13) ──
+
+
+class ReReadIn(BaseModel):
+    clause_ids: list[int] | None = None   # scope to specific clauses; None = all
+
+
+class ReReadDiff(BaseModel):
+    action: str                           # "add" | "update" | "remove"
+    obligation_id: int | None = None      # existing obligation (for update/remove)
+    field: str | None = None             # which field changed (for update)
+    old_value: str | None = None
+    new_value: str | None = None
+    description: str | None = None
+    obligation_type: str | None = None
+    due_date: str | None = None
+    source_clause_num: str | None = None
+    protected: bool = False              # True if source='user_manual' → FE default Giữ
+
+
+class ReReadOut(BaseModel):
+    document_id: int
+    clauses_checked: int
+    diffs: list[ReReadDiff]
+
+
 # ── Self-party confirmation (DEC-030, #155) ──
 
 
@@ -134,3 +212,35 @@ class SelfPartyIn(BaseModel):
 class SelfPartyOut(BaseModel):
     ok: bool
     updated: int
+
+
+# ── Document event history (#281) ──
+
+
+class EventOut(BaseModel):
+    id: int
+    event_type: str
+    entity_type: str
+    entity_id: int
+    actor: str | None = None
+    created_at: datetime | None = None
+    payload: dict | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _parse_payload(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+
+class EventListOut(BaseModel):
+    document_id: int
+    total: int
+    limit: int
+    offset: int
+    items: list[EventOut]

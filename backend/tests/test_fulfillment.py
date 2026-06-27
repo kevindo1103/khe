@@ -263,7 +263,9 @@ def test_chain_resolver_uses_fulfilled_at_not_today(client, tdb, tenant_id):
     )
     tdb.commit()
 
-    fulfilled_date = "2025-04-01T00:00:00"
+    # Use a future fulfilled_at so child due is future (pending, not awaiting_confirmation).
+    # G1 assertion: child due = fulfilled_at + delay, NOT today + delay.
+    fulfilled_date = "2030-04-01T00:00:00"
     r = client.patch(f"/obligations/{parent.id}", json={
         "status": "done",
         "fulfilled_at": fulfilled_date,
@@ -274,8 +276,8 @@ def test_chain_resolver_uses_fulfilled_at_not_today(client, tdb, tenant_id):
     tdb.expire_all()
     child_refreshed = tdb.query(Obligation).filter(Obligation.id == child.id).first()
     assert child_refreshed.status == "pending"
-    # 2025-04-01 + 30 days = 2025-05-01
-    assert child_refreshed.due_date == "2025-05-01"
+    # 2030-04-01 + 30 days = 2030-05-01 (NOT today + 30 days — G1 anchor check)
+    assert child_refreshed.due_date == "2030-05-01"
 
 
 # ── P2 tests ──────────────────────────────────────────────────────────────────
