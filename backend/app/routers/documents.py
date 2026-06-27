@@ -39,6 +39,8 @@ from app.schemas.documents import (
     ClauseListOut,
     ClauseOut,
     ConfirmDocumentOut,
+    EventListOut,
+    EventOut,
     ReDeriveClauseIn,
     ReDeriveClauseOut,
     RemapTypeIn,
@@ -1194,3 +1196,59 @@ def re_extract_document(
 
     _enqueue_extraction(background_tasks, doc_id, user.tenant_id, doc.doc_type)
     return {"ok": True, "doc_id": doc_id, "status": "processing"}
+
+
+@docs_router.get("/{doc_id}/events", response_model=EventListOut)
+def get_document_events(
+    doc_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return event history for a document (#281, D-07 audit trail).
+
+    Includes events where entity_type='document' AND entity_id=doc_id, plus
+    obligation events (entity_type='obligation') for all obligations that
+    belong to this document — so the full obligation lifecycle is visible.
+    All scoped to the current tenant.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    obligation_ids = [
+        ob.id for ob in db.query(Obligation.id).filter(
+            Obligation.tenant_id == user.tenant_id,
+            Obligation.document_id == doc_id,
+        ).all()
+    ]
+
+    query = db.query(Event).filter(
+        Event.tenant_id == user.tenant_id,
+        or_(
+            (Event.entity_type == "document") & (Event.entity_id == doc_id),
+            (Event.entity_type == "obligation") & (Event.entity_id.in_(obligation_ids))
+            if obligation_ids else False,
+        ),
+    )
+
+    total = query.count()
+    items = (
+        query.order_by(Event.created_at.desc(), Event.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return EventListOut(
+        document_id=doc_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[EventOut.model_validate(ev) for ev in items],
+    )
