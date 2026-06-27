@@ -104,13 +104,12 @@ export interface ClauseOut {
   title: string | null;
   page_num: number | null;
   content: string;
-  // Phase 2 fields (clause inline edit, Backend clause PATCH — not yet shipped)
-  edited_by_user?: string | null;
-  edited_at?: string | null;
-  original_content?: string | null;
 }
 
 export interface ClauseListOut {
-  items: ClauseOut[];
-  total: number;
+  document_id: number;
+  clause_count: number;
+  page_min: number | null;
+  page_max: number | null;
+  clauses: ClauseOut[];
 }

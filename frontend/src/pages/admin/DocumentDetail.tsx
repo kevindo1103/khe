@@ -12,7 +12,7 @@ import type {
   ClauseOut,
   ClauseListOut,
 } from '../../types/documents';
-import type { ObligationOut } from '../../types/obligations';
+import type { ObligationOut, ObligationPatchOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
 import {
@@ -84,8 +84,87 @@ function ObligationDue({ ob }: { ob: ObligationOut }) {
   return <span className="text-xs text-ink-muted">Hạn: {dateStr}</span>;
 }
 
+// ── Fulfillment modal ────────────────────────────────────────────────────────
+function FulfillModal({
+  ob,
+  open,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  ob: ObligationOut | null;
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (fulfilledAt: string, fulfilledBy: string) => void;
+  submitting: boolean;
+}) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [actor, setActor] = useState('');
+  useEffect(() => {
+    if (open) {
+      setDate(new Date().toISOString().slice(0, 10));
+      setActor('');
+    }
+  }, [open]);
+  if (!ob) return null;
+  return (
+    <Modal
+      open={open}
+      title="Đánh dấu hoàn thành"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Hủy
+          </Button>
+          <Button
+            onClick={() => onSubmit(date, actor)}
+            loading={submitting}
+            disabled={!date}
+            testId="fulfill-confirm-btn"
+          >
+            Xác nhận hoàn thành
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-ink-muted">{ob.description}</p>
+        <div>
+          <label className="block text-xs font-medium text-ink-muted uppercase mb-1">
+            Ngày thực hiện *
+          </label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-muted uppercase mb-1">
+            Người thực hiện (tùy chọn)
+          </label>
+          <Input
+            value={actor}
+            onChange={setActor}
+            placeholder="Tên hoặc email người thực hiện"
+          />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Single obligation row ────────────────────────────────────────────────────
-function ObligationRow({ ob }: { ob: ObligationOut }) {
+function ObligationRow({
+  ob,
+  onFulfill,
+}: {
+  ob: ObligationOut;
+  onFulfill: (ob: ObligationOut) => void;
+}) {
+  const canFulfill = ['pending', 'in_progress', 'partial'].includes(ob.status);
   return (
     <div className="py-3 border-b border-border last:border-0">
       <div className="flex items-start justify-between gap-2">
@@ -107,17 +186,32 @@ function ObligationRow({ ob }: { ob: ObligationOut }) {
             {ob.amount_raw && (
               <span className="text-xs text-ink-muted">💰 {ob.amount_raw}</span>
             )}
+            {ob.fulfilled_at && (
+              <span className="text-xs text-ink-muted">
+                ✓ {new Date(ob.fulfilled_at).toLocaleDateString('vi-VN')}
+                {ob.fulfilled_by && ` · ${ob.fulfilled_by}`}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex-shrink-0 mt-0.5">
+        <div className="flex-shrink-0 mt-0.5 flex items-center gap-2">
           {ob.status === 'done' ? (
             <Badge kind="done">✓ hoàn thành</Badge>
           ) : ob.status === 'cancelled' ? (
             <Badge kind="neutral">đã hủy</Badge>
           ) : (
-            <Link to="/admin/obligations" className="text-xs text-primary hover:underline">
-              Quản lý →
-            </Link>
+            <>
+              {canFulfill && (
+                <Button size="sm" variant="ghost" onClick={() => onFulfill(ob)}>
+                  Hoàn thành →
+                </Button>
+              )}
+              {!canFulfill && (
+                <Link to="/admin/obligations" className="text-xs text-primary hover:underline">
+                  Quản lý →
+                </Link>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -397,12 +491,14 @@ function TabObligations({
   confirming,
   onSelectRole,
   onConfirmSelfParty,
+  onFulfill,
 }: {
   doc: DocumentDetailOut;
   selectedRole: string;
   confirming: boolean;
   onSelectRole: (v: string) => void;
   onConfirmSelfParty: () => void;
+  onFulfill: (ob: ObligationOut) => void;
 }) {
   const hasNullDirection = doc.obligations.some((o) => o.direction === null);
 
@@ -446,7 +542,7 @@ function TabObligations({
       {nghiaVu.length > 0 && (
         <Card title={`Phải làm (${nghiaVu.length})`} className="mb-4">
           {nghiaVu.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -454,7 +550,7 @@ function TabObligations({
       {quyenLoi.length > 0 && (
         <Card title={`Được hưởng (${quyenLoi.length})`} className="mb-4">
           {quyenLoi.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -462,7 +558,7 @@ function TabObligations({
       {chuaRo.length > 0 && (
         <Card title={`Chưa rõ hướng (${chuaRo.length})`} className="mb-4">
           {chuaRo.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -470,7 +566,7 @@ function TabObligations({
       {reviewObs.length > 0 && (
         <Card title={`Review / kiểm tra định kỳ (${reviewObs.length})`} className="mb-4">
           {reviewObs.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -553,6 +649,8 @@ export default function DocumentDetail() {
   const [clausesLoaded, setClausesLoaded] = useState(false);
   const [clausesTotal, setClausesTotal] = useState(0);
   const [clausesError, setClausesError] = useState(false);
+  const [fulfillTarget, setFulfillTarget] = useState<ObligationOut | null>(null);
+  const [fulfilling, setFulfilling] = useState(false);
   const { refetch: refetchJourney } = useJourney();
 
   const showToast = (msg: string, kind: ToastKind = 'success') => {
@@ -580,8 +678,8 @@ export default function DocumentDetail() {
     setClausesError(false);
     try {
       const res = await apiFetch<ClauseListOut>(`/documents/${docId}/clauses`);
-      setClauses(res.items);
-      setClausesTotal(res.total);
+      setClauses(res.clauses);
+      setClausesTotal(res.clause_count);
       setClausesLoaded(true);
     } catch {
       setClausesError(true);
@@ -679,6 +777,34 @@ export default function DocumentDetail() {
       setError((err as ApiError).message || 'Xác nhận tài liệu thất bại');
     } finally {
       setConfirmingDoc(false);
+    }
+  };
+
+  const fulfillObligation = async (fulfilledAt: string, fulfilledBy: string) => {
+    if (!fulfillTarget) return;
+    setFulfilling(true);
+    try {
+      const res = await apiFetch<ObligationPatchOut>(
+        `/obligations/${fulfillTarget.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            status: 'done',
+            fulfilled_at: `${fulfilledAt}T00:00:00`,
+            fulfilled_by: fulfilledBy || undefined,
+          }),
+        }
+      );
+      setFulfillTarget(null);
+      const chainMsg = res.activated_count > 0
+        ? ` · ${res.activated_count} nghĩa vụ tiếp theo đã kích hoạt`
+        : '';
+      showToast(`Đã đánh dấu hoàn thành ✓${chainMsg}`);
+      await load();
+    } catch (err) {
+      showToast((err as ApiError).message || 'Đánh dấu hoàn thành thất bại', 'error');
+    } finally {
+      setFulfilling(false);
     }
   };
 
@@ -890,6 +1016,7 @@ export default function DocumentDetail() {
               confirming={confirming}
               onSelectRole={setSelectedRole}
               onConfirmSelfParty={confirmSelfParty}
+              onFulfill={setFulfillTarget}
             />
           )}
 
@@ -939,6 +1066,15 @@ export default function DocumentDetail() {
           )}
         </>
       )}
+
+      {/* Fulfillment modal */}
+      <FulfillModal
+        ob={fulfillTarget}
+        open={fulfillTarget !== null}
+        onClose={() => setFulfillTarget(null)}
+        onSubmit={fulfillObligation}
+        submitting={fulfilling}
+      />
 
       {/* Remap confirm modal */}
       <Modal
