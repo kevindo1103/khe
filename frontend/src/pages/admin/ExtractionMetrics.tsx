@@ -142,7 +142,7 @@ export default function ExtractionMetrics() {
       provider: providerFilter || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-      page_size: '500',
+      page_size: '200',
     });
     const summaryQs = buildQueryString({
       tenant: tenantFilter || undefined,
