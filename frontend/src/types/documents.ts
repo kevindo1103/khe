@@ -96,3 +96,21 @@ export interface SelfPartyConfirmOut {
   ok: boolean;
   updated: number;
 }
+
+// Backend #284 — GET /documents/{id}/clauses
+export interface ClauseOut {
+  id: number;
+  clause_number: string | null;
+  title: string | null;
+  page_number: number | null;
+  content: string;
+  // Phase 2 fields (clause inline edit, Backend clause PATCH — not yet shipped)
+  edited_by_user?: string | null;
+  edited_at?: string | null;
+  original_content?: string | null;
+}
+
+export interface ClauseListOut {
+  items: ClauseOut[];
+  total: number;
+}
