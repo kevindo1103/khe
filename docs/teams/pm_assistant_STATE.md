@@ -128,8 +128,8 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 |---|---|---|---|
 | **KHE_AI** | ~~#230~~ ✅ | page_num/ref/bbox anchors — DONE (PR #232, staging green) | — |
 | **KHE_AI + Backend** 🔴 | **#340** | **Hybrid extraction (DEC-049)** — benchmark doc 22: DocAI 15/15 Điều vs vision 8/15. **PR #341 merged staging** (phase 1: scan-detect + HybridOCRProvider + embedded-text + factory). DEC-002 revision + DEC-011 re-model pending #344. **G6 RESOLVED:** auto-route ON, ≥15p → chunk+merge (#345 filed). | **Phase 1 merged — G6 ✅, validation pending** |
-| **Backend + AI** | **#345** | **Wire auto-route + chunking ≥15p scans (G6)** — scan-detect → page count → chunk if ≥15p → DocAI hybrid per chunk → merge + dedup. Dep: #343 poppler-utils, PR #341. | **status:planned** |
-| **KHE_AI** | **#344** | DEC-049 validation gates G1-G5 (batch >15p · multi-doc · 14-vs-15 reconcile · embedded-text benchmark · p90) + free-tier scope verify | **Gates DEC-002 final ratify** |
+| ~~Backend + AI~~ | ~~#345~~ ✅ | **Auto-route + chunking shipped** (PR #357). Scanned ≤15p → DocAI hybrid. ≥15p → chunk + merge. Digital → gemini_flash vision. | ✅ Merged staging |
+| ~~KHE_AI~~ | ~~#344~~ ✅ | DEC-049 validation gates G1-G5 — **ALL PASS** (PR #357). G1: 47p/4 chunks/3,955đ. G2: 3/3 docs. G3: 14/15 Điều. G5: CV 26% cost. G4 closed (vision wins digital). | ✅ Merged staging |
 | **KHE_Infra** | **#343** | G7 poppler-utils trong deploy bootstrap (pdftotext dep — DEC-049) | **Gates DEC-049 prod** |
 | ~~KHE_Infra~~ | ~~#342~~ ✅ | ~~INC-01~~ — Kevin: key dùng để test, giữ cho AI. **Closed not_planned.** | ✅ No action |
 | **Backend** | **#336** | Tạo SME tenant prod `tran-thai-cam-ranh` (Công ty CP Trần Thái Cam Ranh). Password qua channel riêng. **⚠️ onboard full bộ gated trên scan-ratio (#340).** | **Pilot setup** |
