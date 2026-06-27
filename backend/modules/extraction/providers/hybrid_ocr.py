@@ -24,6 +24,7 @@ Env vars:
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import time
 
@@ -117,9 +118,9 @@ class HybridOCRProvider:
             )
 
         if ocr_page_count > _DOCAI_SYNC_PAGE_LIMIT:
+            chunks_used = -(-ocr_page_count // _DOCAI_SYNC_PAGE_LIMIT)  # ceil div
             ocr_warnings.append(
-                f"Document has {ocr_page_count} pages (sync limit {_DOCAI_SYNC_PAGE_LIMIT}). "
-                "Text may be truncated — batch mode needed for full extraction."
+                f"Document has {ocr_page_count} pages — processed in {chunks_used} chunks."
             )
 
         try:
@@ -163,30 +164,46 @@ class HybridOCRProvider:
         )
 
     async def _document_ai_ocr(self, file_bytes: bytes) -> tuple[str, int]:
-        """Run Document AI OCR synchronously in a thread pool, return (text, page_count)."""
+        """Run Document AI OCR, return (text, page_count).
 
-        def _sync_ocr() -> tuple[str, int]:
-            from google.api_core.client_options import ClientOptions
-            from google.cloud import documentai
+        For PDFs >15 pages (sync API limit), splits into chunks of 15 pages,
+        processes each via sync API, and concatenates the OCR text.
+        Requires ``pypdf`` for chunking (falls back to single request if unavailable).
+        """
+        page_count = _pdf_page_count(file_bytes)
 
-            location = self._docai_location
-            opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
-            client = documentai.DocumentProcessorServiceClient(client_options=opts)
-            processor_name = client.processor_path(
-                self._docai_project, location, self._docai_processor
-            )
+        if page_count <= _DOCAI_SYNC_PAGE_LIMIT:
+            return await asyncio.to_thread(self._sync_ocr_single, file_bytes)
 
-            raw_doc = documentai.RawDocument(content=file_bytes, mime_type="application/pdf")
-            request = documentai.ProcessRequest(name=processor_name, raw_document=raw_doc)
-            result = client.process_document(request=request)
+        chunks = _split_pdf(file_bytes, _DOCAI_SYNC_PAGE_LIMIT)
+        results = []
+        for chunk_bytes in chunks:
+            text, _ = await asyncio.to_thread(self._sync_ocr_single, chunk_bytes)
+            results.append(text)
 
-            text = result.document.text
-            page_count = len(result.document.pages)
-            return text, page_count
+        return "\n".join(results), page_count
 
-        return await asyncio.to_thread(_sync_ocr)
+    def _sync_ocr_single(self, file_bytes: bytes) -> tuple[str, int]:
+        """Process a single PDF (≤15 pages) via Document AI sync API."""
+        from google.api_core.client_options import ClientOptions
+        from google.cloud import documentai
 
-    async def _llm_extract(
+        location = self._docai_location
+        opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+        client = documentai.DocumentProcessorServiceClient(client_options=opts)
+        processor_name = client.processor_path(
+            self._docai_project, location, self._docai_processor
+        )
+
+        raw_doc = documentai.RawDocument(content=file_bytes, mime_type="application/pdf")
+        request = documentai.ProcessRequest(name=processor_name, raw_document=raw_doc)
+        result = client.process_document(request=request)
+
+        text = result.document.text
+        page_count = len(result.document.pages)
+        return text, page_count
+
+    async def _llm_extract(  # noqa: C901 (kept together for readability)
         self, text: str, doc_type: str
     ) -> tuple[ContractExtractionLLMFull | None, TokenUsage, float]:
         """Feed OCR text to Gemini Flash for structured extraction."""
@@ -216,3 +233,35 @@ class HybridOCRProvider:
             output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
         )
         return parsed, usage, llm_latency_ms
+
+
+def _pdf_page_count(file_bytes: bytes) -> int:
+    """Get page count using pypdf (already a dependency for chunking)."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        from PyPDF2 import PdfReader  # type: ignore[no-redef]
+
+    reader = PdfReader(io.BytesIO(file_bytes))
+    return len(reader.pages)
+
+
+def _split_pdf(file_bytes: bytes, chunk_size: int) -> list[bytes]:
+    """Split a PDF into chunks of ``chunk_size`` pages each.
+
+    Tries ``pypdf`` first; falls back to ``PyPDF2``."""
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        from PyPDF2 import PdfReader, PdfWriter  # type: ignore[no-redef]
+
+    reader = PdfReader(io.BytesIO(file_bytes))
+    chunks: list[bytes] = []
+    for start in range(0, len(reader.pages), chunk_size):
+        writer = PdfWriter()
+        for page in reader.pages[start : start + chunk_size]:
+            writer.add_page(page)
+        buf = io.BytesIO()
+        writer.write(buf)
+        chunks.append(buf.getvalue())
+    return chunks
