@@ -1466,6 +1466,23 @@ async def reread_document(
                     protected=is_manual,
                 ))
 
+    db.add(Event(
+        tenant_id=user.tenant_id,
+        event_type="re_read_triggered",
+        entity_type="document",
+        entity_id=doc_id,
+        actor=user.username,
+        purpose=None,
+        payload=json.dumps({
+            "clause_ids": clause_ids,
+            "clauses_checked": len(clauses),
+            "diffs_found": len(diffs),
+            "derived_from": derived_from,
+        }),
+    ))
+    db.commit()
+
+
     return ReReadOut(
         document_id=doc_id,
         clauses_checked=len(clauses),

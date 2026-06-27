@@ -91,6 +91,10 @@ function statusLabel(status: ObligationStatus): string {
       return 'đã hủy';
     case 'waiting_trigger':
       return 'chờ sự kiện';
+    case 'overdue':
+      return 'quá hạn';
+    case 'awaiting_confirmation':
+      return 'chờ xác nhận';
   }
 }
 

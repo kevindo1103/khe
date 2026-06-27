@@ -11,7 +11,9 @@ export type ObligationStatus =
   | 'partial'
   | 'done'
   | 'cancelled'
-  | 'waiting_trigger';
+  | 'waiting_trigger'
+  | 'overdue'
+  | 'awaiting_confirmation';
 
 export interface ObligationOut {
   id: number;
@@ -36,6 +38,9 @@ export interface ObligationOut {
   trigger_obligation_id: number | null;
   amount_raw: string | null;
   created_at: string | null;
+  // Fulfillment fields (Backend #302)
+  fulfilled_at: string | null;
+  fulfilled_by: string | null;
 }
 
 export interface ObligationListOut {
@@ -47,6 +52,9 @@ export interface ObligationListOut {
 
 export interface ObligationPatchIn {
   status: string;
+  fulfilled_at?: string | null;
+  fulfilled_by?: string | null;
+  evidence_doc_ids?: number[] | null;
 }
 
 export interface ObligationPatchOut {
