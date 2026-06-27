@@ -43,6 +43,9 @@ from app.schemas.documents import (
     EventOut,
     ReDeriveClauseIn,
     ReDeriveClauseOut,
+    ReReadDiff,
+    ReReadIn,
+    ReReadOut,
     RemapTypeIn,
     RemapTypeOut,
     DocumentDetailOut,
@@ -57,7 +60,11 @@ from app.schemas.documents import (
 from app.schemas.obligations import ObligationOut
 from app.services.consent import check_extraction_consent
 from app.services.extraction_runner import run_extraction
-from app.services.obligation_engine import derive_obligation_from_clause, derive_obligations
+from app.services.obligation_engine import (
+    _DUE_FIELD, _START_FIELD, _DURATION_FIELD,
+    derive_obligation_from_clause, derive_obligations,
+)
+from app.services.date_parse import add_months, parse_date, parse_duration_months
 from app.services import directions, quota, tenant_journey
 from modules.extraction import ALL_TYPE_SPECIFIC_FIELDS, ClauseItem, DOC_TYPE_GROUPS, remap_type
 
@@ -1251,4 +1258,204 @@ def get_document_events(
         limit=limit,
         offset=offset,
         items=[EventOut.model_validate(ev) for ev in items],
+    )
+
+
+# ── Re-read trigger helpers (#324 Task 2) ──
+
+def _derive_clause_proposal(
+    db: Session,
+    tenant_id: str,
+    doc_id: int,
+    clause_num: str | None,
+    file_name: str,
+) -> dict | None:
+    """Compute what derive_obligation_from_clause() WOULD produce — no DB write.
+
+    Returns a dict with keys: description, obligation_type, due_date, recurrence.
+    Returns None if derivation would be skipped (insufficient data).
+
+    NOTE (KHE_AI TODO): v1 derives from existing extracted Terms anchored to
+    clause_num (ref == clause_num). A future version should re-extract date fields
+    directly from the edited Clause.content text to reflect user corrections.
+    """
+    clause_terms = (
+        db.query(Term)
+        .filter(
+            Term.tenant_id == tenant_id,
+            Term.document_id == doc_id,
+            Term.ref == clause_num,
+            Term.field_value.isnot(None),
+            Term.is_superseded == False,
+        )
+        .all()
+    ) if clause_num else []
+
+    term_map: dict[str, Term] = {}
+    for t in clause_terms:
+        if t.field_name not in term_map or t.id > term_map[t.field_name].id:
+            term_map[t.field_name] = t
+
+    due_term = term_map.get(_DUE_FIELD)
+    start_term = term_map.get(_START_FIELD)
+    duration_term = term_map.get(_DURATION_FIELD)
+
+    due_value = due_term.field_value if due_term else None
+    start_value = start_term.field_value if start_term else None
+    duration_value = duration_term.field_value if duration_term else None
+
+    due_date = None
+    recurrence = "once"
+
+    if due_value:
+        due_date = parse_date(due_value)
+        if due_date is None:
+            return None
+    elif start_value and duration_value:
+        start_date = parse_date(start_value)
+        duration_months = parse_duration_months(duration_value)
+        if start_date is None:
+            return None
+        elif duration_months is None:
+            recurrence = "open_ended_review"
+        else:
+            due_date = add_months(start_date, duration_months)
+    else:
+        return None
+
+    due_str = due_date.strftime("%Y-%m-%d") if due_date else None
+    if recurrence == "open_ended_review":
+        description = f"Hợp đồng {file_name} vô thời hạn — cần review"
+    else:
+        description = f"Hợp đồng {file_name} hết hạn ngày {due_str}"
+
+    return {
+        "description": description,
+        "obligation_type": "expiration",
+        "due_date": due_str,
+        "recurrence": recurrence,
+    }
+
+
+@docs_router.post("/{doc_id}/reread", response_model=ReReadOut)
+def reread_document(
+    doc_id: int,
+    payload: ReReadIn | None = None,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """Compute obligation diffs from (re-)derived clause terms (#324 Task 2, D-02).
+
+    Returns diffs only — does NOT auto-apply. Frontend shows DiffConfirmModal; user
+    applies each diff via existing PATCH /obligations/{id}. Source-aware: obligations
+    with source='user_manual' have protected=True so the FE defaults to "Giữ của bạn".
+
+    Quota-gated (D-11): checks docs_used_month < doc_quota without consuming a slot.
+    Re-read is not an ingest, so no quota is consumed — the gate prevents abuse when
+    a future LLM re-extraction path is wired in.
+
+    KHE_AI TODO: v1 derives from existing Terms anchored to the clause (ref=clause_num).
+    v2 should re-extract date fields directly from Clause.content (edited text) via
+    a lightweight LLM call, then use those derived terms for the diff computation.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # D-11: quota gate — check remaining, don't consume (no ingest here).
+    qs = quota.get_quota_status(master_db, user.tenant_id)
+    if qs and qs["doc_quota"] and qs["docs_used_month"] >= qs["doc_quota"]:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Monthly document quota exceeded. Re-read unavailable until quota resets.",
+        )
+
+    clause_ids = (payload.clause_ids if payload else None) or None
+
+    # Load target clauses.
+    clause_query = db.query(Clause).filter(
+        Clause.document_id == doc_id,
+        Clause.tenant_id == user.tenant_id,
+    )
+    if clause_ids:
+        clause_query = clause_query.filter(Clause.id.in_(clause_ids))
+    clauses = clause_query.all()
+
+    diffs: list[ReReadDiff] = []
+
+    for clause in clauses:
+        proposed = _derive_clause_proposal(
+            db, user.tenant_id, doc_id, clause.clause_num, doc.file_name
+        )
+
+        # Existing non-terminal obligations anchored to this clause.
+        existing = (
+            db.query(Obligation)
+            .filter(
+                Obligation.tenant_id == user.tenant_id,
+                Obligation.document_id == doc_id,
+                Obligation.source_clause_num == clause.clause_num,
+                Obligation.status.not_in(["done", "cancelled"]),
+            )
+            .all()
+        )
+
+        if proposed is None:
+            # Derivation would skip — flag removals for non-manual obligations.
+            for ob in existing:
+                is_manual = ob.source == "user_manual"
+                diffs.append(ReReadDiff(
+                    action="remove",
+                    obligation_id=ob.id,
+                    description=ob.description,
+                    obligation_type=ob.obligation_type,
+                    due_date=ob.due_date,
+                    source_clause_num=clause.clause_num,
+                    protected=is_manual,
+                ))
+        else:
+            # Find matching existing obligation by type.
+            matched = next(
+                (ob for ob in existing if ob.obligation_type == proposed["obligation_type"]),
+                None,
+            )
+            if matched is None:
+                diffs.append(ReReadDiff(
+                    action="add",
+                    description=proposed["description"],
+                    obligation_type=proposed["obligation_type"],
+                    due_date=proposed["due_date"],
+                    source_clause_num=clause.clause_num,
+                    protected=False,
+                ))
+            else:
+                # Emit one diff per changed field.
+                is_manual = matched.source == "user_manual"
+                for field, old_val, new_val in (
+                    ("due_date", matched.due_date, proposed["due_date"]),
+                    ("description", matched.description, proposed["description"]),
+                ):
+                    if old_val != new_val:
+                        diffs.append(ReReadDiff(
+                            action="update",
+                            obligation_id=matched.id,
+                            field=field,
+                            old_value=old_val,
+                            new_value=new_val,
+                            description=matched.description,
+                            obligation_type=matched.obligation_type,
+                            due_date=matched.due_date,
+                            source_clause_num=clause.clause_num,
+                            protected=is_manual,
+                        ))
+
+    return ReReadOut(
+        document_id=doc_id,
+        clauses_checked=len(clauses),
+        diffs=diffs,
     )

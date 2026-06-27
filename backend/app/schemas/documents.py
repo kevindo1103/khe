@@ -160,6 +160,32 @@ class ReDeriveClauseOut(BaseModel):
     cost_vnd: float = 0.0
 
 
+# ── Re-read trigger (#324 Task 2, DEC-048 §13) ──
+
+
+class ReReadIn(BaseModel):
+    clause_ids: list[int] | None = None   # scope to specific clauses; None = all
+
+
+class ReReadDiff(BaseModel):
+    action: str                           # "add" | "update" | "remove"
+    obligation_id: int | None = None      # existing obligation (for update/remove)
+    field: str | None = None             # which field changed (for update)
+    old_value: str | None = None
+    new_value: str | None = None
+    description: str | None = None
+    obligation_type: str | None = None
+    due_date: str | None = None
+    source_clause_num: str | None = None
+    protected: bool = False              # True if source='user_manual' → FE default Giữ
+
+
+class ReReadOut(BaseModel):
+    document_id: int
+    clauses_checked: int
+    diffs: list[ReReadDiff]
+
+
 # ── Self-party confirmation (DEC-030, #155) ──
 
 
