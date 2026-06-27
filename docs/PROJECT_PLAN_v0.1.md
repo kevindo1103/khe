@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.4 |
-| Trạng thái | Fold cycle 4 — Sprint 1 staging-complete (obligation+reminder+chat live) + DEC-027/028/029/030 |
+| Phiên bản | v0.5 |
+| Trạng thái | Fold cycle 5 — EPIC #300 production promote (`ce48bbd` 2026-06-27) + pilot tenant live + DEC-048 |
 | Owner | KHE_Docs |
-| Source | BRD v0.6 §13 milestones (upstream: `PRODUCT_STRATEGY_Khe_v0.2.md` §10 + §7.1 billing) |
+| Source | BRD v0.8 §13 milestones (upstream: `PRODUCT_STRATEGY_Khe_v0.2.md` §10 + §7.1 billing) |
 
 ---
 
@@ -22,6 +22,7 @@
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Fold PM_Assistant draft (entry 3) + Strategy v2 milestones (entry 4: M-1 concierge, 2-firm pilot). Mark Sprint 0 ✅ COMPLETE per backend #19 + infra #21. |
 | v0.2 | 2026-06-18 | KHE_Docs | Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` §10 (3 giai-đoạn + kill signals canonical). Add DEC-018 (Vertical OPEN) to Open Decisions. No milestone changes. |
 | v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Sprint 1 backlog adds: FR-TN-01..03 quota guard (Backend) + #26 obligation engine + reminder scheduler. M0 vertical slice marked staging-complete (Backend PR #54 ingest + PR #59 relationships + PR #60 extraction worker). Sprint 0 infra final ✅ (Infra PR #48: domain khe.iceflow.cloud + migrate_all_tenants + CORS). Open decisions: domain confirmed (khe.iceflow.cloud), DEC-016 still open, DEC-018 wedge selection post-pilot, FR-TN policy ratified cycle 3. |
+| v0.5 | 2026-06-27 | KHE_Docs | **Cycle 5 fold — EPIC #300 production promote `ce48bbd` 2026-06-27.** Pilot tenant `tran-thai-cam-ranh` live (issue #336). DEC-048 RATIFIED (Obligation Fulfillment + Dependency Chain). 6 layer commits (BRD v0.8 + SRS v0.5 + Glossary v0.6 + CLAUDE.md v0.9 + USER_MANUAL_PILOT_v0.1.md + this PROJECT_PLAN). Sprint 5 backlog filed: KHE_AI LLM re-extraction path cho POST /reread v2, Document.provider column ratify (clause-gap), open_ended recurrence Sprint 6+. |
 | v0.4 | 2026-06-20 | KHE_Docs | **Cycle 4 fold (16 entries).** Sprint 1 → 🟢 STAGING-COMPLETE: obligation engine (PR #64) + reminder service (PR #66) + chat (PR #68/#104/#115/#125/#132) + admin chat (PR #133) + clauses populate (PR #108) + extraction schema v2 (PR #135 + #140 + #141) + party roles (PR #142). M0 core loop verified 2026-06-19. Decision log: DEC-025 (PWA standalone Vite + Option A nginx routing), DEC-027 (obligation_type 8 categories), DEC-028 (chat learning + compliance debt), DEC-029 (doc_type_group taxonomy + schema v2), DEC-030 (direction/Quyền lợi/legal_name). Sprint 2 backlog filed: re-extraction script, Document.provider column ratify, monthly recurrence expansion, NĐ 13 chat consent close pre-prod, CONTRACT_LOGIC_Khe.md skeleton (lawyer-partner kickoff). |
 
 ---
@@ -113,19 +114,47 @@ Done on staging:
 - [x] **Per-tenant Alembic migration loop** (`migrate_all_tenants.py` wired Infra PR #48)
 - [x] **#61 chain invariant** — closes via PR #64 obligation engine
 
-## Sprint 2 backlog (in-flight, post DEC-027/028/029/030)
+## Sprint 2-4 (M0/M1 complete + DEC-030/031 wiring) — 🟢 PRODUCTION
 
-**Goal:** Complete DEC-030 + harden NĐ 13 compliance + Frontend Quyền lợi UI.
+**Status:** All Sprint 2 tasks shipped to production via EPIC #300 promote (PR #335 `ce48bbd` 2026-06-27). DEC-030 + DEC-048 wired. Pilot tenant live.
+
+- [x] #145 DEC-030 Backend wiring (tenant_005 migration + tenant_profile + legal_name auto-match)
+- [x] #146 DEC-030 Frontend (Nghĩa vụ / Quyền lợi tabs + self-party confirm Settings page PR #174)
+- [x] Re-extraction wired qua extraction runner upgrade (DOC_TYPE_GROUPS + parties + clauses)
+- [x] VPS timezone — Asia/Ho_Chi_Minh confirmed
+- [ ] **`Document.provider` column** — still open (clause-gap rationale)
+- [ ] **NĐ 13 chat learning consent gate (#119)** — DEC-028 compliance debt vẫn chưa close, COMPLIANCE BLOCKER trước full prod
+- [ ] **Monthly/quarterly recurrence expansion** — Sprint 6 carry-over
+- [ ] **CONTRACT_LOGIC_Khe.md (issue #147)** — Lawyer partner kickoff Sprint 6 (deferred)
+
+## EPIC #300 — Production live (2026-06-27)
+
+**Promote:** PR #335 `staging` → `main` merged `ce48bbd`. Tenant pilot `tran-thai-cam-ranh` (Công ty Cổ phần Trần Thái Cam Ranh) provisioned issue #336.
+
+**Scope live:**
+- DEC-048 Obligation Fulfillment + Dependency Chain (FR-OB-09..13)
+- Clause edit + AI re-read flow (§13 addendum, FR-EX-09)
+- Evidence document support (FR-IN-05, `is_evidence` skip-extraction)
+- Date-anchored obligation resolver (FR-OB-13, `waiting_trigger` → `pending`)
+- Provenance: `source_clause_num` + `derived_from` per obligation (Kevin Option B 0a)
+- Cascade chain anchor G1 fix: `parent.fulfilled_at` NOT `date.today()`
+- Cascade-past → `awaiting_confirmation` D-02 (NOT auto-overdue)
+- P1 source-aware merge + derive delete path-2 guard (PR #311)
+- Audit events expansion: `obligation_fulfilled`, `cascade_triggered`, `clause_edited` (PII-safe), `evidence_attached`, etc.
+- User manual `docs/USER_MANUAL_PILOT_v0.1.md` published cho SME pilot onboarding
+
+## Sprint 5 backlog — Pilot hardening (2026-06-27 →)
+
+**Goal:** Pilot tenant `tran-thai-cam-ranh` actively used. Lawyer partner kickoff. Compliance debt close.
 
 Tasks:
-- [ ] **#145 DEC-030 Backend wiring** — `tenant_005` migration rename `obligation_type` → `recurrence` + new category column + direction + obligor + tenant_profile model + legal_name auto-match + re-derive background task
-- [ ] **#146 DEC-030 Frontend** — Nghĩa vụ / Quyền lợi tabs + self-party confirm extraction review UI
-- [ ] **Re-extraction script** `scripts/re_extract_all.py` — loop all tenant docs → repopulate doc_type_group + parties + clauses + obligations với new schema (post #145 promote)
-- [ ] **`Document.provider` column ratify** — phân biệt Claude-extracted (empty clauses/parties) vs Gemini-extracted; enable re-extract-prefer-Gemini policy
-- [ ] **NĐ 13 chat learning consent gate (#119)** — close DEC-028 compliance debt trước prod; explicit consent flow for query logging
-- [ ] **Monthly/quarterly recurrence expansion** — `dieu_khoan_thanh_toan` parser + expand `payment_schedule[].recurrence != "once"` items thành múltiple Obligation rows
-- [ ] **VPS timezone** — confirm `Asia/Ho_Chi_Minh` cho chat today's-date injection (Backend PR #125/#132 fast-follow)
-- [ ] **CONTRACT_LOGIC_Khe.md** (issue #147) — tracking-only this sprint; lawyer-partner skeleton kickoff Sprint 3 (Kevin cycle 4 q4: defer skeleton until lawyer kickoff)
+- [ ] **KHE_AI LLM re-extraction path cho `POST /reread` v2** — v1 derives từ existing Terms only; v2 cần LLM call trên edited clause content (KHE_AI interface confirm)
+- [ ] **`Document.provider` column ratify** (carry-over) — phân biệt Claude vs Gemini path, enable re-extract-prefer-Gemini cho clause-gap
+- [ ] **NĐ 13 chat learning consent gate (#119)** (carry-over BLOCKER) — explicit consent flow for query logging trước prod scale-out
+- [ ] **Pilot feedback loop** — Issue #336 hub cho `tran-thai-cam-ranh` feedback collection
+- [ ] **CONTRACT_LOGIC_Khe.md (#147)** — Lawyer kickoff Sprint 5/6
+- [ ] **Open observability items:** VPS timezone re-verify post-promote; inverted-range guard `due_from > due_to` (FR-CQ-02); Vietnamese accent-folding for chat NOT_FOUND patterns
+- [ ] **2-firm pilot expansion (DEC-013)** — second firm sign + 10 SME each, 90-day evaluation per Kill Signals K-1..K-3
 
 ## Decision log
 
@@ -137,6 +166,9 @@ Tasks:
 | DEC-028 | 2026-06-19 | Chat query learning loop (log → weekly review → catalog #118). 🔴 NĐ 13 compliance debt pre-prod. | PM #118/#119 |
 | DEC-029 | 2026-06-20 | `doc_type_group` taxonomy 11 (collapse từ 126 loại) + CANONICAL_FIELDS 7 → 12 + 9 type-specific field sets + `doc_type_filter` chat param. | Kevin ratify |
 | DEC-030 | 2026-06-20 | Obligation `direction` (`nghĩa_vụ`/`quyền_lợi`/null) + `obligor` + self-party `legal_name` auto-match. `obligation_type` axis #122 resolved via Option B (cadence → `recurrence`). | Kevin ratify |
+| DEC-031 | 2026-06-20 | Chat architecture v2 — Result-seeded Progressive State (structured state JSON, NOT prose history). Scope chip mandatory, ambiguity ask-clarify, 30-min invalidation. | Kevin ratify |
+| DEC-047 | 2026-06-20 | PR Scope-Lock Enforcement — PR chỉ chứa files trong session lane; cross-lane = file issue. Trigger: PR #288 incident. | PM operational |
+| DEC-048 | 2026-06-27 | Obligation Fulfillment + Dependency Chain (EPIC #300 production `ce48bbd`). `fulfilled_at` G1 anchor (NOT date.today()), `awaiting_confirmation` status cascade-past D-02. `source_clause_num` provenance (Kevin Option B 0a). `is_evidence` skip-extraction P2. ClauseEditEvent + re-read flow §13 addendum. P1 source-aware merge guard + derive delete path-2 (PR #311 V1). Date-anchored resolver (FR-OB-13). | Kevin ratify |
 
 ---
 
@@ -224,5 +256,7 @@ Exit criteria:
 | Policy O-3 | `thoi_han_hd` phi-số (a/b/c) | PM |
 
 ---
+
+*Hết v0.5 — cycle 5 fold. EPIC #300 production live (`ce48bbd` 2026-06-27). Pilot tenant `tran-thai-cam-ranh` provisioned. DEC-048 ratified. USER_MANUAL_PILOT_v0.1.md published. Next: Sprint 5 pilot hardening + lawyer kickoff + NĐ 13 chat consent close + 2-firm pilot expansion.*
 
 *Hết v0.4 — cycle 4 fold. Sprint 1 staging-complete; Sprint 2 backlog filed (DEC-030 wiring + NĐ 13 compliance close + re-extraction + Frontend Quyền lợi UI). Next: staging→main batch promote sau khi #145 ship.*
