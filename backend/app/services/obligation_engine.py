@@ -218,11 +218,13 @@ def derive_obligation_from_clause(
     clause_num: str,
     *,
     source_label: str = "ai_re_derived",
+    derived_from: str = "original",
 ) -> dict:
     """Derive an obligation using only Terms anchored to a specific clause (#303).
 
     Scoped re-derive: only Terms where ``ref == clause_num`` are used. Does NOT
     delete other obligations or touch other clauses (KHÔNG churn — AC2 §303).
+    Does NOT resolve across amendment chains — operates on this document only.
 
     Returns ``{"created": int, "skipped": bool, "reason": str | None}``.
     """
@@ -279,13 +281,12 @@ def derive_obligation_from_clause(
     doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     file_name = doc.file_name if doc else f"doc#{doc_id}"
 
+    due_str = due_date.strftime("%Y-%m-%d") if due_date else None
     if recurrence == "open_ended_review":
         description = f"Hợp đồng {file_name} vô thời hạn — cần review"
     else:
-        due_str = due_date.strftime("%Y-%m-%d") if due_date else None
         description = f"Hợp đồng {file_name} hết hạn ngày {due_str}"
 
-    due_str = due_date.strftime("%Y-%m-%d") if due_date else None
     ob = Obligation(
         tenant_id=tenant_id,
         document_id=doc_id,
@@ -297,7 +298,7 @@ def derive_obligation_from_clause(
         remind_before_days=365 if recurrence == "open_ended_review" else 30,
         source=source_label,
         source_clause_num=clause_num,
-        derived_from="original",
+        derived_from=derived_from,
     )
     db.add(ob)
 

@@ -358,6 +358,27 @@ def test_re_derive_clause_protects_fulfilled_obligation(client, tdb, tenant_id):
     assert tdb.query(Obligation).filter(Obligation.id == ob.id).first() is not None
 
 
+# ── AC4: derived_from="user_edit" via endpoint ──────────────────────────────
+
+def test_re_derive_clause_sets_derived_from_user_edit(client, tdb, tenant_id):
+    """Re-derive via endpoint → obligation.derived_from='user_edit' (AC4)."""
+    doc = _make_doc(tdb, tenant_id)
+    _make_clause(tdb, tenant_id, doc.id, "Điều 7", "hết hạn 2027-06-30")
+    _make_term(tdb, tenant_id, doc.id, "ngay_het_han", "2027-06-30", ref="Điều 7")
+    tdb.commit()
+
+    r = client.post(f"/documents/{doc.id}/re-derive-clause", json={"clause_num": "Điều 7"})
+    assert r.status_code == 200
+
+    tdb.expire_all()
+    ob = tdb.query(Obligation).filter(
+        Obligation.document_id == doc.id,
+        Obligation.source_clause_num == "Điều 7",
+    ).first()
+    assert ob is not None
+    assert ob.derived_from == "user_edit"
+
+
 # ── audit event logged ────────────────────────────────────────────────────────
 
 def test_re_derive_clause_logs_event(client, tdb, tenant_id):

@@ -1067,7 +1067,8 @@ async def re_derive_clause(
 
     # Re-derive obligation from Terms scoped to this clause.
     derive_result = derive_obligation_from_clause(
-        db, user.tenant_id, doc_id, body.clause_num, source_label="ai_re_derived",
+        db, user.tenant_id, doc_id, body.clause_num,
+        source_label="ai_re_derived", derived_from="user_edit",
     )
 
     _log_event(
