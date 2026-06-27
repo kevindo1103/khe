@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.db.database import get_tenant_session
 from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
-from app.services.obligation_engine import derive_obligations
+from app.services.obligation_engine import derive_obligations, resolve_date_anchored_obligations
 from app.services import quota, tenant_journey
 from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
@@ -281,8 +281,13 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             trigger = item.trigger if item.trigger in _VALID_TRIGGERS else "date"
             # trigger=event rows have no fixed date until the event fires (D-08).
             due_date = None if trigger == "event" else item.due_date
-            if trigger == "date" and not due_date:
-                continue  # D-08: no fabricated date
+            # B3 (#282): date-anchored obligations with no resolved due_date are
+            # persisted as waiting_trigger so resolve_date_anchored_obligations()
+            # can fill them in after extraction. D-08: no fabrication here.
+            if trigger == "event" or not due_date:
+                status = "waiting_trigger"
+            else:
+                status = "pending"
             # Dedup guard: skip if a done/cancelled row with same identity tuple
             # already exists (re-extraction after user marked obligation done).
             existing = db.query(Obligation).filter(
@@ -296,7 +301,6 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             ).first()
             if existing:
                 continue
-            status = "waiting_trigger" if trigger == "event" else "pending"
             direction = _derive_direction(tenant_id, item.obligor, result) if item.obligor else None
             db.add(Obligation(
                 tenant_id=tenant_id,
@@ -333,6 +337,10 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             )
             db.add(event)
         db.commit()
+
+        # B3 (#282): resolve date-anchored obligations that were persisted as
+        # waiting_trigger because their anchor date wasn't known at schedule time.
+        resolve_date_anchored_obligations(db, tenant_id, doc_id)
     finally:
         db.close()
 
