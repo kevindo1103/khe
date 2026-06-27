@@ -151,8 +151,8 @@ export default function ExtractionMetrics() {
     });
     try {
       const [metricsRes, summaryRes] = await Promise.all([
-        apiFetch<MetricsResponse>(`/api/admin/extraction-metrics${qs}`),
-        apiFetch<MetricsSummary>(`/api/admin/extraction-metrics/summary${summaryQs}`),
+        apiFetch<MetricsResponse>(`/admin/extraction-metrics${qs}`),
+        apiFetch<MetricsSummary>(`/admin/extraction-metrics/summary${summaryQs}`),
       ]);
       setRows(metricsRes.items);
       setSummary(summaryRes);
