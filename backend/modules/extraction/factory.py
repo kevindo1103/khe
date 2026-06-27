@@ -22,7 +22,12 @@ from __future__ import annotations
 import os
 
 from .provider import VisionExtractionProvider
-from .providers import ClaudeHaikuProvider, ClaudeSonnetProvider, GeminiFlashProvider
+from .providers import (
+    ClaudeHaikuProvider,
+    ClaudeSonnetProvider,
+    GeminiFlashProvider,
+    HybridOCRProvider,
+)
 from .schemas import ExtractionResult
 
 
@@ -40,6 +45,9 @@ _REGISTRY: dict[str, tuple[type, tuple[str, ...]]] = {
     "gemini_flash": (GeminiFlashProvider, ("GEMINI_API_KEY", "GOOGLE_API_KEY")),
     "claude_haiku": (ClaudeHaikuProvider, ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY")),
     "claude_sonnet": (ClaudeSonnetProvider, ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY")),
+    # DEC-049: hybrid OCR pipeline — Document AI + Gemini Flash text extraction.
+    # Requires Gemini key + GOOGLE_APPLICATION_CREDENTIALS (service account for DocAI).
+    "hybrid_ocr": (HybridOCRProvider, ("GEMINI_API_KEY", "GOOGLE_API_KEY")),
 }
 
 # DEC-002 default preference: Gemini primary, Claude Haiku fallback. `prefer` moves
