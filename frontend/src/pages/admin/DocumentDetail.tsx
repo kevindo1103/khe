@@ -28,6 +28,18 @@ type TabKey = 'overview' | 'obligations' | 'clauses';
 
 const DOC_TYPE_GROUPS = Object.keys(DOC_TYPE_GROUP_LABELS);
 
+const STATUS_BADGE: Record<string, 'processing' | 'extracted' | 'needs_review'> = {
+  processing: 'processing',
+  extracted: 'extracted',
+  needs_review: 'needs_review',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  processing: 'Đang xử lý',
+  extracted: 'Đã bóc tách',
+  needs_review: 'Cần kiểm tra',
+};
+
 // ── Direction badge ──────────────────────────────────────────────────────────
 function DirectionBadge({ direction }: { direction: ObligationOut['direction'] }) {
   if (direction === 'nghĩa_vụ')
@@ -471,14 +483,28 @@ function TabClauses({
   clauses,
   loading,
   total,
+  error,
+  onRetry,
 }: {
   clauses: ClauseOut[];
   loading: boolean;
   total: number;
+  error: boolean;
+  onRetry: () => void;
 }) {
   if (loading) {
     return (
       <div className="py-12 text-center text-sm text-ink-muted">Đang tải điều khoản…</div>
+    );
+  }
+  if (error) {
+    return (
+      <EmptyState
+        icon="⚠️"
+        title="Không tải được điều khoản"
+        description="Đã xảy ra lỗi khi tải nội dung điều khoản."
+        action={<Button size="sm" variant="ghost" onClick={onRetry}>Thử lại</Button>}
+      />
     );
   }
   if (clauses.length === 0) {
@@ -526,6 +552,7 @@ export default function DocumentDetail() {
   const [clausesLoading, setClausesLoading] = useState(false);
   const [clausesLoaded, setClausesLoaded] = useState(false);
   const [clausesTotal, setClausesTotal] = useState(0);
+  const [clausesError, setClausesError] = useState(false);
   const { refetch: refetchJourney } = useJourney();
 
   const showToast = (msg: string, kind: ToastKind = 'success') => {
@@ -550,13 +577,14 @@ export default function DocumentDetail() {
   const loadClauses = useCallback(async () => {
     if (!docId || clausesLoaded) return;
     setClausesLoading(true);
+    setClausesError(false);
     try {
       const res = await apiFetch<ClauseListOut>(`/documents/${docId}/clauses`);
       setClauses(res.items);
       setClausesTotal(res.total);
       setClausesLoaded(true);
     } catch {
-      // silent — tab shows empty state
+      setClausesError(true);
     } finally {
       setClausesLoading(false);
     }
@@ -705,7 +733,7 @@ export default function DocumentDetail() {
   const derivedTitle = useMemo(() => {
     if (!doc) return '';
     const typeLabel = doc.doc_type ? (DOC_TYPE_LABELS[doc.doc_type] ?? null) : null;
-    const primaryParty = doc.parties?.find((p) => p.role_label !== null)?.name ?? null;
+    const primaryParty = doc.parties?.find((p) => p.role_label === null)?.name ?? null;
     if (typeLabel && primaryParty) return `Hợp đồng ${typeLabel} với ${primaryParty}`;
     if (typeLabel) return `Hợp đồng ${typeLabel}`;
     if (primaryParty) return `Hợp đồng với ${primaryParty}`;
@@ -717,18 +745,6 @@ export default function DocumentDetail() {
     if (!doc || doc.obligations.length === 0) return true;
     return !doc.obligations.some((o) => o.direction === null);
   }, [doc]);
-
-  const STATUS_BADGE: Record<string, 'processing' | 'extracted' | 'needs_review'> = {
-    processing: 'processing',
-    extracted: 'extracted',
-    needs_review: 'needs_review',
-  };
-
-  const STATUS_LABEL: Record<string, string> = {
-    processing: 'Đang xử lý',
-    extracted: 'Đã bóc tách',
-    needs_review: 'Cần kiểm tra',
-  };
 
   const tabs: { key: TabKey; label: string; count?: number }[] = [
     { key: 'overview', label: 'Tổng quan' },
@@ -882,6 +898,8 @@ export default function DocumentDetail() {
               clauses={clauses}
               loading={clausesLoading}
               total={clausesTotal}
+              error={clausesError}
+              onRetry={() => { setClausesLoaded(false); setClausesError(false); }}
             />
           )}
 
