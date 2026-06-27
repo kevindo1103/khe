@@ -11,8 +11,11 @@ import type {
   RemapTypeOut,
   ClauseOut,
   ClauseListOut,
+  ClausePatchOut,
+  ReReadDiff,
+  ReReadOut,
 } from '../../types/documents';
-import type { ObligationOut } from '../../types/obligations';
+import type { ObligationOut, ObligationPatchOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
 import {
@@ -84,8 +87,87 @@ function ObligationDue({ ob }: { ob: ObligationOut }) {
   return <span className="text-xs text-ink-muted">Hạn: {dateStr}</span>;
 }
 
+// ── Fulfillment modal ────────────────────────────────────────────────────────
+function FulfillModal({
+  ob,
+  open,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  ob: ObligationOut | null;
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (fulfilledAt: string, fulfilledBy: string) => void;
+  submitting: boolean;
+}) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [actor, setActor] = useState('');
+  useEffect(() => {
+    if (open) {
+      setDate(new Date().toISOString().slice(0, 10));
+      setActor('');
+    }
+  }, [open]);
+  if (!ob) return null;
+  return (
+    <Modal
+      open={open}
+      title="Đánh dấu hoàn thành"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Hủy
+          </Button>
+          <Button
+            onClick={() => onSubmit(date, actor)}
+            loading={submitting}
+            disabled={!date}
+            testId="fulfill-confirm-btn"
+          >
+            Xác nhận hoàn thành
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-ink-muted">{ob.description}</p>
+        <div>
+          <label className="block text-xs font-medium text-ink-muted uppercase mb-1">
+            Ngày thực hiện *
+          </label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-muted uppercase mb-1">
+            Người thực hiện (tùy chọn)
+          </label>
+          <Input
+            value={actor}
+            onChange={setActor}
+            placeholder="Tên hoặc email người thực hiện"
+          />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Single obligation row ────────────────────────────────────────────────────
-function ObligationRow({ ob }: { ob: ObligationOut }) {
+function ObligationRow({
+  ob,
+  onFulfill,
+}: {
+  ob: ObligationOut;
+  onFulfill: (ob: ObligationOut) => void;
+}) {
+  const canFulfill = ['pending', 'in_progress', 'partial'].includes(ob.status);
   return (
     <div className="py-3 border-b border-border last:border-0">
       <div className="flex items-start justify-between gap-2">
@@ -107,17 +189,32 @@ function ObligationRow({ ob }: { ob: ObligationOut }) {
             {ob.amount_raw && (
               <span className="text-xs text-ink-muted">💰 {ob.amount_raw}</span>
             )}
+            {ob.fulfilled_at && (
+              <span className="text-xs text-ink-muted">
+                ✓ {new Date(ob.fulfilled_at).toLocaleDateString('vi-VN')}
+                {ob.fulfilled_by && ` · ${ob.fulfilled_by}`}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex-shrink-0 mt-0.5">
+        <div className="flex-shrink-0 mt-0.5 flex items-center gap-2">
           {ob.status === 'done' ? (
             <Badge kind="done">✓ hoàn thành</Badge>
           ) : ob.status === 'cancelled' ? (
             <Badge kind="neutral">đã hủy</Badge>
           ) : (
-            <Link to="/admin/obligations" className="text-xs text-primary hover:underline">
-              Quản lý →
-            </Link>
+            <>
+              {canFulfill && (
+                <Button size="sm" variant="ghost" onClick={() => onFulfill(ob)}>
+                  Hoàn thành →
+                </Button>
+              )}
+              {!canFulfill && (
+                <Link to="/admin/obligations" className="text-xs text-primary hover:underline">
+                  Quản lý →
+                </Link>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -220,33 +317,329 @@ function CompletenessBanner({ doc }: { doc: DocumentDetailOut }) {
   return null;
 }
 
-// ── Clause accordion item ────────────────────────────────────────────────────
-function ClauseItem({ clause, defaultOpen }: { clause: ClauseOut; defaultOpen: boolean }) {
+// ── Clause accordion item (Phase 2 — inline edit, D-07) ─────────────────────
+function ClauseItem({
+  clause,
+  defaultOpen,
+  docId,
+  onSaved,
+}: {
+  clause: ClauseOut;
+  defaultOpen: boolean;
+  docId: number;
+  onSaved: (updated: ClauseOut) => void;
+}) {
   const [open, setOpen] = useState(defaultOpen);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+
   const title =
     clause.title ||
-    (clause.clause_number ? `Điều ${clause.clause_number}` : `Điều khoản #${clause.id}`);
+    (clause.clause_num ? `Điều ${clause.clause_num}` : `Điều khoản #${clause.id}`);
+
+  const startEdit = () => {
+    setDraft(clause.content);
+    setEditing(true);
+    setOpen(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDraft('');
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const res = await apiFetch<ClausePatchOut>(
+        `/documents/${docId}/clauses/${clause.id}`,
+        { method: 'PATCH', body: JSON.stringify({ content: draft }) }
+      );
+      onSaved({ ...clause, ...res });
+      setEditing(false);
+      setDraft('');
+      setShowOriginal(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const displayContent =
+    showOriginal && clause.original_content ? clause.original_content : clause.content;
+
   return (
     <div className="border-b border-border last:border-0">
       <button
         className="w-full flex items-center justify-between py-3 text-left gap-2 hover:bg-surface-hover transition-colors"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => !editing && setOpen((v) => !v)}
         aria-expanded={open}
       >
         <span className="text-sm font-medium text-ink">{title}</span>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {clause.page_number != null && (
-            <span className="text-2xs text-ink-muted">tr.{clause.page_number}</span>
+          {clause.edited_by_user && (
+            <span className="text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+              đã sửa
+            </span>
+          )}
+          {clause.page_num != null && (
+            <span className="text-2xs text-ink-muted">tr.{clause.page_num}</span>
           )}
           <span className="text-ink-muted text-xs">{open ? '▲' : '▼'}</span>
         </div>
       </button>
       {open && (
-        <div className="pb-3 text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
-          {clause.content}
+        <div className="pb-3">
+          {editing ? (
+            <div className="flex flex-col gap-2">
+              <textarea
+                className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[8rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                autoFocus
+              />
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={saveEdit} loading={saving}>
+                  Lưu
+                </Button>
+                <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={saving}>
+                  Hủy
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+                {displayContent}
+              </p>
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
+                {clause.original_content && (
+                  <button
+                    className="text-2xs text-primary hover:underline"
+                    onClick={() => setShowOriginal((v) => !v)}
+                  >
+                    {showOriginal ? 'Xem bản đã sửa' : 'Xem bản gốc (AI)'}
+                  </button>
+                )}
+                {clause.edited_by_user && clause.edited_at && (
+                  <span className="text-2xs text-ink-muted">
+                    Sửa bởi {clause.edited_by_user} ·{' '}
+                    {new Date(clause.edited_at).toLocaleDateString('vi-VN')}
+                  </span>
+                )}
+                <button
+                  className="text-2xs text-ink-muted hover:text-primary ml-auto"
+                  onClick={startEdit}
+                >
+                  ✎ Sửa nội dung
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// ── Phase 3: Re-read banner ──────────────────────────────────────────────────
+function ReReadBanner({ onReRead, reReading }: { onReRead: () => void; reReading: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 p-3 mb-4 rounded-lg bg-primary/5 border border-primary/20 text-sm">
+      <div className="flex items-center gap-2">
+        <span>🔄</span>
+        <span className="text-ink">
+          Bạn đã sửa điều khoản — Khế có thể bóc lại nghĩa vụ từ nội dung mới.
+        </span>
+      </div>
+      <Button size="sm" onClick={onReRead} loading={reReading}>
+        Bóc lại
+      </Button>
+    </div>
+  );
+}
+
+// ── Phase 3: Stale-edit warning on obligations tab ───────────────────────────
+function StaleEditBanner({ onGoToClauses }: { onGoToClauses: () => void }) {
+  return (
+    <div className="flex items-center gap-3 p-3 mb-4 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+      <span>⚠️</span>
+      <span className="text-amber-700 flex-1">
+        Có điều khoản đã sửa — nghĩa vụ có thể chưa phản ánh nội dung mới.
+      </span>
+      <button className="text-2xs text-amber-700 underline" onClick={onGoToClauses}>
+        Xem điều khoản →
+      </button>
+    </div>
+  );
+}
+
+// ── Phase 3: Diff confirm modal (D-02) ───────────────────────────────────────
+function DiffConfirmModal({
+  open,
+  diffs,
+  onClose,
+  onConfirm,
+  submitting,
+}: {
+  open: boolean;
+  diffs: ReReadDiff[];
+  onClose: () => void;
+  onConfirm: (toApply: number[]) => Promise<void>;
+  submitting: boolean;
+}) {
+  const removeDiffs = diffs.filter((d) => d.action === 'remove');
+  const infoDiffs = diffs.filter((d) => d.action !== 'remove');
+
+  // Default: cancel non-protected removes; keep protected removes
+  const [cancelSet, setCancelSet] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    const defaultCancel = new Set(
+      removeDiffs
+        .map((d, i) => ({ d, i }))
+        .filter(({ d }) => !d.protected && d.obligation_id != null)
+        .map(({ d }) => d.obligation_id as number)
+    );
+    setCancelSet(defaultCancel);
+  }, [open, diffs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleCancel = (obligationId: number) => {
+    setCancelSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(obligationId)) next.delete(obligationId);
+      else next.add(obligationId);
+      return next;
+    });
+  };
+
+  const actionLabel = (action: string) => {
+    if (action === 'add') return '+ Thêm mới';
+    if (action === 'update') return '✏ Cập nhật';
+    if (action === 'remove') return '− Xóa';
+    return action;
+  };
+
+  const handleConfirm = async () => {
+    await onConfirm(Array.from(cancelSet));
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={`Khế phát hiện ${diffs.length} thay đổi nghĩa vụ`}
+      onClose={() => !submitting && onClose()}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Bỏ qua
+          </Button>
+          <Button onClick={handleConfirm} loading={submitting}>
+            Xác nhận ({cancelSet.size} hủy)
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto">
+        {removeDiffs.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-ink-muted uppercase mb-2">Xóa nghĩa vụ</p>
+            {removeDiffs.map((diff) => {
+              const id = diff.obligation_id!;
+              const selected = cancelSet.has(id);
+              return (
+                <div
+                  key={`remove-${id}`}
+                  className={`p-3 rounded-lg border mb-2 transition-colors ${
+                    selected ? 'border-red-200 bg-red-50' : 'border-border bg-surface-muted'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-xs font-medium text-red-600">
+                          {actionLabel(diff.action)}
+                        </span>
+                        {diff.protected && (
+                          <span className="text-2xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                            🔒 Thủ công
+                          </span>
+                        )}
+                        {diff.source_clause_num && (
+                          <span className="text-2xs text-ink-muted">
+                            Điều {diff.source_clause_num}
+                          </span>
+                        )}
+                      </div>
+                      {diff.description && (
+                        <p className="text-sm text-ink leading-snug">{diff.description}</p>
+                      )}
+                      {diff.due_date && (
+                        <p className="text-2xs text-ink-muted mt-1">
+                          Hạn: {new Date(diff.due_date).toLocaleDateString('vi-VN')}
+                        </p>
+                      )}
+                    </div>
+                    {!diff.protected && (
+                      <button
+                        className={`flex-shrink-0 text-xs px-2 py-1 rounded border transition-colors ${
+                          selected
+                            ? 'border-red-300 text-red-600 bg-red-50'
+                            : 'border-border text-ink-muted'
+                        }`}
+                        onClick={() => toggleCancel(id)}
+                        disabled={submitting}
+                      >
+                        {selected ? 'Hủy ✓' : 'Giữ lại'}
+                      </button>
+                    )}
+                    {diff.protected && (
+                      <span className="flex-shrink-0 text-xs px-2 py-1 text-ink-muted">
+                        Giữ của bạn ✓
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {infoDiffs.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-ink-muted uppercase mb-2">
+              Thay đổi khác (cần cập nhật thủ công)
+            </p>
+            {infoDiffs.map((diff, i) => (
+              <div key={`info-${i}`} className="p-3 rounded-lg border border-border mb-2">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-xs font-medium text-ink">{actionLabel(diff.action)}</span>
+                  {diff.obligation_type && (
+                    <span className="text-2xs text-ink-muted">
+                      {labelFor(OBLIGATION_TYPE_LABELS, diff.obligation_type)}
+                    </span>
+                  )}
+                  {diff.source_clause_num && (
+                    <span className="text-2xs text-ink-muted">Điều {diff.source_clause_num}</span>
+                  )}
+                </div>
+                {diff.description && (
+                  <p className="text-sm text-ink leading-snug">{diff.description}</p>
+                )}
+                {diff.old_value && diff.new_value && (
+                  <div className="mt-1 flex gap-2 text-2xs flex-wrap">
+                    <span className="text-red-500 line-through">{diff.old_value}</span>
+                    <span>→</span>
+                    <span className="text-green-600">{diff.new_value}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -397,12 +790,14 @@ function TabObligations({
   confirming,
   onSelectRole,
   onConfirmSelfParty,
+  onFulfill,
 }: {
   doc: DocumentDetailOut;
   selectedRole: string;
   confirming: boolean;
   onSelectRole: (v: string) => void;
   onConfirmSelfParty: () => void;
+  onFulfill: (ob: ObligationOut) => void;
 }) {
   const hasNullDirection = doc.obligations.some((o) => o.direction === null);
 
@@ -446,7 +841,7 @@ function TabObligations({
       {nghiaVu.length > 0 && (
         <Card title={`Phải làm (${nghiaVu.length})`} className="mb-4">
           {nghiaVu.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -454,7 +849,7 @@ function TabObligations({
       {quyenLoi.length > 0 && (
         <Card title={`Được hưởng (${quyenLoi.length})`} className="mb-4">
           {quyenLoi.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -462,7 +857,7 @@ function TabObligations({
       {chuaRo.length > 0 && (
         <Card title={`Chưa rõ hướng (${chuaRo.length})`} className="mb-4">
           {chuaRo.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -470,7 +865,7 @@ function TabObligations({
       {reviewObs.length > 0 && (
         <Card title={`Review / kiểm tra định kỳ (${reviewObs.length})`} className="mb-4">
           {reviewObs.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} />
+            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
           ))}
         </Card>
       )}
@@ -485,12 +880,22 @@ function TabClauses({
   total,
   error,
   onRetry,
+  docId,
+  onClauseSaved,
+  hasEdited,
+  reReading,
+  onReRead,
 }: {
   clauses: ClauseOut[];
   loading: boolean;
   total: number;
   error: boolean;
   onRetry: () => void;
+  docId: number;
+  onClauseSaved: (updated: ClauseOut) => void;
+  hasEdited: boolean;
+  reReading: boolean;
+  onReRead: () => void;
 }) {
   if (loading) {
     return (
@@ -519,10 +924,17 @@ function TabClauses({
   const defaultOpen = clauses.length <= 8;
   return (
     <div>
+      {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
       <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
       <Card>
         {clauses.map((c) => (
-          <ClauseItem key={c.id} clause={c} defaultOpen={defaultOpen} />
+          <ClauseItem
+            key={c.id}
+            clause={c}
+            defaultOpen={defaultOpen}
+            docId={docId}
+            onSaved={onClauseSaved}
+          />
         ))}
       </Card>
     </div>
@@ -553,6 +965,11 @@ export default function DocumentDetail() {
   const [clausesLoaded, setClausesLoaded] = useState(false);
   const [clausesTotal, setClausesTotal] = useState(0);
   const [clausesError, setClausesError] = useState(false);
+  const [fulfillTarget, setFulfillTarget] = useState<ObligationOut | null>(null);
+  const [fulfilling, setFulfilling] = useState(false);
+  const [reReading, setReReading] = useState(false);
+  const [reReadDiffs, setReReadDiffs] = useState<ReReadDiff[] | null>(null);
+  const [applyingDiffs, setApplyingDiffs] = useState(false);
   const { refetch: refetchJourney } = useJourney();
 
   const showToast = (msg: string, kind: ToastKind = 'success') => {
@@ -580,8 +997,8 @@ export default function DocumentDetail() {
     setClausesError(false);
     try {
       const res = await apiFetch<ClauseListOut>(`/documents/${docId}/clauses`);
-      setClauses(res.items);
-      setClausesTotal(res.total);
+      setClauses(res.clauses);
+      setClausesTotal(res.clause_count);
       setClausesLoaded(true);
     } catch {
       setClausesError(true);
@@ -681,6 +1098,92 @@ export default function DocumentDetail() {
       setConfirmingDoc(false);
     }
   };
+
+  const fulfillObligation = async (fulfilledAt: string, fulfilledBy: string) => {
+    if (!fulfillTarget) return;
+    setFulfilling(true);
+    try {
+      const res = await apiFetch<ObligationPatchOut>(
+        `/obligations/${fulfillTarget.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            status: 'done',
+            fulfilled_at: `${fulfilledAt}T00:00:00`,
+            fulfilled_by: fulfilledBy || undefined,
+          }),
+        }
+      );
+      setFulfillTarget(null);
+      const chainMsg = res.activated_count > 0
+        ? ` · ${res.activated_count} nghĩa vụ tiếp theo đã kích hoạt`
+        : '';
+      showToast(`Đã đánh dấu hoàn thành ✓${chainMsg}`);
+      await load();
+    } catch (err) {
+      showToast((err as ApiError).message || 'Đánh dấu hoàn thành thất bại', 'error');
+    } finally {
+      setFulfilling(false);
+    }
+  };
+
+  const saveClause = useCallback(
+    (updated: ClauseOut) => {
+      setClauses((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      showToast('Đã sửa điều khoản ✓ — D-07 ghi nhận.');
+    },
+    []
+  );
+
+  const hasEditedClauses = useMemo(
+    () => clauses.some((c) => c.edited_by_user != null),
+    [clauses]
+  );
+
+  const triggerReRead = useCallback(async () => {
+    if (!docId) return;
+    setReReading(true);
+    try {
+      const res = await apiFetch<ReReadOut>(`/documents/${docId}/reread`, { method: 'POST' });
+      if (res.diffs.length === 0) {
+        showToast(`Đã kiểm tra ${res.clauses_checked} điều khoản — không có thay đổi mới.`);
+      } else {
+        setReReadDiffs(res.diffs);
+      }
+    } catch (err) {
+      showToast((err as ApiError).message || 'Bóc lại thất bại', 'error');
+    } finally {
+      setReReading(false);
+    }
+  }, [docId]);
+
+  const applyReReadDiffs = useCallback(
+    async (toCancel: number[]) => {
+      setApplyingDiffs(true);
+      try {
+        await Promise.all(
+          toCancel.map((id) =>
+            apiFetch(`/obligations/${id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: 'cancelled' }),
+            })
+          )
+        );
+        setReReadDiffs(null);
+        const msg =
+          toCancel.length > 0
+            ? `Đã hủy ${toCancel.length} nghĩa vụ theo nội dung mới ✓`
+            : 'Đã đóng — không áp dụng thay đổi.';
+        showToast(msg);
+        await load();
+      } catch (err) {
+        showToast((err as ApiError).message || 'Áp dụng thất bại', 'error');
+      } finally {
+        setApplyingDiffs(false);
+      }
+    },
+    [load]
+  );
 
   const handleRemap = async (newType: string) => {
     if (!docId) return;
@@ -884,13 +1387,19 @@ export default function DocumentDetail() {
           )}
 
           {activeTab === 'obligations' && (
-            <TabObligations
-              doc={doc}
-              selectedRole={selectedRole}
-              confirming={confirming}
-              onSelectRole={setSelectedRole}
-              onConfirmSelfParty={confirmSelfParty}
-            />
+            <>
+              {hasEditedClauses && (
+                <StaleEditBanner onGoToClauses={() => setActiveTab('clauses')} />
+              )}
+              <TabObligations
+                doc={doc}
+                selectedRole={selectedRole}
+                confirming={confirming}
+                onSelectRole={setSelectedRole}
+                onConfirmSelfParty={confirmSelfParty}
+                onFulfill={setFulfillTarget}
+              />
+            </>
           )}
 
           {activeTab === 'clauses' && (
@@ -900,6 +1409,11 @@ export default function DocumentDetail() {
               total={clausesTotal}
               error={clausesError}
               onRetry={() => { setClausesLoaded(false); setClausesError(false); }}
+              docId={docId}
+              onClauseSaved={saveClause}
+              hasEdited={hasEditedClauses}
+              reReading={reReading}
+              onReRead={triggerReRead}
             />
           )}
 
@@ -938,6 +1452,26 @@ export default function DocumentDetail() {
             </div>
           )}
         </>
+      )}
+
+      {/* Fulfillment modal */}
+      <FulfillModal
+        ob={fulfillTarget}
+        open={fulfillTarget !== null}
+        onClose={() => setFulfillTarget(null)}
+        onSubmit={fulfillObligation}
+        submitting={fulfilling}
+      />
+
+      {/* Re-read diff confirm modal (Phase 3 — D-02) */}
+      {reReadDiffs !== null && (
+        <DiffConfirmModal
+          open={reReadDiffs !== null}
+          diffs={reReadDiffs}
+          onClose={() => setReReadDiffs(null)}
+          onConfirm={applyReReadDiffs}
+          submitting={applyingDiffs}
+        />
       )}
 
       {/* Remap confirm modal */}

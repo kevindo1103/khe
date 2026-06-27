@@ -100,17 +100,52 @@ export interface SelfPartyConfirmOut {
 // Backend #284 — GET /documents/{id}/clauses
 export interface ClauseOut {
   id: number;
-  clause_number: string | null;
+  clause_num: string | null;
   title: string | null;
-  page_number: number | null;
+  page_num: number | null;
   content: string;
-  // Phase 2 fields (clause inline edit, Backend clause PATCH — not yet shipped)
+  // Phase 2 fields — populated after PATCH /clauses/{id} (Backend #325)
   edited_by_user?: string | null;
   edited_at?: string | null;
   original_content?: string | null;
 }
 
 export interface ClauseListOut {
-  items: ClauseOut[];
-  total: number;
+  document_id: number;
+  clause_count: number;
+  page_min: number | null;
+  page_max: number | null;
+  clauses: ClauseOut[];
+}
+
+// Backend #325 — PATCH /documents/{id}/clauses/{clause_id}
+export interface ClausePatchOut {
+  id: number;
+  clause_num: string | null;
+  title: string | null;
+  page_num: number | null;
+  content: string;
+  edited_by_user: string | null;
+  edited_at: string | null;
+  original_content: string | null;
+}
+
+// Backend #326 — POST /documents/{id}/reread
+export interface ReReadDiff {
+  action: 'add' | 'update' | 'remove';
+  obligation_id: number | null;
+  field: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  description: string | null;
+  obligation_type: string | null;
+  due_date: string | null;
+  source_clause_num: string | null;
+  protected: boolean;
+}
+
+export interface ReReadOut {
+  document_id: number;
+  clauses_checked: number;
+  diffs: ReReadDiff[];
 }
