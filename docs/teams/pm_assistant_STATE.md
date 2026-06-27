@@ -1,7 +1,9 @@
 # KHE_PM_Assistant STATE — Khế MVP
 
-*Branch: `claude/pm-assistant` | Last updated: 2026-06-27 | v3.9*
+*Branch: `claude/pm-assistant` | Last updated: 2026-06-27 | v4.0*
 
+> **2026-06-27 (b):** 🔴 **#340 pilot benchmark lật DEC-002.** Gemini Vision miss ~50% clause trên **scan** (8/15 điều doc 22, verified isolation test — KHÔNG phải truncation, là vision quality trên scan) + cost thật **500-2,500đ/doc (~350đ/trang)** vs giả định 59-177đ. **Decision (Kevin 2026-06-27):** AI prototype **hybrid OCR+LLM** → lấy data so sánh → ratify DEC-002 revision sau (KHÔNG ratify mù). Giữ Protocol, add `HybridOCRProvider`, route theo scan-detection. **Pre-pilot blocker:** hold concierge onboard tài liệu scan tới khi hybrid verified; lấy sample doc Trần Thái (#336) đo scan-ratio trước; doc native vẫn onboard được. ⚠️ **Economics exposure:** real cost ám chỉ DEC-011 GM (82.3% @ 177đ) có thể ~0%/âm → cost-per-doc giờ là **pricing-model gate**. DOCS_INBOX fold HOÃN tới ratify (tránh clobber canonical bằng số chưa verify). PM rubric posted #340.
+> **2026-06-27 (a):** EPIC #300 → production (PR #335, sha `ce48bbd`). Tenant pilot `tran-thai-cam-ranh` tạo (#336).
 > **2026-06-26 (b):** Kevin approved **"Nội dung hợp đồng" tab** on doc-detail page. Posted: #281 addendum spec ([comment](https://github.com/kevindo1103/khe/issues/281#issuecomment-4810615167)) + **#284** new Backend issue (`GET /documents/{id}/clauses`). Doc-detail IA = 3 tabs: Tổng quan / Nghĩa vụ & Quyền lợi / Nội dung hợp đồng. Clause↔obligation cross-nav = fast-follow (no `source_clause_num` on Obligation today, verified staging `05f20bd`).
 
 > **2026-06-18 (b):** Fold BRD v0.1 → **v0.2** trực tiếp (PM-direct, Kevin authorize exception). 13 thay đổi: Zalo→Telegram, B2B2B §2.4, vertical OPEN, 2-firm pilot, concierge, VisionExtractionProvider, consent gate, derive ngày hết hạn, kill signals §12.1, NFR-3 US-hosted reconcile. NĐ 337 date reconciled (01/01/2026 hiệu lực + 01/07/2026 nền tảng) khớp CLAUDE.md. DOCS_INBOX noted để KHE_Docs canonical-hóa, KHÔNG re-fold (tránh clobber).
@@ -122,7 +124,8 @@ Fast-follow: Smart CompletenessVerifier + recall corpus
 | Team | Issue | What | Gates |
 |---|---|---|---|
 | **KHE_AI** | ~~#230~~ ✅ | page_num/ref/bbox anchors — DONE (PR #232, staging green) | — |
-| **KHE_AI** | #248 (next) | Flash-lite benchmark → DEC-041 ratification | Cost optimization |
+| **KHE_AI** 🔴 | **#340** | **Extraction quality + cost model REVISION** — pilot benchmark (docs 18-24): Gemini Vision miss ~50% clause trên **scan** (8/15 điều, doc 22) + cost thật 500-2,500đ/doc (~350đ/trang). Falsifies DEC-002/026/041. AI prototyping **hybrid OCR+LLM** → so data → ratify DEC-002 revision sau. Threatens DEC-011 GM + DEC-043/045 completeness. Rubric posted (clause recall / dedup / all-pages cost / p90 / Document AI variant). | **🔴 PRE-PILOT BLOCKER — gates #336 onboard scan docs** |
+| **Backend** | **#336** | Tạo SME tenant prod `tran-thai-cam-ranh` (Công ty CP Trần Thái Cam Ranh). Password qua channel riêng. **⚠️ onboard full bộ gated trên scan-ratio (#340).** | **Pilot setup** |
 | **Frontend** | #238 | 4 items: confirm button, Home CTA chip, `journey_advanced` refetch, DocList badge | Nav-lock live end-to-end |
 | **Frontend** | #238 | MANDATORY: ReminderNudge + "X/Y bước" chip for CONFIRMED-without-channel | DEC-040 mitigation |
 | **Frontend** | #238 | Interim: false-success toast 3-state fix (no backend dep) | Ship now |
@@ -217,7 +220,7 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 | ID | Decision | Status | Date |
 |---|---|---|---|
 | DEC-001 | Stack: FastAPI + SQLite multi-tenant per BRD A-1 | Draft | 2026-06-09 |
-| DEC-002 | `VisionExtractionProvider` — Gemini 2.0 Flash primary (~150đ/doc) + Claude Haiku fallback (~300đ/doc if accuracy <90%). Sprint 0 benchmark on 15 PII-scrubbed Bingxue HĐ samples. | **Ratified** | 2026-06-09 |
+| DEC-002 | `VisionExtractionProvider` — Gemini 2.0 Flash primary (~150đ/doc) + Claude Haiku fallback (~300đ/doc if accuracy <90%). Sprint 0 benchmark on 15 PII-scrubbed Bingxue HĐ samples. **⚠️ 2026-06-27 (#340):** pilot benchmark (docs 18-24) falsifies BOTH core assumptions — cost thật 500-2,500đ/doc (~350đ/trang) không phải 59-177đ; accuracy miss ~50% clause trên **scan** (vision quality, không phải truncation). Hybrid OCR+LLM prototype in progress → ratify revision after data. Protocol abstraction giữ nguyên (add HybridOCRProvider, route scan-detection). | ⚠️ **REVISION PENDING** (#340) | 2026-06-09 → 06-27 |
 | DEC-003 | Hosting provider + data residency | Draft | 2026-06-09 |
 | DEC-004 | Naming "Khế" finalization (R-7) | Draft | 2026-06-09 |
 | DEC-005 | Sprint cadence | Draft | 2026-06-09 |
@@ -266,7 +269,7 @@ positioning **"ngôi nhà cho mọi hợp đồng sau khi ký"** đón hậu só
 
 | DEC-040 | **`is_first_session` clears at first-confirm (amended 2026-06-24 via #249).** Original: clears when all docs confirmed. **Amendment:** gate = `confirmed_count >= 1` (first doc confirmed). Rationale: Kevin UAT `uat-demo` (17 docs) — confirmed 1, sidebar still locked — proved "all-confirmed" is pilot-blocking friction for concierge onboarding (DEC-012). Semantic separation: D-02 = per-doc audit (hard rule, intact) ≠ journey gate (UX policy, now relaxed to first-confirm). Unconfirmed docs invisible to Khế (scheduler, obligations) — D-02 fully preserved. Backend: 1-line change in `confirm_document()`. FE mandatory: persistent "X/N tài liệu cần xác nhận" counter on dashboard. Priority: HIGH (pre-pilot). DOCS_INBOX posted 2026-06-24. | **Ratified** (Kevin 2026-06-24 via #238); **amended** (PM 2026-06-24 via #249) | 2026-06-24 |
 
-| DEC-041 | **Flash-lite benchmark — CANCELLED (Kevin 2026-06-24).** Economics acceptable at 177đ/call + 100k VND/client/month. No re-measurement needed. Gemini 2.5 Flash stays as primary provider (DEC-002 unchanged). Issue #248 closed. | **Closed — not proceeding** | 2026-06-24 |
+| DEC-041 | **Flash-lite benchmark — CANCELLED (Kevin 2026-06-24).** Economics acceptable at 177đ/call + 100k VND/client/month. No re-measurement needed. Gemini 2.5 Flash stays as primary provider (DEC-002 unchanged). Issue #248 closed. **⚠️ PREMISE FALSIFIED 2026-06-27 (#340):** "economics acceptable at 177đ" sai — real cost 500-2,500đ/doc. Re-benchmark via hybrid prototype; DEC-011 GM phải tính lại. | ⚠️ **Premise falsified (#340)** | 2026-06-24 → 06-27 |
 
 | DEC-046 | **Firm Portal DEFERRED to post-pilot (Kevin 2026-06-25). Supersedes DEC-042.** Pilot = Khế core ONLY (DEC-043 repositioning — core obligation+rights IS the product; firm portal = derivative surface, không gate pilot promise). Reverts to DEC-037 Phase 2 posture. #65/#237/#270 frozen as Phase 2 spec (architecture stands, build post-pilot). Resolves P1-vs-firm-portal tension → **Contract Analysis Core P1 (#272) = sole pre-pilot critical path.** | **Ratified** (Kevin 2026-06-25) | 2026-06-25 |
 | DEC-043 | **Core repositioning: Khế = Obligation & Rights Management Platform (Kevin 2026-06-25).** Khế đảm bảo MỌI nghĩa vụ + quyền lợi pháp lý của tổ chức (đã văn bản hóa) được quản trị + thực hiện — tài chính + phi tài chính, nghĩa vụ + quyền lợi (cùng model khác direction). Chat + reminder = PHÁI SINH của Contract Analysis Core. Không pivot — sharpen Obligation "MVP heart". Ưu tiên: extraction completeness + obligation depth > chat/reminder polish. Tài liệu MVP = HĐ, mở rộng qua document type. Engineering BA #272. | **Ratified** (Kevin 2026-06-25) | 2026-06-25 |
