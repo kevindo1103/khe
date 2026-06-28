@@ -35,15 +35,32 @@ _DOC_TYPE_GROUP_SPEC = (
 # cho tương thích ngược; doc_type_group là phân nhóm rộng mới (DEC-029).
 _FIELD_SPEC = """\
 BƯỚC 2 — TRÍCH XUẤT. Luôn bóc các trường phổ quát (canonical key → mô tả):
+- tieu_de_hd: TÊN/TIÊU ĐỀ THẬT của hợp đồng lấy từ NỘI DUNG văn bản (heading lớn nhất
+  đầu tài liệu, vd "HỢP ĐỒNG CẤP PHÉP VÀ SỬ DỤNG BẢN QUYỀN KHÁCH SẠN",
+  "HỢP ĐỒNG THUÊ MẶT BẰNG"). KHÔNG lấy từ tên file. null nếu không tìm thấy.
+- so_hop_dong: số hiệu hợp đồng (pattern "số XX/YY/ZZZZ", "Số: 01/2026/HĐMB",
+  "Contract No. ..."). Giữ nguyên cách viết trên tài liệu. null nếu không có.
 - doi_tac: TÊN các bên ký kết (bên A / bên B, bên cho thuê / bên thuê, NSDLĐ / NLĐ,
   nhà cung cấp / khách hàng). Nếu nhiều bên, nối bằng dấu ";".
-- ngay_hieu_luc: ngày hợp đồng có hiệu lực. Định dạng yyyy-mm-dd nếu đọc được rõ.
-- ngay_het_han: ngày hết hạn / ngày chấm dứt hợp đồng. Định dạng yyyy-mm-dd nếu rõ.
+
+NGÀY — PHÂN BIỆT RÕ từng loại, KHÔNG gộp:
+- ngay_ky: ngày KÝ KẾT hợp đồng. yyyy-mm-dd nếu rõ. Thường ở cuối văn bản hoặc phần
+  mở đầu ("ký ngày...", "lập ngày..."). Có thể KHÁC ngày hiệu lực.
+- ngay_hieu_luc: ngày hợp đồng BẮT ĐẦU CÓ HIỆU LỰC pháp lý. yyyy-mm-dd nếu rõ.
+  Nếu "có hiệu lực kể từ ngày ký" → giá trị = ngày ký. KHÔNG nhầm với ngày ký nếu
+  HĐ nêu rõ hiệu lực khác ngày ký.
+- ngay_khai_truong: ngày KHAI TRƯƠNG / commencement / mở cửa kinh doanh (khác ngày
+  hiệu lực). Thường xuất hiện trong HĐ thuê/nhượng quyền: "Ngày Khai Trương",
+  "Commencement Date", "ngày mở cửa hoạt động". null nếu không có.
+- ngay_het_han: ngày HẾT HẠN / chấm dứt hợp đồng. yyyy-mm-dd nếu rõ.
+  Nếu HĐ chỉ nêu thời hạn ("5 năm") mà không nêu ngày cụ thể → null (để Backend tính).
+
 - gia_tri_hd: giá trị hợp đồng / tiền thuê / lương / giá trị đơn hàng (kèm đơn vị tiền nếu có).
-- thoi_han_hd: thời hạn hợp đồng (vd "12 tháng", "2 năm", "không xác định thời hạn").
+- thoi_han_hd: thời hạn / thời gian hiệu lực của CHÍNH HĐ (vd "12 tháng", "5 năm kể từ
+  ngày hiệu lực", "đến hết 31/12/2028", "không xác định thời hạn"). Ghi nguyên văn.
+  KHÁC thời hạn từng nghĩa vụ bên trong HĐ.
 - dieu_khoan_gia_han: điều khoản gia hạn / tái ký / thông báo trước khi hết hạn.
 - dieu_khoan_thanh_toan: điều khoản/lịch thanh toán (vd "trả ngày 5 hàng tháng").
-- ngay_ky: ngày ký kết (có thể KHÁC ngày hiệu lực). yyyy-mm-dd nếu rõ.
 - tien_dat_coc: tiền đặt cọc / ký quỹ / bảo đảm (kèm đơn vị tiền).
 - thoi_han_bao_hanh: thời hạn bảo hành (vd "12 tháng kể từ bàn giao").
 - thoi_han_thong_bao: thời hạn báo trước khi chấm dứt (vd "30 ngày").
@@ -109,9 +126,12 @@ _TYPE_SPECIFIC_SPEC = (
 _PARTIES_SPEC = """\
 Ngoài ra, liệt kê các bên ký kết thành danh sách "parties":
 - Mỗi phần tử: name (tên bên, đúng như trên tài liệu), role_label (vai trò dùng TRONG
-  hợp đồng, vd "Owner", "Operator", "Bên A", "Bên cho thuê", "NSDLĐ"; null nếu không có).
+  hợp đồng, vd "Owner", "Operator", "Bên A", "Bên cho thuê", "NSDLĐ"; null nếu không có),
+  address (địa chỉ bên ký kết, nguyên văn; null nếu không có),
+  representative (người đại diện + chức vụ, vd "Ông Nguyễn Văn A — Giám đốc"; null nếu không có),
+  tax_code (mã số thuế/MST; null nếu không có).
 - Bao gồm MỌI bên ký kết. KHÔNG suy đoán bên nào là người dùng (hệ thống tự xác định sau).
-- Giữ nguyên tên + vai trò như văn bản, KHÔNG dịch/diễn giải (D-06).
+- Giữ nguyên tên + vai trò + thông tin như văn bản, KHÔNG dịch/diễn giải (D-06).
 """
 
 # Obligation schedule spec (DEC-030 Phase 2 / #154): generalized from payments to
@@ -168,11 +188,58 @@ không có nhãn điều khoản → ref = null. Nhưng KHÔNG để null chỉ 
 _CLAUSES_SPEC = """\
 Ngoài ra, bóc TẤT CẢ điều/khoản/mục có đánh số thành danh sách "clauses":
 - Mỗi phần tử gồm: num (số hiệu, vd "Điều 1", "Khoản 2.3", "Mục IV"), title (tiêu đề
-  nếu có), content (TOÀN VĂN nội dung điều khoản, nguyên gốc).
+  nếu có), content (TOÀN VĂN nội dung điều khoản, nguyên gốc),
+  level (cấp bậc phân cấp: 1=Điều/Chương, 2=Khoản/Mục con, 3=Điểm/tiểu mục; null nếu không rõ),
+  clause_path (đường dẫn số hiệu: "2" cho Điều 2, "2.1" cho Khoản 2.1, "2.1.1" cho Điểm 2.1.1;
+  null nếu không đánh số theo cấp).
 - Bao gồm MỌI Điều / Khoản / Mục xuất hiện trong tài liệu, theo đúng thứ tự.
+- PHÂN CẤP: nếu "Khoản 2.3" nằm trong "Điều 2", ghi clause_path="2.3", level=2.
+  Nếu parent node không ghi rõ (vd chỉ có "2.1" mà không có "Điều 2" riêng) → vẫn ghi
+  clause_path="2.1" — Backend sẽ tổng hợp parent node.
 - Nếu điều khoản không có tiêu đề, đặt title = null.
 - GIỮ NGUYÊN tiếng Việt — TUYỆT ĐỐI không dịch, không tóm tắt, không diễn giải (D-06).
 - Nếu tài liệu không có điều khoản đánh số, để clauses = [].
+"""
+
+
+_AUTO_RENEWAL_SPEC = """\
+GIA HẠN TỰ ĐỘNG (R7): nếu HĐ có điều khoản tự động gia hạn ("tự động gia hạn trừ khi
+báo trước X ngày", "gia hạn thêm Y tháng nếu không có thông báo chấm dứt"):
+- Ghi RÕ trong dieu_khoan_gia_han (trường phổ quát) — nguyên văn điều khoản.
+- THÊM vào obligation_schedule: obligation_type="renewal", description="Thông báo
+  chấm dứt/không gia hạn trước ngày ...", due_date=ngày hết hạn TRỪ thời hạn
+  báo trước (nếu tính được; nếu không → due_date=null + trigger="event"),
+  source_clause_num=điều khoản chứa điều kiện gia hạn.
+- Đây là nghĩa vụ QUAN TRỌNG NHẤT cho SME — bỏ sót = tự động bị gia hạn.
+"""
+
+_DEFINED_TERMS_SPEC = """\
+THUẬT NGỮ ĐỊNH NGHĨA (R9): nếu tài liệu có phần/mục "Định nghĩa" (hoặc "Giải thích
+từ ngữ", Phụ lục A chứa giải thích thuật ngữ), bóc thành danh sách "defined_terms":
+- Mỗi phần tử: term (thuật ngữ, vd "Năm Tài chính"), definition (nội dung định nghĩa,
+  nguyên văn), source_clause (điều/mục chứa định nghĩa, vd "Phụ lục A"; null nếu không rõ).
+- KHÔNG gộp với party alias (party alias → "parties", thuật ngữ chung → "defined_terms").
+- GIỮ NGUYÊN tiếng Việt, KHÔNG dịch/tóm tắt (D-06). Rỗng nếu không có section định nghĩa.
+"""
+
+_CROSS_REF_SPEC = """\
+THAM CHIẾU CHÉO (R10): phát hiện mọi tham chiếu giữa điều/khoản/phụ lục:
+- Pattern: "theo Điều X", "quy định tại Phụ lục Y", "nêu tại Khoản Z", "xem Mục W".
+- Mỗi phần tử: source_clause (điều/khoản CHỨA tham chiếu), target_ref (đích tham chiếu,
+  nguyên văn), context (ngữ cảnh ngắn; null nếu không cần).
+- Rỗng nếu không phát hiện tham chiếu chéo nào.
+"""
+
+
+_TABLE_SIGNATURE_SPEC = """\
+BẢNG VÀ CHỮ KÝ (R5):
+- BẢNG: nếu điều khoản chứa BẢNG (vd danh mục thương hiệu, lịch thanh toán, bảng giá),
+  ghi nội dung bảng trong clause.content dưới dạng MARKDOWN TABLE (| cột1 | cột2 |...).
+  KHÔNG bỏ qua bảng — đó là nội dung pháp lý quan trọng.
+- CHỮ KÝ/CON DẤU: nếu phát hiện chữ ký tay, con dấu đỏ, hoặc vùng ký tên trên tài liệu:
+  đặt has_signature=true, signature_pages=[số trang có chữ ký/con dấu] (bắt đầu từ 1).
+  KHÔNG đọc nội dung chữ ký (D-01). Chỉ ghi nhận SỰ CÓ MẶT + vị trí trang.
+  Nếu không phát hiện → has_signature=false, signature_pages=[].
 """
 
 
@@ -189,7 +256,9 @@ def build_instruction(doc_type: str = "auto") -> str:
         "Đọc ảnh tài liệu hợp đồng bên dưới và bóc tách thông tin theo schema JSON yêu cầu.\n"
         f"{hint}\n"
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
-        f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n"
+        f"{_AUTO_RENEWAL_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_DEFINED_TERMS_SPEC}\n{_CROSS_REF_SPEC}\n{_TABLE_SIGNATURE_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )
 
@@ -210,6 +279,8 @@ def build_text_instruction(doc_type: str = "auto") -> str:
         "Bóc tách thông tin theo schema JSON yêu cầu.\n"
         f"{hint}\n"
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
-        f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n"
+        f"{_AUTO_RENEWAL_SPEC}\n{_CLAUSES_SPEC}\n"
+        f"{_DEFINED_TERMS_SPEC}\n{_CROSS_REF_SPEC}\n{_TABLE_SIGNATURE_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )
