@@ -903,6 +903,7 @@ def resolve_cross_refs_endpoint(
 
     from app.services.cross_ref import resolve_cross_refs
     stats = resolve_cross_refs(db, user.tenant_id, doc_id)
+    db.commit()
     return CrossRefResolveOut(document_id=doc_id, **stats)
 
 

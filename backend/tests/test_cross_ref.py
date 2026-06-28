@@ -97,11 +97,11 @@ class TestDetectRefs:
 
     def test_detect_khoan_ref(self):
         refs = _detect_refs("tại Khoản 2.1 của hợp đồng")
-        assert any(rt == "clause" and tk == "2.1" for _, rt, tk in refs)
+        assert any(rt == "sub_clause" and tk == "2.1" for _, rt, tk in refs)
 
     def test_detect_muc_ref(self):
         refs = _detect_refs("theo Mục 3 của phụ lục này")
-        assert any(rt == "clause" and tk == "3" for _, rt, tk in refs)
+        assert any(rt == "sub_clause" and tk == "3" for _, rt, tk in refs)
 
     def test_detect_phu_luc_ref(self):
         refs = _detect_refs("quy định tại Phụ lục A")
@@ -122,6 +122,33 @@ class TestDetectRefs:
         clause_5 = [(rt, tk) for _, rt, tk in refs if rt == "clause" and tk == "5"]
         assert len(clause_5) == 1
 
+    def test_compound_khoan_dieu(self):
+        refs = _detect_refs("theo Khoản 2 Điều 5 về thanh toán")
+        assert any(rt == "clause" and tk == "5.2" for _, rt, tk in refs)
+        assert not any(rt == "sub_clause" and tk == "2" for _, rt, tk in refs)
+        assert not any(rt == "clause" and tk == "5" for _, rt, tk in refs)
+
+    def test_compound_muc_dieu(self):
+        refs = _detect_refs("tại Mục 3 Điều 7")
+        assert any(rt == "clause" and tk == "7.3" for _, rt, tk in refs)
+        assert not any(rt == "sub_clause" and tk == "3" for _, rt, tk in refs)
+
+    def test_compound_with_comma(self):
+        refs = _detect_refs("Khoản 1, Điều 4 quy định")
+        assert any(rt == "clause" and tk == "4.1" for _, rt, tk in refs)
+
+    def test_compound_plus_standalone(self):
+        content = "Khoản 2 Điều 5 và Điều 8"
+        refs = _detect_refs(content)
+        assert any(rt == "clause" and tk == "5.2" for _, rt, tk in refs)
+        assert any(rt == "clause" and tk == "8" for _, rt, tk in refs)
+        assert len(refs) == 2
+
+    def test_standalone_khoan_is_sub_clause(self):
+        refs = _detect_refs("tại Khoản 3 của hợp đồng")
+        assert any(rt == "sub_clause" and tk == "3" for _, rt, tk in refs)
+        assert not any(rt == "clause" and tk == "3" for _, rt, tk in refs)
+
 
 # ── resolve_cross_refs integration tests ──
 
@@ -137,6 +164,7 @@ class TestResolveCrossRefs:
             clause_path="3",
         )
         stats = resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         assert stats["total_refs"] >= 1
         assert stats["resolved"] >= 1
         xref = (
@@ -156,6 +184,7 @@ class TestResolveCrossRefs:
         doc_id = doc.id
         _seed_clause(tenant_db, doc_id, "Xem Điều 99 để biết thêm chi tiết.", clause_path="1")
         stats = resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         assert stats["orphans"] >= 1
         xref = (
             tenant_db.query(ClauseCrossRef)
@@ -174,6 +203,7 @@ class TestResolveCrossRefs:
         # Clause 5 whose content references "Điều 5" (itself)
         _seed_clause(tenant_db, doc_id, "Điều 5 này quy định về thanh toán.", clause_path="5")
         resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         # Self-ref should not create a resolved cross-ref pointing to itself
         self_ref = (
             tenant_db.query(ClauseCrossRef)
@@ -191,9 +221,11 @@ class TestResolveCrossRefs:
         _seed_clause(tenant_db, doc_id, "Theo Điều 2 về nghĩa vụ.", clause_path="1")
         _seed_clause(tenant_db, doc_id, "Điều 2 quy định.", clause_path="2")
         resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         count_after_first = tenant_db.query(ClauseCrossRef).filter(
             ClauseCrossRef.document_id == doc_id).count()
         resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         count_after_second = tenant_db.query(ClauseCrossRef).filter(
             ClauseCrossRef.document_id == doc_id).count()
         assert count_after_first == count_after_second
@@ -202,9 +234,36 @@ class TestResolveCrossRefs:
         doc = _seed_doc(tenant_db)
         doc_id = doc.id
         stats = resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         assert stats["total_refs"] == 0
         assert stats["resolved"] == 0
         assert stats["orphans"] == 0
+
+    def test_resolve_compound_khoan_dieu(self, tenant_db):
+        doc = _seed_doc(tenant_db)
+        doc_id = doc.id
+        c52 = _seed_clause(tenant_db, doc_id, "Nội dung khoản 2 điều 5", clause_path="5.2")
+        c52_id = c52.id
+        _seed_clause(tenant_db, doc_id, "Nội dung điều 5", clause_path="5")
+        _seed_clause(
+            tenant_db, doc_id,
+            "Theo Khoản 2 Điều 5, bên A phải thực hiện.",
+            clause_path="3",
+        )
+        stats = resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
+        xref = (
+            tenant_db.query(ClauseCrossRef)
+            .filter(
+                ClauseCrossRef.document_id == doc_id,
+                ClauseCrossRef.target_clause_path == "5.2",
+            )
+            .first()
+        )
+        assert xref is not None
+        assert xref.target_clause_id == c52_id
+        assert not xref.is_orphan
+        assert stats["resolved"] >= 1
 
     def test_resolve_appendix_via_annex_rel(self, tenant_db):
         main_doc = _seed_doc(tenant_db)
@@ -223,6 +282,7 @@ class TestResolveCrossRefs:
         tenant_db.commit()
         _seed_clause(tenant_db, main_doc_id, "Xem Phụ lục A để biết thêm.", clause_path="1")
         stats = resolve_cross_refs(tenant_db, TENANT_ID, main_doc_id)
+        tenant_db.commit()
         xref = (
             tenant_db.query(ClauseCrossRef)
             .filter(
@@ -246,6 +306,7 @@ class TestCrossRefEndpoint:
         c2 = _seed_clause(tenant_db, doc_id, "Điều 2 về phí.", clause_path="2")
         _seed_clause(tenant_db, doc_id, "Theo Điều 2, bên thuê trả phí.", clause_path="1")
         resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         r = auth_client.get(f"/documents/{doc_id}/cross-refs")
         assert r.status_code == 200
         data = r.json()
@@ -269,6 +330,7 @@ class TestCrossRefEndpoint:
         doc_id = doc.id
         _seed_clause(tenant_db, doc_id, "Xem Điều 88 và Điều 99.", clause_path="1")
         resolve_cross_refs(tenant_db, TENANT_ID, doc_id)
+        tenant_db.commit()
         r = auth_client.get(f"/documents/{doc_id}/cross-refs")
         assert r.status_code == 200
         data = r.json()
@@ -282,6 +344,7 @@ class TestCrossRefEndpoint:
             other_doc_id = other_doc.id
             _seed_clause(other_db, other_doc_id, "Theo Điều 1.", clause_path="2", tid=OTHER_TENANT_ID)
             resolve_cross_refs(other_db, OTHER_TENANT_ID, other_doc_id)
+            other_db.commit()
         finally:
             other_db.close()
 

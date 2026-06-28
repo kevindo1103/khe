@@ -392,7 +392,7 @@ class CrossRefOut(BaseModel):
     id: int
     source_clause_id: int
     ref_text: str
-    ref_type: str               # "clause" | "appendix" | "document"
+    ref_type: str               # "clause" | "sub_clause" | "appendix" | "document"
     target_clause_id: int | None = None
     target_clause_path: str | None = None
     target_doc_id: int | None = None
