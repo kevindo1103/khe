@@ -911,6 +911,172 @@ function TabObligations({
   );
 }
 
+// ── Clause hierarchy tree (#365 R3) ─────────────────────────────────────────
+interface ClauseNode extends ClauseOut {
+  children: ClauseNode[];
+}
+
+function buildClauseTree(clauses: ClauseOut[]): ClauseNode[] {
+  const map = new Map<number, ClauseNode>();
+  const roots: ClauseNode[] = [];
+  for (const c of clauses) map.set(c.id, { ...c, children: [] });
+  for (const c of clauses) {
+    const node = map.get(c.id)!;
+    if (c.parent_id != null && map.has(c.parent_id)) {
+      map.get(c.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  const sortByPath = (nodes: ClauseNode[]) => {
+    nodes.sort((a, b) =>
+      (a.clause_path ?? '').localeCompare(b.clause_path ?? '', undefined, { numeric: true })
+    );
+    nodes.forEach(n => sortByPath(n.children));
+  };
+  sortByPath(roots);
+  return roots;
+}
+
+function ClauseTreeItem({
+  node,
+  depth,
+  docId,
+  onSaved,
+}: {
+  node: ClauseNode;
+  depth: number;
+  docId: number;
+  onSaved: (updated: ClauseOut) => void;
+}) {
+  const [expanded, setExpanded] = useState(depth === 0);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  const isStub = node.content === '(tổng hợp từ mục con)';
+  const hasChildren = node.children.length > 0;
+  const title = node.title || node.clause_num || `Điều khoản #${node.id}`;
+
+  const startEdit = () => { setDraft(node.content); setEditing(true); setExpanded(true); };
+  const cancelEdit = () => { setEditing(false); setDraft(''); };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    setSaveError('');
+    try {
+      const res = await apiFetch<ClausePatchOut>(
+        `/documents/${docId}/clauses/${node.id}`,
+        { method: 'PATCH', body: JSON.stringify({ content: draft }) }
+      );
+      onSaved({ ...node, ...res });
+      setEditing(false);
+      setDraft('');
+      setShowOriginal(false);
+    } catch (err) {
+      setSaveError((err as ApiError).message || 'Lưu điều khoản thất bại');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const displayContent = showOriginal && node.original_content ? node.original_content : node.content;
+
+  return (
+    <div className={depth > 0 ? 'border-l border-border ml-3' : ''}>
+      <div style={{ paddingLeft: depth * 24 }}>
+        <button
+          className="w-full flex items-center justify-between py-2 px-1 text-left gap-2 hover:bg-surface-alt transition-colors"
+          onClick={() => !editing && setExpanded((v) => !v)}
+          aria-expanded={expanded}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            {depth > 0 && <span className="text-ink-subtle text-xs shrink-0">└</span>}
+            <span className={`text-sm ${hasChildren ? 'font-semibold' : 'font-medium'} text-ink truncate`}>
+              {title}
+            </span>
+            {node.edited_by_user && (
+              <span className="shrink-0 text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                đã sửa
+              </span>
+            )}
+            {hasChildren && (
+              <Badge kind="neutral" className="shrink-0">{node.children.length}</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {node.page_num != null && (
+              <span className="text-2xs text-ink-muted">tr.{node.page_num}</span>
+            )}
+            <span className="text-ink-muted text-xs">{expanded ? '▲' : '▼'}</span>
+          </div>
+        </button>
+
+        {expanded && !isStub && (
+          <div className="pb-2 px-1">
+            {editing ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[8rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  autoFocus
+                />
+                {saveError && <p className="text-xs text-danger">{saveError}</p>}
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={saveEdit} loading={saving}>Lưu</Button>
+                  <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={saving}>Hủy</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">{displayContent}</p>
+                <div className="flex items-center gap-3 pt-1 flex-wrap">
+                  {node.original_content && (
+                    <button
+                      className="text-2xs text-primary hover:underline"
+                      onClick={() => setShowOriginal((v) => !v)}
+                    >
+                      {showOriginal ? 'Xem bản đã sửa' : 'Xem bản gốc (AI)'}
+                    </button>
+                  )}
+                  {node.edited_by_user && node.edited_at && (
+                    <span className="text-2xs text-ink-muted">
+                      Sửa bởi {node.edited_by_user} · {new Date(node.edited_at).toLocaleDateString('vi-VN')}
+                    </span>
+                  )}
+                  <button
+                    className="text-2xs text-ink-muted hover:text-primary ml-auto"
+                    onClick={startEdit}
+                  >
+                    ✎ Sửa nội dung
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {expanded && hasChildren && (
+          <div className="mb-1">
+            {node.children.map((child) => (
+              <ClauseTreeItem
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                docId={docId}
+                onSaved={onSaved}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Tab: Nội dung hợp đồng ───────────────────────────────────────────────────
 function TabClauses({
   clauses,
@@ -959,6 +1125,28 @@ function TabClauses({
       />
     );
   }
+  const isHierarchical = clauses.some((c) => c.parent_id != null);
+  if (isHierarchical) {
+    const roots = buildClauseTree(clauses);
+    return (
+      <div>
+        {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
+        <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
+        <Card>
+          {roots.map((root) => (
+            <ClauseTreeItem
+              key={root.id}
+              node={root}
+              depth={0}
+              docId={docId}
+              onSaved={onClauseSaved}
+            />
+          ))}
+        </Card>
+      </div>
+    );
+  }
+
   const defaultOpen = clauses.length <= 8;
   return (
     <div>
