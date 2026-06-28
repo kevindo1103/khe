@@ -5,6 +5,7 @@ import type { ToastKind } from '../../components/Toast';
 import { apiFetch } from '../../lib/api';
 import type {
   DocumentDetailOut,
+  PartyOut,
   TermOut,
   SelfPartyConfirmOut,
   ConfirmDocumentOut,
@@ -27,7 +28,7 @@ import {
   labelFor,
 } from '../../lib/labels';
 
-type TabKey = 'overview' | 'obligations' | 'clauses';
+type TabKey = 'overview' | 'obligations' | 'clauses' | 'parties';
 
 const DOC_TYPE_GROUPS = Object.keys(DOC_TYPE_GROUP_LABELS);
 
@@ -978,6 +979,66 @@ function TabClauses({
   );
 }
 
+// ── Tab: Bên ký kết ───────────────────────────────────────────────────────────
+function PartyCard({ party, isSelf }: { party: PartyOut; isSelf: boolean }) {
+  const fields: { label: string; value: string | null | undefined }[] = [
+    { label: 'Địa chỉ', value: party.address },
+    { label: 'Liên hệ', value: party.contact },
+    { label: 'Người đại diện', value: party.representative },
+    { label: 'Mã số thuế', value: party.tax_code },
+  ];
+  const presentFields = fields.filter((f) => f.value);
+  return (
+    <Card className={isSelf ? 'border-primary-border bg-primary-soft' : ''}>
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <span className="text-sm font-semibold text-ink">{party.name}</span>
+        {party.role_label && <Badge kind="neutral">{party.role_label}</Badge>}
+        {isSelf && <Badge kind="extracted">Bên mình</Badge>}
+      </div>
+      {presentFields.length > 0 && (
+        <dl className="grid grid-cols-1 nav:grid-cols-2 gap-x-6 gap-y-2">
+          {presentFields.map(({ label, value }) => (
+            <div key={label}>
+              <dt className="text-2xs text-ink-muted uppercase font-medium">{label}</dt>
+              <dd className="text-xs text-ink mt-0.5">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {party.aliases && party.aliases.length > 0 && (
+        <div className="mt-2">
+          <span className="text-2xs text-ink-muted uppercase font-medium">Viết tắt / bí danh</span>
+          <p className="text-xs text-ink mt-0.5">{party.aliases.join(', ')}</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TabParties({ parties }: { parties?: PartyOut[] }) {
+  if (!parties || parties.length === 0) {
+    return (
+      <EmptyState
+        icon="🤝"
+        title="Chưa có dữ liệu bên ký kết"
+        description="Bên ký kết sẽ xuất hiện sau khi tài liệu được bóc tách."
+      />
+    );
+  }
+  const selfParties = parties.filter((p) => p.is_self);
+  const counterparties = parties.filter((p) => !p.is_self);
+  return (
+    <div className="space-y-4">
+      {selfParties.map((p, i) => (
+        <PartyCard key={p.id ?? `self-${i}`} party={p} isSelf />
+      ))}
+      {counterparties.map((p, i) => (
+        <PartyCard key={p.id ?? `cp-${i}`} party={p} isSelf={false} />
+      ))}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
@@ -1316,6 +1377,11 @@ export default function DocumentDetail() {
       label: 'Nội dung hợp đồng',
       count: doc?.clause_count ?? 0,
     },
+    {
+      key: 'parties',
+      label: 'Bên ký kết',
+      count: doc?.parties?.length ?? 0,
+    },
   ];
 
   if (loading && !doc) {
@@ -1484,6 +1550,10 @@ export default function DocumentDetail() {
               reReading={reReading}
               onReRead={triggerReRead}
             />
+          )}
+
+          {activeTab === 'parties' && (
+            <TabParties parties={doc.parties} />
           )}
 
           {/* Footer: D-02 confirm gate */}
