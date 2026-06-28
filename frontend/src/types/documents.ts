@@ -116,6 +116,10 @@ export interface ClauseOut {
   edited_by_user?: string | null;
   edited_at?: string | null;
   original_content?: string | null;
+  // #365 R3 — clause hierarchy (optional until backend migration tenant_023 lands)
+  parent_id?: number | null;
+  level?: number | null;
+  clause_path?: string | null;
 }
 
 export interface ClauseListOut {
