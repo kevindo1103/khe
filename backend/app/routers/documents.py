@@ -55,6 +55,9 @@ from app.schemas.documents import (
     DocumentDetailOut,
     DocumentListItem,
     DocumentListOut,
+    PartyOut,
+    PartyPatchIn,
+    PartyPatchOut,
     SelfPartyIn,
     SelfPartyOut,
     TermOut,
@@ -621,7 +624,7 @@ def get_document(
         terms=[TermOut.model_validate(t) for t in terms],
         obligations=[ObligationOut.model_validate(o) for o in obligations],
         clause_count=clause_count,
-        parties=[{"name": p.name, "role_label": p.role_label} for p in parties],
+        parties=[PartyOut.model_validate(p) for p in parties],
         failure_reason=failure_reason,
         provider=provider,
         model=model,
@@ -902,6 +905,72 @@ def confirm_self_party(
     )
 
     return {"ok": True, "updated": updated}
+
+
+@docs_router.patch("/{doc_id}/parties/{party_id}", response_model=PartyPatchOut)
+def patch_party(
+    doc_id: int,
+    party_id: int,
+    payload: PartyPatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit party detail fields (D-07: every edit → Event ledger). #364
+
+    Allows correcting name, address, contact, representative, tax_code,
+    role_label, is_self. Tenant isolation: only parties belonging to the
+    calling tenant's doc are accessible.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    party = (
+        db.query(Party)
+        .filter(
+            Party.id == party_id,
+            Party.document_id == doc_id,
+            Party.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if party is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Party not found")
+
+    editable = ("name", "role_label", "address", "contact", "representative", "tax_code", "is_self", "aliases")
+    changed = False
+    for field in editable:
+        if field not in payload.model_fields_set:
+            continue
+        new_val = getattr(payload, field)
+        old_val = getattr(party, field, None)
+        if field == "aliases":
+            new_val = json.dumps(new_val) if new_val is not None else None
+            old_display = old_val
+        else:
+            old_display = old_val
+        setattr(party, field, new_val)
+        changed = True
+        _log_event(
+            db,
+            user.tenant_id,
+            event_type="party_field_edited",
+            entity_type="party",
+            entity_id=party_id,
+            actor=user.username,
+            payload={"field": field, "old_value": old_display, "new_value": new_val, "doc_id": doc_id},
+        )
+
+    if not changed:
+        return PartyPatchOut.model_validate(party)
+
+    db.commit()
+    db.refresh(party)
+    return PartyPatchOut.model_validate(party)
 
 
 @docs_router.post("/{doc_id}/confirm", response_model=ConfirmDocumentOut)
