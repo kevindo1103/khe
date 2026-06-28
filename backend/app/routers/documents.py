@@ -551,6 +551,8 @@ def list_documents(
                 contract_number=doc.contract_number,
                 signing_date=doc.signing_date,
                 commencement_date=doc.commencement_date,
+                contract_term=doc.contract_term,
+                lifecycle_status=doc.lifecycle_status,
             )
         )
 
@@ -637,6 +639,8 @@ def get_document(
         contract_number=doc.contract_number,
         signing_date=doc.signing_date,
         commencement_date=doc.commencement_date,
+        contract_term=doc.contract_term,
+        lifecycle_status=doc.lifecycle_status,
     )
 
 
@@ -669,6 +673,15 @@ def patch_document(
     if "contract_number" in payload.model_fields_set:
         edits["contract_number"] = (doc.contract_number, payload.contract_number)
         doc.contract_number = payload.contract_number
+    if "lifecycle_status" in payload.model_fields_set:
+        allowed = (None, "settled", "suspended")
+        if payload.lifecycle_status not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="lifecycle_status can only be set to 'settled', 'suspended', or null",
+            )
+        edits["lifecycle_status"] = (doc.lifecycle_status, payload.lifecycle_status)
+        doc.lifecycle_status = payload.lifecycle_status
 
     if not edits:
         return DocumentPatchOut.model_validate(doc)

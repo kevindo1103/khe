@@ -53,6 +53,9 @@ class Document(TenantBase):
     # ── tenant_024: date taxonomy (#369) ──
     signing_date = Column(String, nullable=True)           # ngay_ky term value (ISO date)
     commencement_date = Column(String, nullable=True)      # ngay_khai_truong term value (ISO date)
+    # ── tenant_025: contract term + lifecycle status (#371) ──
+    contract_term = Column(String, nullable=True)          # raw duration e.g. "12 tháng" / "vô thời hạn"
+    lifecycle_status = Column(String, nullable=True)       # active|expiring|expired|settled|suspended
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
