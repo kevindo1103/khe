@@ -20,4 +20,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    pass
+    conn = op.get_bind()
+    cols = {c["name"] for c in sa.inspect(conn).get_columns("documents")}
+    for col in ("signing_date", "commencement_date"):
+        if col in cols:
+            op.drop_column("documents", col)
