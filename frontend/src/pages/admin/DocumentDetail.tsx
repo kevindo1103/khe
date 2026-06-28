@@ -1132,7 +1132,7 @@ function DefinitionRow({
               </span>
             )}
             {def.source_clause_num && (
-              <span className="text-2xs text-ink-muted">Điều {def.source_clause_num}</span>
+              <span className="text-2xs text-ink-muted">{def.source_clause_num}</span>
             )}
           </div>
           {editing ? (
@@ -1445,7 +1445,10 @@ export default function DocumentDetail() {
       const res = await apiFetch<DefinitionListOut>(`/documents/${docId}/definitions`);
       setDefinitions(res.definitions);
       setDefinitionsLoaded(true);
-    } catch { /* graceful — empty glossary */ }
+    } catch (err: unknown) {
+      const status = (err as ApiError)?.status;
+      if (status !== 404) console.warn('Failed to load definitions', err);
+    }
   }, [docId, definitionsLoaded]);
 
   useEffect(() => {
