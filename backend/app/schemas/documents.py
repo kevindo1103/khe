@@ -121,6 +121,8 @@ class DocumentListItem(BaseModel):
     # R8 (#371): contract term + lifecycle status
     contract_term: str | None = None
     lifecycle_status: str | None = None
+    # R9 (#372): definitions count
+    definition_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -165,6 +167,8 @@ class DocumentDetailOut(BaseModel):
     # R8 (#371): contract term + lifecycle status
     contract_term: str | None = None
     lifecycle_status: str | None = None
+    # R9 (#372): definitions count
+    definition_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -341,3 +345,38 @@ class EventListOut(BaseModel):
     limit: int
     offset: int
     items: list[EventOut]
+
+
+# ── Definitions glossary (#372, R9) ──
+
+
+class DefinitionOut(BaseModel):
+    id: int
+    term: str
+    definition: str
+    source_clause_num: str | None = None
+    source_clause_id: int | None = None
+    edited_by_user: str | None = None
+    edited_at: datetime | None = None
+    original_definition: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DefinitionListOut(BaseModel):
+    document_id: int
+    definition_count: int
+    definitions: list[DefinitionOut]
+
+
+class DefinitionPatchIn(BaseModel):
+    definition: str  # D-07 — user edits definition text only
+
+
+class DefinitionPatchOut(BaseModel):
+    id: int
+    term: str
+    definition: str
+    edited_by_user: str | None = None
+    edited_at: datetime | None = None
+    original_definition: str | None = None
+    model_config = ConfigDict(from_attributes=True)

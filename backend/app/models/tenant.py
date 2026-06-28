@@ -223,6 +223,25 @@ class Clause(TenantBase):
     clause_path = Column(String, nullable=True)       # dotted path e.g. "2.1.1" (for hierarchy sort)
 
 
+class Definition(TenantBase):
+    """Glossary term extracted from a document's Định nghĩa section (#372, R9)."""
+    __tablename__ = "definitions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    term = Column(String, nullable=False)               # e.g. "Năm Tài chính", "Khách sạn"
+    definition = Column(Text, nullable=False)           # full definition text
+    source_clause_num = Column(String, nullable=True)   # e.g. "Điều 1" or clause_path
+    source_clause_id = Column(Integer, nullable=True)   # app-level ref to clauses.id (no FK constraint)
+    # ── D-07 edit tracking ──
+    edited_by_user = Column(String, nullable=True)
+    edited_at = Column(DateTime, nullable=True)
+    original_definition = Column(Text, nullable=True)   # AI-extracted snapshot on first edit
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class DocumentRelationship(TenantBase):
     __tablename__ = "document_relationships"
 

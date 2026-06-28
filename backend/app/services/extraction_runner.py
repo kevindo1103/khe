@@ -273,6 +273,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             from app.services.clause_hierarchy import build_clause_hierarchy
             build_clause_hierarchy(new_clauses, db)
 
+        # 8b-iii. R9 (#372): definitions extraction — stub pending KHE_AI schema.
+        # When Gemini schema adds definitions[] array, parse (term, definition) pairs
+        # here, create Definition rows, link source_clause_id via clause_path matching.
+        # No-op for now; CRUD + storage layer is ready.
+
         # 8c. Persist parties (DEC-030, #155). Idempotent: delete existing
         #     per-doc Party rows first, then re-insert from result.parties[].
         db.query(Party).filter(
