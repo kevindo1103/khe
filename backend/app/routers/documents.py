@@ -886,21 +886,32 @@ def patch_party(
     if party is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Party not found")
 
-    editable = ("name", "role_label", "address", "contact", "representative", "tax_code", "is_self")
+    editable = ("name", "role_label", "address", "contact", "representative", "tax_code", "is_self", "aliases")
+    changed = False
     for field in editable:
-        new_val = getattr(payload, field, None)
-        if new_val is None:
+        if field not in payload.model_fields_set:
             continue
+        new_val = getattr(payload, field)
         old_val = getattr(party, field, None)
+        if field == "aliases":
+            new_val = json.dumps(new_val) if new_val is not None else None
+            old_display = old_val
+        else:
+            old_display = old_val
         setattr(party, field, new_val)
-        db.add(Event(
-            tenant_id=user.tenant_id,
+        changed = True
+        _log_event(
+            db,
+            user.tenant_id,
             event_type="party_field_edited",
             entity_type="party",
             entity_id=party_id,
             actor=user.username,
-            payload=json.dumps({"field": field, "old_value": old_val, "new_value": new_val, "doc_id": doc_id}),
-        ))
+            payload={"field": field, "old_value": old_display, "new_value": new_val, "doc_id": doc_id},
+        )
+
+    if not changed:
+        return PartyPatchOut.model_validate(party)
 
     db.commit()
     db.refresh(party)

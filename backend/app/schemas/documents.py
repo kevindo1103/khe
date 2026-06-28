@@ -9,17 +9,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 # ── Parties ──
 
 
-class PartyOut(BaseModel):
-    id: int
-    name: str
-    role_label: str | None = None
-    address: str | None = None
-    contact: str | None = None
-    representative: str | None = None
-    tax_code: str | None = None
-    is_self: bool = False
+class _PartyAliasesMixin(BaseModel):
     aliases: list[str] | None = None
-    model_config = ConfigDict(from_attributes=True)
 
     @field_validator("aliases", mode="before")
     @classmethod
@@ -30,6 +21,18 @@ class PartyOut(BaseModel):
             except (ValueError, TypeError):
                 return None
         return v
+
+
+class PartyOut(_PartyAliasesMixin):
+    id: int
+    name: str
+    role_label: str | None = None
+    address: str | None = None
+    contact: str | None = None
+    representative: str | None = None
+    tax_code: str | None = None
+    is_self: bool = False
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PartyPatchIn(BaseModel):
@@ -40,9 +43,10 @@ class PartyPatchIn(BaseModel):
     representative: str | None = None
     tax_code: str | None = None
     is_self: bool | None = None
+    aliases: list[str] | None = None
 
 
-class PartyPatchOut(BaseModel):
+class PartyPatchOut(_PartyAliasesMixin):
     id: int
     name: str
     role_label: str | None = None
@@ -51,18 +55,7 @@ class PartyPatchOut(BaseModel):
     representative: str | None = None
     tax_code: str | None = None
     is_self: bool = False
-    aliases: list[str] | None = None
     model_config = ConfigDict(from_attributes=True)
-
-    @field_validator("aliases", mode="before")
-    @classmethod
-    def _parse_aliases(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except (ValueError, TypeError):
-                return None
-        return v
 
 
 # ── Terms ──
