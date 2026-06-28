@@ -11,6 +11,27 @@ import { DOC_TYPE_LABELS } from '../../lib/labels';
 const docTypeLabel = (docType: string | null): string =>
   docType ? (DOC_TYPE_LABELS[docType] ?? docType) : 'Chưa phân loại';
 
+// #371 R8 — PM-locked lifecycle badge (mirrors DocumentDetail)
+const LIFECYCLE_MAP: Record<string, { label: string; cls: string }> = {
+  active:    { label: 'Đang hiệu lực', cls: 'bg-success-soft text-success' },
+  expiring:  { label: 'Sắp hết hạn',  cls: 'bg-warning-soft text-warning' },
+  expired:   { label: 'Hết hạn',      cls: 'bg-danger-soft text-danger' },
+  settled:   { label: 'Đã thanh lý',  cls: 'bg-surface-alt text-ink-muted' },
+  suspended: { label: 'Tạm dừng',     cls: 'bg-surface-alt text-ink-muted' },
+};
+
+function LifecycleBadge({ status }: { status: string | null | undefined }) {
+  if (!status) return null;
+  const entry = LIFECYCLE_MAP[status];
+  if (!entry) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium shrink-0 ${entry.cls}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
+      {entry.label}
+    </span>
+  );
+}
+
 type ActiveFilter =
   | 'all' | 'due7' | 'overdue' | 'pending' | 'rights'
   | 'processing' | 'extracted' | 'needs_review';
@@ -228,13 +249,14 @@ function DocCard({ doc, onClick }: { doc: DocumentListItem; onClick: () => void 
     >
       {/* Title + status pill */}
       <div className="flex items-start justify-between gap-2 min-w-0">
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
           <span className="text-xs font-medium text-ink truncate">
             {doc.title || (`HĐ ${docTypeLabel(doc.doc_type)}${doc.primary_party ? ` với ${doc.primary_party}` : ''}`)}
           </span>
           {doc.duplicate && (
             <span className="shrink-0 text-warning font-bold text-xs" title="Tệp trùng — kiểm tra">!</span>
           )}
+          <LifecycleBadge status={doc.lifecycle_status} />
         </div>
         <div className="shrink-0">
           <StatusPill doc={doc} docId={doc.id} />
@@ -576,7 +598,7 @@ export default function DocumentList() {
               >
                 {/* Col 1 — Hợp đồng */}
                 <td className="px-3 py-3 align-middle">
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                     <span className="text-xs font-medium text-ink group-hover:underline truncate">
                       {doc.title || (`HĐ ${docTypeLabel(doc.doc_type)}${doc.primary_party ? ` với ${doc.primary_party}` : ''}`)}
                     </span>
@@ -589,6 +611,7 @@ export default function DocumentList() {
                         !
                       </span>
                     )}
+                    <LifecycleBadge status={doc.lifecycle_status} />
                   </div>
                   {/* Filename — always shown as secondary context */}
                   <div className="text-2xs text-ink-muted mt-0.5 truncate max-w-xs">

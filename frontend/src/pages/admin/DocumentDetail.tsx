@@ -44,6 +44,27 @@ const STATUS_LABEL: Record<string, string> = {
   needs_review: 'Cần kiểm tra',
 };
 
+// #371 R8 — PM-locked lifecycle status map
+const LIFECYCLE_MAP: Record<string, { label: string; cls: string }> = {
+  active:    { label: 'Đang hiệu lực', cls: 'bg-success-soft text-success' },
+  expiring:  { label: 'Sắp hết hạn',  cls: 'bg-warning-soft text-warning' },
+  expired:   { label: 'Hết hạn',      cls: 'bg-danger-soft text-danger' },
+  settled:   { label: 'Đã thanh lý',  cls: 'bg-surface-alt text-ink-muted' },
+  suspended: { label: 'Tạm dừng',     cls: 'bg-surface-alt text-ink-muted' },
+};
+
+function LifecycleBadge({ status }: { status: string | null | undefined }) {
+  if (!status) return null;
+  const entry = LIFECYCLE_MAP[status];
+  if (!entry) return null;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-2xs font-medium ${entry.cls}`}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 shrink-0" />
+      {entry.label}
+    </span>
+  );
+}
+
 const STAGE_LABELS: Record<string, string> = {
   queued: 'Đang chờ xử lý…',
   ocr: 'Đang nhận dạng văn bản…',
@@ -792,6 +813,20 @@ function TabOverview({
               ? 'Tài liệu chưa có nội dung điều khoản (clause) nên không thể map lại loại.'
               : 'Chọn lại nếu phân loại sai — Khế map lại các trường từ nội dung điều khoản, không tính thêm quota.'}
           </p>
+        </Card>
+      )}
+
+      {doc.contract_term && (
+        <Card className="mb-4 bg-surface-alt border-border">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-2xs text-ink-muted uppercase tracking-wide font-medium mb-1">
+                Thời hạn hợp đồng
+              </p>
+              <p className="text-sm text-ink">{doc.contract_term}</p>
+            </div>
+            <LifecycleBadge status={doc.lifecycle_status} />
+          </div>
         </Card>
       )}
 
@@ -1615,6 +1650,7 @@ export default function DocumentDetail() {
                   <Badge kind={STATUS_BADGE[doc.status] || 'neutral'}>
                     {STATUS_LABEL[doc.status] || doc.status}
                   </Badge>
+                  <LifecycleBadge status={doc.lifecycle_status} />
                   {doc.doc_type && (
                     <span className="text-xs text-ink-muted">
                       {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}
