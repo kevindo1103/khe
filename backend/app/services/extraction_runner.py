@@ -35,6 +35,24 @@ _VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "ren
 _VALID_TRIGGERS = {"date", "event"}
 
 
+def _update_progress(tenant_id: str, doc_id: int, stage: str, progress: int) -> None:
+    """Write extraction progress checkpoint in a separate session.
+
+    Must use a separate session from the main extraction `db` so that
+    polling clients see updates before the final commit of the extraction
+    transaction (SQLite WAL: separate readers see each mini-commit).
+    """
+    session = get_tenant_session(tenant_id)
+    try:
+        session.query(Document).filter(
+            Document.id == doc_id,
+            Document.tenant_id == tenant_id,
+        ).update({"processing_stage": stage, "processing_progress": progress})
+        session.commit()
+    finally:
+        session.close()
+
+
 def _get_tenant_legal_name(tenant_id: str) -> str | None:
     """Read tenant's legal_name from tenant_profiles (master.db)."""
     from app.db.database import MasterSessionLocal
@@ -148,11 +166,13 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # 5. Extract. Provider is async; bridge inside this sync thread.
         extraction_doc_type = doc_type or doc.doc_type or "auto"
+        _update_progress(tenant_id, doc_id, "ocr", 30)
         try:
             result = asyncio.run(provider.extract(file_bytes, extraction_doc_type))
         except Exception as exc:
             _mark_failed(db, doc_id, tenant_id, f"Extraction exception: {exc}")
             return
+        _update_progress(tenant_id, doc_id, "llm", 60)
 
         # 6. Hard extraction failure (D-08: never fabricate).
         if result.is_error:
@@ -164,6 +184,8 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 payload={"warnings": result.warnings},
             )
             return
+
+        _update_progress(tenant_id, doc_id, "saving", 90)
 
         # 7. Idempotency: replace existing terms.
         #    Kept in the same transaction as the inserts below; the final
@@ -246,6 +268,9 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         doc.extraction_model = result.model or None
         doc.extraction_latency_ms = result.latency_ms or None
         doc.extraction_warnings = json.dumps(result.warnings) if result.warnings else None
+        # Extraction progress (#360): final state committed atomically with extraction.
+        doc.processing_stage = "done"
+        doc.processing_progress = 100
 
         # 10. Audit event.
         event = Event(
@@ -386,6 +411,7 @@ def _mark_failed(
     doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if doc:
         doc.status = "failed"
+        doc.processing_stage = "failed"
         db.commit()
     else:
         logger.warning("Cannot mark document %d failed: not found for tenant %s", doc_id, tenant_id)

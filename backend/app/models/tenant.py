@@ -44,6 +44,9 @@ class Document(TenantBase):
     extraction_model = Column(String, nullable=True)       # "gemini-2.5-flash" / "claude-haiku-4.5"
     extraction_latency_ms = Column(Float, nullable=True)   # total extraction latency in ms
     extraction_warnings = Column(Text, nullable=True)      # JSON array of warning strings
+    # ── tenant_020: extraction progress (#360) ──
+    processing_stage = Column(String, nullable=True)       # queued|ocr|llm|saving|done|failed
+    processing_progress = Column(Integer, nullable=True)   # 0-100
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
