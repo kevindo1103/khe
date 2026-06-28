@@ -927,9 +927,13 @@ function buildClauseTree(clauses: ClauseOut[]): ClauseNode[] {
       roots.push(node);
     }
   }
-  roots.sort((a, b) =>
-    (a.clause_path ?? '').localeCompare(b.clause_path ?? '', undefined, { numeric: true })
-  );
+  const sortByPath = (nodes: ClauseNode[]) => {
+    nodes.sort((a, b) =>
+      (a.clause_path ?? '').localeCompare(b.clause_path ?? '', undefined, { numeric: true })
+    );
+    nodes.forEach(n => sortByPath(n.children));
+  };
+  sortByPath(roots);
   return roots;
 }
 
