@@ -57,6 +57,8 @@ def to_result(
         clauses=list(getattr(parsed, "clauses", [])),
         obligation_schedule=list(getattr(parsed, "obligation_schedule", [])),  # DEC-030 Phase 2 (#154)
         parties=list(getattr(parsed, "parties", [])),  # DEC-030 (Gemini Full only)
+        defined_terms=list(getattr(parsed, "defined_terms", [])),  # R9 #372
+        cross_references=list(getattr(parsed, "cross_references", [])),  # R10 #373
         provider=provider,
         model=model,
         latency_ms=round(latency_ms, 2),

@@ -219,7 +219,7 @@ class TokenUsage(BaseModel):
 
 
 class ClauseItem(BaseModel):
-    """One numbered clause/article lifted verbatim from the document (DEC-026).
+    """One numbered clause/article lifted verbatim from the document (DEC-026 + R3 #365).
 
     Feeds the `clauses` table (Backend #99) so chat function-calling has full clause
     text. READ-ONLY like every other extracted value (D-06): `content` is the clause
@@ -235,6 +235,14 @@ class ClauseItem(BaseModel):
     )
     content: str = Field(
         description="Toàn văn điều khoản, giữ nguyên tiếng Việt — KHÔNG dịch/tóm tắt."
+    )
+    level: Optional[int] = Field(
+        default=None,
+        description="Cấp bậc phân cấp: 1=Điều/Chương, 2=Khoản/Mục, 3=Điểm/tiểu mục. null nếu không xác định.",
+    )
+    clause_path: Optional[str] = Field(
+        default=None,
+        description='Đường dẫn phân cấp số hiệu, vd "2", "2.1", "2.1.1". null nếu không đánh số theo cấp.',
     )
 
 
@@ -342,7 +350,7 @@ class ObligationScheduleItem(BaseModel):
 
 
 class PartyItem(BaseModel):
-    """A contracting party with its role label (DEC-030 draft).
+    """A contracting party with its role label and details (DEC-030 + R2 #364).
 
     READ-ONLY (D-06): `role_label` is the term used IN the document — "Owner",
     "Operator", "Bên A", "Bên cho thuê", "NSDLĐ"… Which party is the SME ("self") is
@@ -355,6 +363,55 @@ class PartyItem(BaseModel):
     role_label: Optional[str] = Field(
         default=None,
         description='Vai trò trong HĐ, vd "Owner", "Operator", "Bên A", "Bên cho thuê", "NSDLĐ". null nếu không có.',
+    )
+    address: Optional[str] = Field(
+        default=None,
+        description="Địa chỉ bên ký kết, nguyên văn từ tài liệu. null nếu không có.",
+    )
+    representative: Optional[str] = Field(
+        default=None,
+        description='Người đại diện (vd "Ông Nguyễn Văn A — Giám đốc"). null nếu không có.',
+    )
+    tax_code: Optional[str] = Field(
+        default=None,
+        description="Mã số thuế (MST) bên ký kết. null nếu không có.",
+    )
+
+
+class DefinedTermItem(BaseModel):
+    """A defined term from the contract's definitions section (R9 #372).
+
+    READ-ONLY (D-06): both term and definition are verbatim from the document.
+    NOT party aliases (those go in PartyItem) — these are legal/technical terms
+    like "Năm Tài chính", "Khách sạn", "Thương hiệu"."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    term: str = Field(description='Thuật ngữ được định nghĩa, vd "Năm Tài chính", "Khách sạn".')
+    definition: str = Field(description="Nội dung định nghĩa, nguyên văn từ tài liệu.")
+    source_clause: Optional[str] = Field(
+        default=None,
+        description='Điều/mục chứa định nghĩa, vd "Phụ lục A", "Điều 1". null nếu không rõ.',
+    )
+
+
+class CrossReferenceItem(BaseModel):
+    """A cross-reference between clauses/appendices detected in the document (R10 #373).
+
+    READ-ONLY (D-06): captures reference patterns like "theo Điều 5",
+    "quy định tại Phụ lục E". Backend resolves to actual clause/doc targets."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    source_clause: str = Field(
+        description='Điều/khoản CHỨA tham chiếu, vd "Điều 3", "Khoản 2.1".',
+    )
+    target_ref: str = Field(
+        description='Đích tham chiếu nguyên văn, vd "Điều 5", "Phụ lục E", "Khoản 8.2".',
+    )
+    context: Optional[str] = Field(
+        default=None,
+        description='Ngữ cảnh ngắn quanh tham chiếu, vd "theo quy định tại Điều 5". null nếu không cần.',
     )
 
 
@@ -455,6 +512,14 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
         default_factory=list,
         description="Các bên ký kết kèm vai trò (DEC-030) — để Backend xác định 'bên mình' và chia nghĩa vụ/quyền lợi.",
     )
+    defined_terms: list[DefinedTermItem] = Field(
+        default_factory=list,
+        description="Cặp thuật ngữ/định nghĩa từ phần Định nghĩa (R9). Rỗng nếu không có section định nghĩa.",
+    )
+    cross_references: list[CrossReferenceItem] = Field(
+        default_factory=list,
+        description="Tham chiếu chéo giữa điều/khoản/phụ lục (R10). Rỗng nếu không phát hiện tham chiếu.",
+    )
 
     def as_field_map(self) -> dict[str, ExtractedField]:
         # Universal fields are AnchoredField on this path → page_num/ref pass through
@@ -494,6 +559,8 @@ class ExtractionResult(BaseModel):
     # 'self', then splits obligations into nghĩa vụ (self) vs quyền lợi (đối tác).
     # Gemini-only; Claude fallback leaves [] (use flat `fields["doi_tac"]`).
     parties: list[PartyItem] = Field(default_factory=list)
+    defined_terms: list[DefinedTermItem] = Field(default_factory=list)
+    cross_references: list[CrossReferenceItem] = Field(default_factory=list)
 
     provider: str = ""             # e.g. "gemini_flash"
     model: str = ""                # e.g. "gemini-2.5-flash"
