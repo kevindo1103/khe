@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Button } from '../../components';
+import { Button, LifecycleBadge } from '../../components';
 import { apiFetch } from '../../lib/api';
 import type { DocumentListOut, DocumentListItem } from '../../types/documents';
 import type { ApiError } from '../../lib/api';
@@ -11,26 +11,6 @@ import { DOC_TYPE_LABELS } from '../../lib/labels';
 const docTypeLabel = (docType: string | null): string =>
   docType ? (DOC_TYPE_LABELS[docType] ?? docType) : 'Chưa phân loại';
 
-// #371 R8 — PM-locked lifecycle badge (mirrors DocumentDetail)
-const LIFECYCLE_MAP: Record<string, { label: string; cls: string }> = {
-  active:    { label: 'Đang hiệu lực', cls: 'bg-success-soft text-success' },
-  expiring:  { label: 'Sắp hết hạn',  cls: 'bg-warning-soft text-warning' },
-  expired:   { label: 'Hết hạn',      cls: 'bg-danger-soft text-danger' },
-  settled:   { label: 'Đã thanh lý',  cls: 'bg-surface-alt text-ink-muted' },
-  suspended: { label: 'Tạm dừng',     cls: 'bg-surface-alt text-ink-muted' },
-};
-
-function LifecycleBadge({ status }: { status: string | null | undefined }) {
-  if (!status) return null;
-  const entry = LIFECYCLE_MAP[status];
-  if (!entry) return null;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium shrink-0 ${entry.cls}`}>
-      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
-      {entry.label}
-    </span>
-  );
-}
 
 type ActiveFilter =
   | 'all' | 'due7' | 'overdue' | 'pending' | 'rights'
