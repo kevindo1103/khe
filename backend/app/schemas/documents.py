@@ -118,6 +118,9 @@ class DocumentListItem(BaseModel):
     # R6 (#369): date taxonomy — null for pre-migration docs
     signing_date: str | None = None
     commencement_date: str | None = None
+    # R8 (#371): contract term + lifecycle status
+    contract_term: str | None = None
+    lifecycle_status: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -159,21 +162,26 @@ class DocumentDetailOut(BaseModel):
     # R6 (#369): date taxonomy — null for pre-migration docs
     signing_date: str | None = None
     commencement_date: str | None = None
+    # R8 (#371): contract term + lifecycle status
+    contract_term: str | None = None
+    lifecycle_status: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
-# ── Document-level PATCH (#363 D-07) ──
+# ── Document-level PATCH (#363 D-07 + #371 R8) ──
 
 
 class DocumentPatchIn(BaseModel):
     title: str | None = None
     contract_number: str | None = None
+    lifecycle_status: str | None = None  # only "settled" | "suspended" | None (manual override)
 
 
 class DocumentPatchOut(BaseModel):
     id: int
     title: str | None = None
     contract_number: str | None = None
+    lifecycle_status: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
