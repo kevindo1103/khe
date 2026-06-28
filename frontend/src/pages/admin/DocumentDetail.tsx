@@ -15,6 +15,9 @@ import type {
   ClausePatchOut,
   ReReadDiff,
   ReReadOut,
+  DefinitionOut,
+  DefinitionListOut,
+  DefinitionPatchOut,
 } from '../../types/documents';
 import type { ObligationOut, ObligationPatchOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
@@ -1077,6 +1080,141 @@ function ClauseTreeItem({
   );
 }
 
+// ── #372 Definition row (D-07 inline edit) ───────────────────────────────────
+function DefinitionRow({
+  def,
+  docId,
+  onSaved,
+}: {
+  def: DefinitionOut;
+  docId: number;
+  onSaved: (updated: DefinitionOut) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  const startEdit = () => { setDraft(def.definition); setEditing(true); };
+  const cancelEdit = () => { setEditing(false); setDraft(''); };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    setSaveError('');
+    try {
+      const res = await apiFetch<DefinitionPatchOut>(
+        `/documents/${docId}/definitions/${def.id}`,
+        { method: 'PATCH', body: JSON.stringify({ definition: draft }) }
+      );
+      onSaved({ ...def, ...res });
+      setEditing(false);
+      setDraft('');
+      setShowOriginal(false);
+    } catch (err) {
+      setSaveError((err as ApiError).message || 'Lưu định nghĩa thất bại');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const displayDef = showOriginal && def.original_definition ? def.original_definition : def.definition;
+
+  return (
+    <div className="py-3 border-b border-border last:border-0">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-sm font-semibold text-primary">{def.term}</span>
+            {def.edited_by_user && (
+              <span className="text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                đã sửa
+              </span>
+            )}
+            {def.source_clause_num && (
+              <span className="text-2xs text-ink-muted">Điều {def.source_clause_num}</span>
+            )}
+          </div>
+          {editing ? (
+            <div className="flex flex-col gap-2">
+              <textarea
+                className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[5rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                autoFocus
+              />
+              {saveError && <p className="text-xs text-danger">{saveError}</p>}
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={saveEdit} loading={saving}>Lưu</Button>
+                <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={saving}>Hủy</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-ink leading-relaxed">{displayDef}</p>
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
+                {def.original_definition && (
+                  <button
+                    className="text-2xs text-primary hover:underline"
+                    onClick={() => setShowOriginal((v) => !v)}
+                  >
+                    {showOriginal ? 'Xem bản đã sửa' : 'Xem bản gốc (AI)'}
+                  </button>
+                )}
+                {def.edited_by_user && def.edited_at && (
+                  <span className="text-2xs text-ink-muted">
+                    Sửa bởi {def.edited_by_user} · {new Date(def.edited_at).toLocaleDateString('vi-VN')}
+                  </span>
+                )}
+                <button
+                  className="text-2xs text-ink-muted hover:text-primary ml-auto"
+                  onClick={startEdit}
+                >
+                  ✎ Sửa định nghĩa
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GlossarySection({
+  definitions,
+  docId,
+  onSaved,
+}: {
+  definitions: DefinitionOut[];
+  docId: number;
+  onSaved: (updated: DefinitionOut) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (definitions.length === 0) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-border overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 bg-surface-alt text-left hover:bg-surface-sunken transition-colors"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="text-sm font-semibold text-ink">
+          Định nghĩa ({definitions.length})
+        </span>
+        <span className="text-ink-muted text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 bg-surface">
+          {definitions.map((def) => (
+            <DefinitionRow key={def.id} def={def} docId={docId} onSaved={onSaved} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Tab: Nội dung hợp đồng ───────────────────────────────────────────────────
 function TabClauses({
   clauses,
@@ -1089,6 +1227,8 @@ function TabClauses({
   hasEdited,
   reReading,
   onReRead,
+  definitions,
+  onDefinitionSaved,
 }: {
   clauses: ClauseOut[];
   loading: boolean;
@@ -1100,6 +1240,8 @@ function TabClauses({
   hasEdited: boolean;
   reReading: boolean;
   onReRead: () => void;
+  definitions: DefinitionOut[];
+  onDefinitionSaved: (updated: DefinitionOut) => void;
 }) {
   if (loading) {
     return (
@@ -1131,6 +1273,7 @@ function TabClauses({
     return (
       <div>
         {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
+        <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
         <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
         <Card>
           {roots.map((root) => (
@@ -1151,6 +1294,7 @@ function TabClauses({
   return (
     <div>
       {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
+      <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
       <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
       <Card>
         {clauses.map((c) => (
@@ -1251,6 +1395,8 @@ export default function DocumentDetail() {
   const [clausesLoaded, setClausesLoaded] = useState(false);
   const [clausesTotal, setClausesTotal] = useState(0);
   const [clausesError, setClausesError] = useState(false);
+  const [definitions, setDefinitions] = useState<DefinitionOut[]>([]);
+  const [definitionsLoaded, setDefinitionsLoaded] = useState(false);
   const [fulfillTarget, setFulfillTarget] = useState<ObligationOut | null>(null);
   const [fulfilling, setFulfilling] = useState(false);
   const [reReading, setReReading] = useState(false);
@@ -1293,6 +1439,15 @@ export default function DocumentDetail() {
     }
   }, [docId, clausesLoaded]);
 
+  const loadDefinitions = useCallback(async () => {
+    if (!docId || definitionsLoaded) return;
+    try {
+      const res = await apiFetch<DefinitionListOut>(`/documents/${docId}/definitions`);
+      setDefinitions(res.definitions);
+      setDefinitionsLoaded(true);
+    } catch { /* graceful — empty glossary */ }
+  }, [docId, definitionsLoaded]);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -1318,8 +1473,9 @@ export default function DocumentDetail() {
   useEffect(() => {
     if (activeTab === 'clauses') {
       loadClauses();
+      loadDefinitions();
     }
-  }, [activeTab, loadClauses]);
+  }, [activeTab, loadClauses, loadDefinitions]);
 
   const startEdit = (term: TermOut) => {
     setEditingTermId(term.id);
@@ -1435,6 +1591,14 @@ export default function DocumentDetail() {
     (updated: ClauseOut) => {
       setClauses((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       showToast('Đã sửa điều khoản ✓ — D-07 ghi nhận.');
+    },
+    []
+  );
+
+  const saveDefinition = useCallback(
+    (updated: DefinitionOut) => {
+      setDefinitions((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      showToast('Đã sửa định nghĩa ✓ — D-07 ghi nhận.');
     },
     []
   );
@@ -1737,6 +1901,8 @@ export default function DocumentDetail() {
               hasEdited={hasEditedClauses}
               reReading={reReading}
               onReRead={triggerReRead}
+              definitions={definitions}
+              onDefinitionSaved={saveDefinition}
             />
           )}
 

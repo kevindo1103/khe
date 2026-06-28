@@ -155,6 +155,35 @@ export interface ClausePatchOut {
   original_content: string | null;
 }
 
+// #372 — GET /documents/{id}/definitions + PATCH /documents/{id}/definitions/{id}
+export interface DefinitionOut {
+  id: number;
+  term: string;
+  definition: string;
+  source_clause_num: string | null;
+  source_clause_id: number | null;
+  edited_by_user: string | null;
+  edited_at: string | null;
+  original_definition: string | null;
+  original_term: string | null;
+}
+
+export interface DefinitionListOut {
+  document_id: number;
+  definition_count: number;
+  definitions: DefinitionOut[];
+}
+
+export interface DefinitionPatchOut {
+  id: number;
+  term: string;
+  definition: string;
+  edited_by_user: string | null;
+  edited_at: string | null;
+  original_definition: string | null;
+  original_term: string | null;
+}
+
 // Backend #326 — POST /documents/{id}/reread
 export interface ReReadDiff {
   action: 'add' | 'update' | 'remove';
