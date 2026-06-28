@@ -35,15 +35,32 @@ _DOC_TYPE_GROUP_SPEC = (
 # cho tương thích ngược; doc_type_group là phân nhóm rộng mới (DEC-029).
 _FIELD_SPEC = """\
 BƯỚC 2 — TRÍCH XUẤT. Luôn bóc các trường phổ quát (canonical key → mô tả):
+- tieu_de_hd: TÊN/TIÊU ĐỀ THẬT của hợp đồng lấy từ NỘI DUNG văn bản (heading lớn nhất
+  đầu tài liệu, vd "HỢP ĐỒNG CẤP PHÉP VÀ SỬ DỤNG BẢN QUYỀN KHÁCH SẠN",
+  "HỢP ĐỒNG THUÊ MẶT BẰNG"). KHÔNG lấy từ tên file. null nếu không tìm thấy.
+- so_hieu_hd: số hiệu hợp đồng (pattern "số XX/YY/ZZZZ", "Số: 01/2026/HĐMB",
+  "Contract No. ..."). Giữ nguyên cách viết trên tài liệu. null nếu không có.
 - doi_tac: TÊN các bên ký kết (bên A / bên B, bên cho thuê / bên thuê, NSDLĐ / NLĐ,
   nhà cung cấp / khách hàng). Nếu nhiều bên, nối bằng dấu ";".
-- ngay_hieu_luc: ngày hợp đồng có hiệu lực. Định dạng yyyy-mm-dd nếu đọc được rõ.
-- ngay_het_han: ngày hết hạn / ngày chấm dứt hợp đồng. Định dạng yyyy-mm-dd nếu rõ.
+
+NGÀY — PHÂN BIỆT RÕ từng loại, KHÔNG gộp:
+- ngay_ky: ngày KÝ KẾT hợp đồng. yyyy-mm-dd nếu rõ. Thường ở cuối văn bản hoặc phần
+  mở đầu ("ký ngày...", "lập ngày..."). Có thể KHÁC ngày hiệu lực.
+- ngay_hieu_luc: ngày hợp đồng BẮT ĐẦU CÓ HIỆU LỰC pháp lý. yyyy-mm-dd nếu rõ.
+  Nếu "có hiệu lực kể từ ngày ký" → giá trị = ngày ký. KHÔNG nhầm với ngày ký nếu
+  HĐ nêu rõ hiệu lực khác ngày ký.
+- ngay_khai_truong: ngày KHAI TRƯƠNG / commencement / mở cửa kinh doanh (khác ngày
+  hiệu lực). Thường xuất hiện trong HĐ thuê/nhượng quyền: "Ngày Khai Trương",
+  "Commencement Date", "ngày mở cửa hoạt động". null nếu không có.
+- ngay_het_han: ngày HẾT HẠN / chấm dứt hợp đồng. yyyy-mm-dd nếu rõ.
+  Nếu HĐ chỉ nêu thời hạn ("5 năm") mà không nêu ngày cụ thể → null (để Backend tính).
+
 - gia_tri_hd: giá trị hợp đồng / tiền thuê / lương / giá trị đơn hàng (kèm đơn vị tiền nếu có).
-- thoi_han_hd: thời hạn hợp đồng (vd "12 tháng", "2 năm", "không xác định thời hạn").
+- thoi_han_hd: thời hạn / thời gian hiệu lực của CHÍNH HĐ (vd "12 tháng", "5 năm kể từ
+  ngày hiệu lực", "đến hết 31/12/2028", "không xác định thời hạn"). Ghi nguyên văn.
+  KHÁC thời hạn từng nghĩa vụ bên trong HĐ.
 - dieu_khoan_gia_han: điều khoản gia hạn / tái ký / thông báo trước khi hết hạn.
 - dieu_khoan_thanh_toan: điều khoản/lịch thanh toán (vd "trả ngày 5 hàng tháng").
-- ngay_ky: ngày ký kết (có thể KHÁC ngày hiệu lực). yyyy-mm-dd nếu rõ.
 - tien_dat_coc: tiền đặt cọc / ký quỹ / bảo đảm (kèm đơn vị tiền).
 - thoi_han_bao_hanh: thời hạn bảo hành (vd "12 tháng kể từ bàn giao").
 - thoi_han_thong_bao: thời hạn báo trước khi chấm dứt (vd "30 ngày").

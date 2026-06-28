@@ -48,7 +48,10 @@ BASE_CANONICAL_FIELDS: tuple[str, ...] = (
 )
 V2_UNIVERSAL_FIELDS: tuple[str, ...] = (
     "doc_type_group",         # enum DOC_TYPE_GROUPS — classified first
+    "tieu_de_hd",             # R1: contract title (heading from doc body, not filename)
+    "so_hieu_hd",             # R1: contract number (pattern "số XX/YY/ZZZZ")
     "ngay_ky",                # signing date (≠ effective date — common gap)
+    "ngay_khai_truong",       # R6: commencement/opening date (≠ effective date)
     "tien_dat_coc",           # deposit / guarantee amount
     "thoi_han_bao_hanh",      # warranty period
     "thoi_han_thong_bao",     # notice period before termination
@@ -427,7 +430,10 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
 
     # v2 universal (DEC-029) — Gemini-only (Claude base omits them to stay valid)
     doc_type_group: AnchoredField = Field(default_factory=AnchoredField)
+    tieu_de_hd: AnchoredField = Field(default_factory=AnchoredField)
+    so_hieu_hd: AnchoredField = Field(default_factory=AnchoredField)
     ngay_ky: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_khai_truong: AnchoredField = Field(default_factory=AnchoredField)
     tien_dat_coc: AnchoredField = Field(default_factory=AnchoredField)
     thoi_han_bao_hanh: AnchoredField = Field(default_factory=AnchoredField)
     thoi_han_thong_bao: AnchoredField = Field(default_factory=AnchoredField)
