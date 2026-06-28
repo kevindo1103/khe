@@ -20,9 +20,21 @@ from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations, resolve_date_anchored_obligations
 from app.services import quota, tenant_journey
+from app.services.date_parse import parse_date as _parse_date
 from modules.extraction import ExtractionUnavailable, get_extraction_provider
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_date_iso(raw: str | None) -> str | None:
+    """Coerce a date string to ISO yyyy-mm-dd, or return None on parse failure."""
+    if not raw:
+        return None
+    dt = _parse_date(raw)
+    if dt is None:
+        logger.warning("Unparseable date value %r — storing as None", raw)
+        return None
+    return dt.strftime("%Y-%m-%d")
 
 
 def _norm(s: str) -> str:
@@ -307,6 +319,16 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         if doc.title is None and _number_field and _number_field.value:
             doc.title = _number_field.value
         doc.contract_number = (_number_field.value if _number_field and _number_field.value else None)
+        # R6 (#369): denormalise signing_date + commencement_date for direct column access.
+        # _normalize_date_iso coerces LLM output (VN "15/03/2025", verbose, etc.) to ISO yyyy-mm-dd.
+        _signing_field = result.fields.get("ngay_ky")
+        _commence_field = result.fields.get("ngay_khai_truong")
+        doc.signing_date = _normalize_date_iso(
+            _signing_field.value if _signing_field and _signing_field.value else None
+        )
+        doc.commencement_date = _normalize_date_iso(
+            _commence_field.value if _commence_field and _commence_field.value else None
+        )
         # Cost tracking (#255): persist provider + token usage + cost on the doc
         # (denormalised for the pilot cost report) in the same transaction.
         doc.extraction_provider = result.provider or None
