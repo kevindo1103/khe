@@ -212,7 +212,7 @@ class Clause(TenantBase):
     edited_at = Column(DateTime, nullable=True)       # when last edited
     original_content = Column(Text, nullable=True)    # AI-extracted original (snapshot on first edit)
     # ── tenant_023: clause hierarchy (#365) ──
-    parent_id = Column(Integer, ForeignKey("clauses.id"), nullable=True)  # NULL = top-level
+    parent_id = Column(Integer, nullable=True)  # self-ref to clauses.id; app-level (no FK — avoids delete-order issues)
     level = Column(Integer, nullable=True)            # 0=top, 1=sub, 2=sub-sub (derived, not user-editable)
     clause_path = Column(String, nullable=True)       # dotted path e.g. "2.1.1" (for hierarchy sort)
 

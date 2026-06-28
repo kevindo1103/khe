@@ -15,14 +15,17 @@ Vietnamese numbering conventions handled:
 Clauses with unrecognised numbering (Roman numerals, letters, bare titles)
 keep clause_path=None, parent_id=None, level=None.
 """
+import logging
 import re
 from typing import Optional
 
 from app.models.tenant import Clause
 
+logger = logging.getLogger(__name__)
+
 # Patterns ordered most-specific first.
-_DIEU_RE = re.compile(r"^(?:Đi[eề]u|DIEU)\s*(\d+)\s*$", re.IGNORECASE)
-_KHOAN_MUC_RE = re.compile(r"^(?:Kho[aả]n|M[uụ]c|KHOAN|MUC)\s*(\d+(?:\.\d+)+)\s*$", re.IGNORECASE)
+_DIEU_RE = re.compile(r"^(?:Đi[eề]u|DIEU)\s*(\d+)\s*[\.:\s]*$", re.IGNORECASE)
+_KHOAN_MUC_RE = re.compile(r"^(?:Kho[aả]n|M[uụ]c|KHOAN|MUC)\s*(\d+(?:\.\d+)+)\s*[\.:\s]*$", re.IGNORECASE)
 _DOTTED_RE = re.compile(r"^(\d+(?:\.\d+)+)\s*[\.:]?\s*")  # bare "2.1" or "2.1.1 ..."
 _TOP_RE = re.compile(r"^(\d+)\s*[\.:]?\s*")                 # bare "2" or "2. Tên mục"
 
@@ -78,10 +81,16 @@ def build_clause_hierarchy(clauses: list, db) -> None:
             clause.level = _level_from_path(path)
         # else: leave clause_path/level as None (unrecognised numbering)
 
-    # Step 2: build a path→clause lookup (existing rows only).
+    # Step 2: build a path→clause lookup (existing rows only, first-wins on collision).
     path_map: dict[str, Clause] = {}
     for clause in clauses:
         if clause.clause_path is not None:
+            if clause.clause_path in path_map:
+                logger.warning(
+                    "Duplicate clause_path %r in doc %d — keeping first, skipping %r",
+                    clause.clause_path, clause.document_id, clause.clause_num,
+                )
+                continue
             path_map[clause.clause_path] = clause
 
     # Step 3: synthesize missing parent stubs bottom-up.
