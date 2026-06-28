@@ -47,6 +47,9 @@ class Document(TenantBase):
     # ── tenant_020: extraction progress (#360) ──
     processing_stage = Column(String, nullable=True)       # queued|ocr|llm|saving|done|failed
     processing_progress = Column(Integer, nullable=True)   # 0-100
+    # ── tenant_021: contract title + number (#363) ──
+    title = Column(String, nullable=True)                  # extracted contract title (tieu_de_hd term)
+    contract_number = Column(String, nullable=True)        # extracted contract number (so_hop_dong term)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

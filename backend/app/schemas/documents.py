@@ -60,6 +60,9 @@ class DocumentListItem(BaseModel):
     quyen_loi_count: int = 0
     direction_null_count: int = 0
     may_have_unextracted_obligations: bool | None = None   # #276 column — NULL until that migration lands
+    # R1 (#363): contract title/number — null for pre-migration docs (FE falls back to file_name)
+    title: str | None = None
+    contract_number: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -95,6 +98,24 @@ class DocumentDetailOut(BaseModel):
     # Extraction progress (#360) — None for pre-migration / not-yet-started docs.
     processing_stage: str | None = None
     processing_progress: int | None = None
+    # R1 (#363): contract title/number — null for pre-migration docs
+    title: str | None = None
+    contract_number: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Document-level PATCH (#363 D-07) ──
+
+
+class DocumentPatchIn(BaseModel):
+    title: str | None = None
+    contract_number: str | None = None
+
+
+class DocumentPatchOut(BaseModel):
+    id: int
+    title: str | None = None
+    contract_number: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
