@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState } from '../../components';
+import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState, LifecycleBadge } from '../../components';
 import type { ToastKind } from '../../components/Toast';
 import { apiFetch } from '../../lib/api';
 import type {
@@ -46,6 +46,7 @@ const STATUS_LABEL: Record<string, string> = {
   extracted: 'Đã bóc tách',
   needs_review: 'Cần kiểm tra',
 };
+
 
 const STAGE_LABELS: Record<string, string> = {
   queued: 'Đang chờ xử lý…',
@@ -795,6 +796,20 @@ function TabOverview({
               ? 'Tài liệu chưa có nội dung điều khoản (clause) nên không thể map lại loại.'
               : 'Chọn lại nếu phân loại sai — Khế map lại các trường từ nội dung điều khoản, không tính thêm quota.'}
           </p>
+        </Card>
+      )}
+
+      {doc.contract_term && (
+        <Card className="mb-4 bg-surface-alt border-border">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-2xs text-ink-muted uppercase tracking-wide font-medium mb-1">
+                Thời hạn hợp đồng
+              </p>
+              <p className="text-sm text-ink">{doc.contract_term}</p>
+            </div>
+            <LifecycleBadge status={doc.lifecycle_status} />
+          </div>
         </Card>
       )}
 
@@ -1782,6 +1797,7 @@ export default function DocumentDetail() {
                   <Badge kind={STATUS_BADGE[doc.status] || 'neutral'}>
                     {STATUS_LABEL[doc.status] || doc.status}
                   </Badge>
+                  <LifecycleBadge status={doc.lifecycle_status} />
                   {doc.doc_type && (
                     <span className="text-xs text-ink-muted">
                       {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}

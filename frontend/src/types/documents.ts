@@ -40,6 +40,9 @@ export interface DocumentListItem {
   processing_progress?: number | null;
   title?: string | null;
   contract_number?: string | null;
+  // #371 R8 — lifecycle status (optional until backend tenant_025 lands)
+  contract_term?: string | null;
+  lifecycle_status?: string | null;
 }
 
 export interface DocumentListOut {
@@ -79,6 +82,9 @@ export interface DocumentDetailOut {
   processing_progress?: number | null;
   title?: string | null;
   contract_number?: string | null;
+  // #371 R8 — lifecycle status (optional until backend tenant_025 lands)
+  contract_term?: string | null;
+  lifecycle_status?: string | null;
 }
 
 // #238 — POST /documents/{id}/confirm (no body; self-party auto-derived from legal_name)
