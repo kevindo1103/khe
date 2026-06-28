@@ -59,6 +59,8 @@ def to_result(
         parties=list(getattr(parsed, "parties", [])),  # DEC-030 (Gemini Full only)
         defined_terms=list(getattr(parsed, "defined_terms", [])),  # R9 #372
         cross_references=list(getattr(parsed, "cross_references", [])),  # R10 #373
+        has_signature=getattr(parsed, "has_signature", False),  # R5 #368
+        signature_pages=list(getattr(parsed, "signature_pages", [])),  # R5 #368
         provider=provider,
         model=model,
         latency_ms=round(latency_ms, 2),

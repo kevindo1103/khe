@@ -231,6 +231,18 @@ THAM CHIẾU CHÉO (R10): phát hiện mọi tham chiếu giữa điều/khoản
 """
 
 
+_TABLE_SIGNATURE_SPEC = """\
+BẢNG VÀ CHỮ KÝ (R5):
+- BẢNG: nếu điều khoản chứa BẢNG (vd danh mục thương hiệu, lịch thanh toán, bảng giá),
+  ghi nội dung bảng trong clause.content dưới dạng MARKDOWN TABLE (| cột1 | cột2 |...).
+  KHÔNG bỏ qua bảng — đó là nội dung pháp lý quan trọng.
+- CHỮ KÝ/CON DẤU: nếu phát hiện chữ ký tay, con dấu đỏ, hoặc vùng ký tên trên tài liệu:
+  đặt has_signature=true, signature_pages=[số trang có chữ ký/con dấu] (bắt đầu từ 1).
+  KHÔNG đọc nội dung chữ ký (D-01). Chỉ ghi nhận SỰ CÓ MẶT + vị trí trang.
+  Nếu không phát hiện → has_signature=false, signature_pages=[].
+"""
+
+
 def build_instruction(doc_type: str = "auto") -> str:
     """Main user-turn instruction. `doc_type` is a hint; the model still returns its
     own classification + confidence (FR-EX-01)."""
@@ -246,7 +258,7 @@ def build_instruction(doc_type: str = "auto") -> str:
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
         f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n"
         f"{_AUTO_RENEWAL_SPEC}\n{_CLAUSES_SPEC}\n"
-        f"{_DEFINED_TERMS_SPEC}\n{_CROSS_REF_SPEC}\n"
+        f"{_DEFINED_TERMS_SPEC}\n{_CROSS_REF_SPEC}\n{_TABLE_SIGNATURE_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )
 
@@ -269,6 +281,6 @@ def build_text_instruction(doc_type: str = "auto") -> str:
         f"{_DOC_TYPE_GROUP_SPEC}\n{_FIELD_SPEC}\n{_TYPE_SPECIFIC_SPEC}\n"
         f"{_ANCHOR_SPEC}\n{_PARTIES_SPEC}\n{_OBLIGATION_SCHEDULE_SPEC}\n"
         f"{_AUTO_RENEWAL_SPEC}\n{_CLAUSES_SPEC}\n"
-        f"{_DEFINED_TERMS_SPEC}\n{_CROSS_REF_SPEC}\n"
+        f"{_DEFINED_TERMS_SPEC}\n{_CROSS_REF_SPEC}\n{_TABLE_SIGNATURE_SPEC}\n"
         "Trả về CHÍNH XÁC theo cấu trúc đã định, không thêm văn bản ngoài JSON."
     )

@@ -520,6 +520,14 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
         default_factory=list,
         description="Tham chiếu chéo giữa điều/khoản/phụ lục (R10). Rỗng nếu không phát hiện tham chiếu.",
     )
+    has_signature: bool = Field(
+        default=False,
+        description="True nếu phát hiện chữ ký/con dấu trên tài liệu (R5).",
+    )
+    signature_pages: list[int] = Field(
+        default_factory=list,
+        description="Danh sách số trang có chữ ký/con dấu (bắt đầu từ 1). Rỗng nếu không có (R5).",
+    )
 
     def as_field_map(self) -> dict[str, ExtractedField]:
         # Universal fields are AnchoredField on this path → page_num/ref pass through
@@ -561,6 +569,8 @@ class ExtractionResult(BaseModel):
     parties: list[PartyItem] = Field(default_factory=list)
     defined_terms: list[DefinedTermItem] = Field(default_factory=list)
     cross_references: list[CrossReferenceItem] = Field(default_factory=list)
+    has_signature: bool = False
+    signature_pages: list[int] = Field(default_factory=list)
 
     provider: str = ""             # e.g. "gemini_flash"
     model: str = ""                # e.g. "gemini-2.5-flash"
