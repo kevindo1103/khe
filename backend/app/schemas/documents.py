@@ -115,6 +115,9 @@ class DocumentListItem(BaseModel):
     # R1 (#363): contract title/number — null for pre-migration docs (FE falls back to file_name)
     title: str | None = None
     contract_number: str | None = None
+    # R6 (#369): date taxonomy — null for pre-migration docs
+    signing_date: str | None = None
+    commencement_date: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -153,6 +156,9 @@ class DocumentDetailOut(BaseModel):
     # R1 (#363): contract title/number — null for pre-migration docs
     title: str | None = None
     contract_number: str | None = None
+    # R6 (#369): date taxonomy — null for pre-migration docs
+    signing_date: str | None = None
+    commencement_date: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
