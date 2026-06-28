@@ -408,6 +408,14 @@ class TestAnnexType:
         types = {rel_type for _, rel_type in hints}
         assert "annex" in types
 
+    def test_extract_reference_hints_lettered_phu_luc_is_annex(self):
+        """'phụ lục A' / 'phụ lục B' → annex (lettered appendix)."""
+        from app.services.relationships import _extract_reference_hints
+        for text in ["phụ lục A", "Phụ lục B của hợp đồng", "phụ lục HĐ ABC-001"]:
+            hints = _extract_reference_hints(text)
+            types = {rel_type for _, rel_type in hints}
+            assert "annex" in types, f"Expected annex for '{text}', got {hints}"
+
     def test_extract_reference_hints_amendment_phu_luc_is_amends(self):
         """'phụ lục sửa đổi HĐ số X' → amends, NOT annex."""
         from app.services.relationships import _extract_reference_hints
@@ -422,6 +430,15 @@ class TestAnnexType:
         hints = _extract_reference_hints("phụ lục bổ sung số X99")
         types = {rel_type for _, rel_type in hints}
         assert "amends" in types
+
+    def test_amendment_pattern_does_not_match_across_clauses(self):
+        """Amendment pattern capped at 80 chars — won't grab distant reference."""
+        from app.services.relationships import _extract_reference_hints
+        filler = "a" * 100
+        text = f"phụ lục bổ sung quy trình nội bộ {filler} tham chiếu ABC-999"
+        hints = _extract_reference_hints(text)
+        tokens = {tok for tok, _ in hints}
+        assert "abc-999" not in tokens, "Should not match reference 100+ chars away"
 
     def test_resolve_chain_skips_annex_edges(self, tenant_db, test_tenant):
         """resolve_chain does NOT override terms via annex edges."""

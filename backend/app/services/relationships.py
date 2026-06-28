@@ -27,12 +27,17 @@ _REFERENCE_PATTERNS: list[tuple[re.Pattern, str]] = [
     # Amendment phụ lục (must appear before standalone — more specific).
     (re.compile(
         r"(?:phụ lục|Phụ lục|phu luc)\s+(?:sửa đổi|bổ sung|thay thế|sua doi|bo sung|thay the)"
-        r".*?(?:HĐ|HD)?\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
+        r".{0,80}?(?:HĐ|HD)?\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
         re.IGNORECASE,
     ), "amends"),
-    # Standalone phụ lục — numbered appendix bundled with the same agreement.
+    # Standalone phụ lục — alphanumeric appendix bundled with the same agreement.
+    # Captures "phụ lục A", "phụ lục 1", "phụ lục HĐ ABC-001" etc.
+    # Negative lookahead excludes amendment keywords so "phụ lục sửa đổi" doesn't
+    # also match as annex (ordering alone is insufficient — annex min_len=1).
     (re.compile(
-        r"(?:phụ lục|Phụ lục|phu luc|Phu luc)\s*(?:số|so|#)?\s*(\d+)",
+        r"(?:phụ lục|Phụ lục|phu luc|Phu luc)"
+        r"(?!\s*(?:sửa đổi|bổ sung|thay thế|sua doi|bo sung|thay the))"
+        r"\s*(?:HĐ|HD)?\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
         re.IGNORECASE,
     ), "annex"),
     (re.compile(
