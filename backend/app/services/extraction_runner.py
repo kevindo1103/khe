@@ -307,6 +307,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         if doc.title is None and _number_field and _number_field.value:
             doc.title = _number_field.value
         doc.contract_number = (_number_field.value if _number_field and _number_field.value else None)
+        # R6 (#369): denormalise signing_date + commencement_date for direct column access.
+        _signing_field = result.fields.get("ngay_ky")
+        _commence_field = result.fields.get("ngay_khai_truong")
+        doc.signing_date = (_signing_field.value if _signing_field and _signing_field.value else None)
+        doc.commencement_date = (_commence_field.value if _commence_field and _commence_field.value else None)
         # Cost tracking (#255): persist provider + token usage + cost on the doc
         # (denormalised for the pilot cost report) in the same transaction.
         doc.extraction_provider = result.provider or None

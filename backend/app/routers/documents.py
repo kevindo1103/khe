@@ -549,6 +549,8 @@ def list_documents(
                 processing_progress=doc.processing_progress,
                 title=doc.title,
                 contract_number=doc.contract_number,
+                signing_date=doc.signing_date,
+                commencement_date=doc.commencement_date,
             )
         )
 
@@ -633,6 +635,8 @@ def get_document(
         processing_progress=doc.processing_progress,
         title=doc.title,
         contract_number=doc.contract_number,
+        signing_date=doc.signing_date,
+        commencement_date=doc.commencement_date,
     )
 
 

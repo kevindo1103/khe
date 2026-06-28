@@ -50,6 +50,9 @@ class Document(TenantBase):
     # ── tenant_021: contract title + number (#363) ──
     title = Column(String, nullable=True)                  # extracted contract title (tieu_de_hd term)
     contract_number = Column(String, nullable=True)        # extracted contract number (so_hop_dong term)
+    # ── tenant_024: date taxonomy (#369) ──
+    signing_date = Column(String, nullable=True)           # ngay_ky term value (ISO date)
+    commencement_date = Column(String, nullable=True)      # ngay_khai_truong term value (ISO date)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
