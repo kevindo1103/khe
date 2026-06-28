@@ -273,6 +273,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             from app.services.clause_hierarchy import build_clause_hierarchy
             build_clause_hierarchy(new_clauses, db)
 
+        # 8b-iii. R9 (#372): definitions extraction — stub pending KHE_AI schema.
+        # When Gemini schema adds definitions[] array, parse (term, definition) pairs
+        # here, create Definition rows, link source_clause_id via clause_path matching.
+        # No-op for now; CRUD + storage layer is ready.
+
         # 8c. Persist parties (DEC-030, #155). Idempotent: delete existing
         #     per-doc Party rows first, then re-insert from result.parties[].
         db.query(Party).filter(
@@ -328,6 +333,15 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         )
         doc.commencement_date = _normalize_date_iso(
             _commence_field.value if _commence_field and _commence_field.value else None
+        )
+        # R8 (#371): contract_term + lifecycle_status derivation.
+        _thoi_han = result.fields.get("thoi_han_hd")
+        doc.contract_term = (_thoi_han.value if _thoi_han and _thoi_han.value else None)
+        _het_han = result.fields.get("ngay_het_han")
+        _het_han_val = (_het_han.value if _het_han and _het_han.value else None)
+        from app.services.lifecycle import derive_lifecycle_status
+        doc.lifecycle_status = derive_lifecycle_status(
+            _het_han_val, doc.contract_term, doc.lifecycle_status,
         )
         # Cost tracking (#255): persist provider + token usage + cost on the doc
         # (denormalised for the pilot cost report) in the same transaction.

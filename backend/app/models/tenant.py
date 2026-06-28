@@ -53,6 +53,9 @@ class Document(TenantBase):
     # ── tenant_024: date taxonomy (#369) ──
     signing_date = Column(String, nullable=True)           # ngay_ky term value (ISO date)
     commencement_date = Column(String, nullable=True)      # ngay_khai_truong term value (ISO date)
+    # ── tenant_025: contract term + lifecycle status (#371) ──
+    contract_term = Column(String, nullable=True)          # raw duration e.g. "12 tháng" / "vô thời hạn"
+    lifecycle_status = Column(String, nullable=True)       # active|expiring|expired|settled|suspended
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -218,6 +221,26 @@ class Clause(TenantBase):
     parent_id = Column(Integer, nullable=True)  # self-ref to clauses.id; app-level (no FK — avoids delete-order issues)
     level = Column(Integer, nullable=True)            # 0=top, 1=sub, 2=sub-sub (derived, not user-editable)
     clause_path = Column(String, nullable=True)       # dotted path e.g. "2.1.1" (for hierarchy sort)
+
+
+class Definition(TenantBase):
+    """Glossary term extracted from a document's Định nghĩa section (#372, R9)."""
+    __tablename__ = "definitions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    term = Column(String, nullable=False)               # e.g. "Năm Tài chính", "Khách sạn"
+    definition = Column(Text, nullable=False)           # full definition text
+    source_clause_num = Column(String, nullable=True)   # e.g. "Điều 1" or clause_path
+    source_clause_id = Column(Integer, nullable=True)   # app-level ref to clauses.id (no FK constraint)
+    # ── D-07 edit tracking ──
+    edited_by_user = Column(String, nullable=True)
+    edited_at = Column(DateTime, nullable=True)
+    original_definition = Column(Text, nullable=True)   # AI-extracted snapshot on first edit
+    original_term = Column(String, nullable=True)       # AI-extracted term snapshot on first edit
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class DocumentRelationship(TenantBase):

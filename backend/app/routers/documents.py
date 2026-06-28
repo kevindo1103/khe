@@ -33,7 +33,7 @@ from app.core.config import settings
 from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
 from app.models.master import Tenant, TenantProfile, TenantUser
-from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
+from app.models.tenant import Clause, Definition, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
     ClauseListOut,
@@ -41,6 +41,10 @@ from app.schemas.documents import (
     ClausePatchIn,
     ClausePatchOut,
     ConfirmDocumentOut,
+    DefinitionListOut,
+    DefinitionOut,
+    DefinitionPatchIn,
+    DefinitionPatchOut,
     DocumentPatchIn,
     DocumentPatchOut,
     EventListOut,
@@ -428,6 +432,15 @@ def list_documents(
         .subquery()
     )
 
+    definition_subq = (
+        db.query(
+            Definition.document_id.label("doc_id"),
+            func.count(Definition.id).label("definition_count"),
+        )
+        .group_by(Definition.document_id)
+        .subquery()
+    )
+
     # Direction rollup (#279): active obligations only (status NOT IN done/cancelled).
     # standing obligations (due_date NULL) count in direction tallies but not next_due_date.
     _ACTIVE = Obligation.status.notin_(("done", "cancelled"))
@@ -463,11 +476,13 @@ def list_documents(
             dir_subq.c.quyen_loi_count,
             dir_subq.c.direction_null_count,
             dir_subq.c.next_due_date,
+            definition_subq.c.definition_count,
         )
         .outerjoin(term_subq, term_subq.c.doc_id == Document.id)
         .outerjoin(obligation_subq, obligation_subq.c.doc_id == Document.id)
         .outerjoin(clause_subq, clause_subq.c.doc_id == Document.id)
         .outerjoin(dir_subq, dir_subq.c.doc_id == Document.id)
+        .outerjoin(definition_subq, definition_subq.c.doc_id == Document.id)
         .filter(Document.tenant_id == user.tenant_id)
     )
 
@@ -526,7 +541,7 @@ def list_documents(
             primary_party_map[p.document_id] = p.name
 
     items: list[DocumentListItem] = []
-    for doc, term_count, has_needs_review, obligation_count, clause_count, nghia_vu, quyen_loi, dir_null, next_due in rows:
+    for doc, term_count, has_needs_review, obligation_count, clause_count, nghia_vu, quyen_loi, dir_null, next_due, def_count in rows:
         items.append(
             DocumentListItem(
                 id=doc.id,
@@ -551,6 +566,9 @@ def list_documents(
                 contract_number=doc.contract_number,
                 signing_date=doc.signing_date,
                 commencement_date=doc.commencement_date,
+                contract_term=doc.contract_term,
+                lifecycle_status=doc.lifecycle_status,
+                definition_count=def_count or 0,
             )
         )
 
@@ -603,6 +621,12 @@ def get_document(
         .count()
     )
 
+    definition_count = (
+        db.query(Definition)
+        .filter(Definition.document_id == doc_id, Definition.tenant_id == user.tenant_id)
+        .count()
+    )
+
     # When the doc failed extraction, surface the reason from the latest
     # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
     failure_reason: str | None = None
@@ -637,6 +661,9 @@ def get_document(
         contract_number=doc.contract_number,
         signing_date=doc.signing_date,
         commencement_date=doc.commencement_date,
+        contract_term=doc.contract_term,
+        lifecycle_status=doc.lifecycle_status,
+        definition_count=definition_count,
     )
 
 
@@ -669,6 +696,15 @@ def patch_document(
     if "contract_number" in payload.model_fields_set:
         edits["contract_number"] = (doc.contract_number, payload.contract_number)
         doc.contract_number = payload.contract_number
+    if "lifecycle_status" in payload.model_fields_set:
+        allowed = (None, "settled", "suspended")
+        if payload.lifecycle_status not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="lifecycle_status can only be set to 'settled', 'suspended', or null",
+            )
+        edits["lifecycle_status"] = (doc.lifecycle_status, payload.lifecycle_status)
+        doc.lifecycle_status = payload.lifecycle_status
 
     if not edits:
         return DocumentPatchOut.model_validate(doc)
@@ -687,6 +723,128 @@ def patch_document(
     db.commit()
     db.refresh(doc)
     return DocumentPatchOut.model_validate(doc)
+
+
+# ── Definitions glossary (#372, R9) ──
+
+@docs_router.get("/{doc_id}/definitions", response_model=DefinitionListOut)
+def list_definitions(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return all definitions extracted from a document's Định nghĩa section."""
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    defs = (
+        db.query(Definition)
+        .filter(Definition.document_id == doc_id, Definition.tenant_id == user.tenant_id)
+        .order_by(Definition.id)
+        .all()
+    )
+    return DefinitionListOut(
+        document_id=doc_id,
+        definition_count=len(defs),
+        definitions=[DefinitionOut.model_validate(d) for d in defs],
+    )
+
+
+@docs_router.patch("/{doc_id}/definitions/{def_id}", response_model=DefinitionPatchOut)
+def patch_definition(
+    doc_id: int,
+    def_id: int,
+    payload: DefinitionPatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit a definition's term and/or text (D-07: user edit → Event, snapshot original)."""
+    defn = (
+        db.query(Definition)
+        .filter(
+            Definition.id == def_id,
+            Definition.document_id == doc_id,
+            Definition.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if defn is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Definition not found")
+
+    if not payload.model_fields_set:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No fields to update")
+
+    event_payload: dict = {}
+
+    if "definition" in payload.model_fields_set and payload.definition is not None:
+        old_def = defn.definition
+        if defn.original_definition is None:
+            defn.original_definition = old_def
+        defn.definition = payload.definition
+        event_payload["old_definition"] = old_def
+        event_payload["new_definition"] = payload.definition
+
+    if "term" in payload.model_fields_set and payload.term is not None:
+        old_term = defn.term
+        if defn.original_term is None:
+            defn.original_term = old_term
+        defn.term = payload.term
+        event_payload["old_term"] = old_term
+        event_payload["new_term"] = payload.term
+
+    defn.edited_by_user = user.username
+    defn.edited_at = datetime.utcnow()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="definition_edited",
+        entity_type="definition",
+        entity_id=def_id,
+        actor=user.username,
+        payload=event_payload,
+    )
+    db.commit()
+    db.refresh(defn)
+    return DefinitionPatchOut.model_validate(defn)
+
+
+@docs_router.delete("/{doc_id}/definitions/{def_id}", status_code=204)
+def delete_definition(
+    doc_id: int,
+    def_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a definition (admin cleanup). Logs an Event before removal."""
+    defn = (
+        db.query(Definition)
+        .filter(
+            Definition.id == def_id,
+            Definition.document_id == doc_id,
+            Definition.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if defn is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Definition not found")
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="definition_deleted",
+        entity_type="definition",
+        entity_id=def_id,
+        actor=user.username,
+        payload={"term": defn.term},
+    )
+    db.delete(defn)
+    db.commit()
 
 
 # ── File download (documents) ──
