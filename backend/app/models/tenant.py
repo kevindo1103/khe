@@ -140,6 +140,13 @@ class Party(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
     role_label = Column(Text, nullable=True)           # role as stated IN the contract
     created_at = Column(DateTime, server_default=func.now())
+    # ── tenant_022: extended party details + self-mapping (#364) ──
+    address = Column(Text, nullable=True)              # địa chỉ pháp lý
+    contact = Column(String, nullable=True)            # SĐT / email liên hệ
+    representative = Column(String, nullable=True)     # người đại diện (tên + chức vụ)
+    tax_code = Column(String, nullable=True)           # mã số thuế (MST)
+    is_self = Column(Boolean, default=False)           # auto-mapped from tenant_profile.legal_name
+    aliases = Column(Text, nullable=True)              # JSON array of alternative names/abbreviations
 
 
 class Event(TenantBase):

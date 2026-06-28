@@ -256,12 +256,32 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             Party.tenant_id == tenant_id,
         ).delete()
         for party_item in result.parties:
+            _aliases_raw = getattr(party_item, "aliases", None)
             db.add(Party(
                 tenant_id=tenant_id,
                 document_id=doc_id,
                 name=party_item.name,
                 role_label=party_item.role_label,
+                address=getattr(party_item, "address", None),
+                contact=getattr(party_item, "contact", None),
+                representative=getattr(party_item, "representative", None),
+                tax_code=getattr(party_item, "tax_code", None),
+                aliases=json.dumps(_aliases_raw) if _aliases_raw else None,
             ))
+
+        # R2 (#364): auto-map is_self from tenant_profile.legal_name (D-13 spirit).
+        # Flush so the new Party rows get IDs, then update in the same transaction.
+        legal_name = _get_tenant_legal_name(tenant_id)
+        if legal_name:
+            ln = _norm(legal_name)
+            db.flush()
+            for party_row in db.query(Party).filter(
+                Party.document_id == doc_id,
+                Party.tenant_id == tenant_id,
+            ).all():
+                pn = _norm(party_row.name or "")
+                if ln and pn and (ln in pn or pn in ln):
+                    party_row.is_self = True
 
         # 9. Update document.
         doc.doc_type = result.doc_type.value

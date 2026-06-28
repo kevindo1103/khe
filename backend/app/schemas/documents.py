@@ -6,6 +6,65 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
+# ── Parties ──
+
+
+class PartyOut(BaseModel):
+    id: int
+    name: str
+    role_label: str | None = None
+    address: str | None = None
+    contact: str | None = None
+    representative: str | None = None
+    tax_code: str | None = None
+    is_self: bool = False
+    aliases: list[str] | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def _parse_aliases(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+
+class PartyPatchIn(BaseModel):
+    name: str | None = None
+    role_label: str | None = None
+    address: str | None = None
+    contact: str | None = None
+    representative: str | None = None
+    tax_code: str | None = None
+    is_self: bool | None = None
+
+
+class PartyPatchOut(BaseModel):
+    id: int
+    name: str
+    role_label: str | None = None
+    address: str | None = None
+    contact: str | None = None
+    representative: str | None = None
+    tax_code: str | None = None
+    is_self: bool = False
+    aliases: list[str] | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def _parse_aliases(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+
 # ── Terms ──
 
 class TermOut(BaseModel):
@@ -80,7 +139,7 @@ class DocumentDetailOut(BaseModel):
     terms: list[TermOut] = []
     obligations: list[Any] = []
     clause_count: int = 0
-    parties: list[dict] = []
+    parties: list[PartyOut] = []
     # When status == "failed", populated from the most recent extraction_failed
     # Event's payload.reason — surfaces the exact failure path (#79 follow-up)
     # so UAT can self-diagnose without VPS access. Null for non-failed docs.
