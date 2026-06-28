@@ -26,6 +26,7 @@ def upgrade() -> None:
         sa.Column("edited_by_user", sa.String(), nullable=True),
         sa.Column("edited_at", sa.DateTime(), nullable=True),
         sa.Column("original_definition", sa.Text(), nullable=True),
+        sa.Column("original_term", sa.String(), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
     )

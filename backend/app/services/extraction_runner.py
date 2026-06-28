@@ -336,12 +336,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         )
         # R8 (#371): contract_term + lifecycle_status derivation.
         _thoi_han = result.fields.get("thoi_han_hd")
-        doc.contract_term = (getattr(_thoi_han, "value", None) if _thoi_han else None)
+        doc.contract_term = (_thoi_han.value if _thoi_han and _thoi_han.value else None)
         _het_han = result.fields.get("ngay_het_han")
-        _het_han_val = (getattr(_het_han, "value", None) if _het_han else None)
+        _het_han_val = (_het_han.value if _het_han and _het_han.value else None)
         from app.services.lifecycle import derive_lifecycle_status
         doc.lifecycle_status = derive_lifecycle_status(
-            doc.signing_date, doc.commencement_date,
             _het_han_val, doc.contract_term, doc.lifecycle_status,
         )
         # Cost tracking (#255): persist provider + token usage + cost on the doc

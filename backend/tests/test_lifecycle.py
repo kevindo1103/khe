@@ -81,52 +81,52 @@ def _seed_doc(db, **kwargs) -> Document:
 class TestDeriveLifecycleStatus:
     def test_derive_active(self):
         expiry = _future_date(EXPIRING_WINDOW_DAYS + 10)
-        assert derive_lifecycle_status(None, None, expiry, None, None) == "active"
+        assert derive_lifecycle_status(expiry, None, None) == "active"
 
     def test_derive_expiring(self):
         expiry = _future_date(EXPIRING_WINDOW_DAYS - 1)
-        assert derive_lifecycle_status(None, None, expiry, None, None) == "expiring"
+        assert derive_lifecycle_status(expiry, None, None) == "expiring"
 
     def test_derive_expiring_at_boundary(self):
         expiry = _future_date(EXPIRING_WINDOW_DAYS)
-        assert derive_lifecycle_status(None, None, expiry, None, None) == "expiring"
+        assert derive_lifecycle_status(expiry, None, None) == "expiring"
 
     def test_derive_expired(self):
         expiry = _past_date(1)
-        assert derive_lifecycle_status(None, None, expiry, None, None) == "expired"
+        assert derive_lifecycle_status(expiry, None, None) == "expired"
 
     def test_derive_open_ended_contract_term(self):
-        result = derive_lifecycle_status(None, None, None, "vô thời hạn", None)
+        result = derive_lifecycle_status(None, "vô thời hạn", None)
         assert result == "active"
 
     def test_derive_open_ended_variant(self):
-        result = derive_lifecycle_status(None, None, None, "không thời hạn", None)
+        result = derive_lifecycle_status(None, "không thời hạn", None)
         assert result == "active"
 
     def test_derive_no_dates_returns_none(self):
-        assert derive_lifecycle_status(None, None, None, None, None) is None
+        assert derive_lifecycle_status(None, None, None) is None
 
     def test_derive_unparseable_expiry_returns_none(self):
-        assert derive_lifecycle_status(None, None, "not-a-date", None, None) is None
+        assert derive_lifecycle_status("not-a-date", None, None) is None
 
     def test_derive_settled_sticky(self):
         expiry = _future_date(200)  # clearly active by dates
-        result = derive_lifecycle_status(None, None, expiry, None, "settled")
+        result = derive_lifecycle_status(expiry, None, "settled")
         assert result == "settled"
 
     def test_derive_suspended_sticky(self):
         expiry = _future_date(200)
-        result = derive_lifecycle_status(None, None, expiry, None, "suspended")
+        result = derive_lifecycle_status(expiry, None, "suspended")
         assert result == "suspended"
 
     def test_derive_clear_override_auto_derived(self):
         expiry = _future_date(200)
-        result = derive_lifecycle_status(None, None, expiry, None, None)
+        result = derive_lifecycle_status(expiry, None, None)
         assert result == "active"
 
-    def test_derive_with_signing_date_ignored_for_status(self):
+    def test_derive_expired_no_term_no_override(self):
         expiry = _past_date(5)
-        result = derive_lifecycle_status("2024-01-01", "2024-02-01", expiry, None, None)
+        result = derive_lifecycle_status(expiry, None, None)
         assert result == "expired"
 
 

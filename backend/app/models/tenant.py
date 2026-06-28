@@ -238,6 +238,7 @@ class Definition(TenantBase):
     edited_by_user = Column(String, nullable=True)
     edited_at = Column(DateTime, nullable=True)
     original_definition = Column(Text, nullable=True)   # AI-extracted snapshot on first edit
+    original_term = Column(String, nullable=True)       # AI-extracted term snapshot on first edit
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

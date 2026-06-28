@@ -245,8 +245,59 @@ class TestPatchDefinition:
         )
         assert ev is not None
         payload = json.loads(ev.payload)
-        assert payload["old_value"] == "Khoản tiền ban đầu"
-        assert payload["new_value"] == "Khoản tiền đã cập nhật"
+        assert payload["old_definition"] == "Khoản tiền ban đầu"
+        assert payload["new_definition"] == "Khoản tiền đã cập nhật"
+
+    def test_patch_term_d07(self, auth_client, tenant_db):
+        doc = _seed_doc(tenant_db)
+        defn = _seed_definition(tenant_db, doc.id, "Sai chính tả", "Định nghĩa đúng")
+        r = auth_client.patch(
+            f"/documents/{doc.id}/definitions/{defn.id}",
+            json={"term": "Đúng chính tả"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["term"] == "Đúng chính tả"
+        assert data["original_term"] == "Sai chính tả"
+        assert data["edited_by_user"] == "defuser"
+
+    def test_patch_term_snapshots_original_once(self, auth_client, tenant_db):
+        doc = _seed_doc(tenant_db)
+        defn = _seed_definition(tenant_db, doc.id, "Gốc", "def")
+        auth_client.patch(
+            f"/documents/{doc.id}/definitions/{defn.id}",
+            json={"term": "Lần 1"},
+        )
+        auth_client.patch(
+            f"/documents/{doc.id}/definitions/{defn.id}",
+            json={"term": "Lần 2"},
+        )
+        tenant_db.refresh(defn)
+        assert defn.original_term == "Gốc"
+        assert defn.term == "Lần 2"
+
+    def test_patch_both_term_and_definition(self, auth_client, tenant_db):
+        doc = _seed_doc(tenant_db)
+        defn = _seed_definition(tenant_db, doc.id, "Old Term", "Old Def")
+        r = auth_client.patch(
+            f"/documents/{doc.id}/definitions/{defn.id}",
+            json={"term": "New Term", "definition": "New Def"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["term"] == "New Term"
+        assert data["definition"] == "New Def"
+        assert data["original_term"] == "Old Term"
+        assert data["original_definition"] == "Old Def"
+
+    def test_patch_empty_body_rejected(self, auth_client, tenant_db):
+        doc = _seed_doc(tenant_db)
+        defn = _seed_definition(tenant_db, doc.id, "Keep", "Unchanged")
+        r = auth_client.patch(
+            f"/documents/{doc.id}/definitions/{defn.id}",
+            json={},
+        )
+        assert r.status_code == 422
 
     def test_patch_definition_not_found(self, auth_client, tenant_db):
         doc = _seed_doc(tenant_db)
@@ -300,14 +351,18 @@ class TestDeleteDefinition:
         other_db = get_tenant_session(OTHER_TENANT_ID)
         try:
             other_doc = _seed_doc(other_db, tid=OTHER_TENANT_ID)
-            other_doc_id = other_doc.id
             other_defn = _seed_definition(other_db, other_doc.id, "Chỉ riêng", "tenant khác", tid=OTHER_TENANT_ID)
             other_def_id = other_defn.id
         finally:
             other_db.close()
 
-        r = auth_client.delete(f"/documents/{other_doc_id}/definitions/{other_def_id}")
+        r = auth_client.delete(f"/documents/999999/definitions/{other_def_id}")
         assert r.status_code == 404
+
+        check_db = get_tenant_session(OTHER_TENANT_ID)
+        still_exists = check_db.query(Definition).filter(Definition.id == other_def_id).first()
+        check_db.close()
+        assert still_exists is not None
 
 
 # ── definition_count in list + detail ──

@@ -21,8 +21,6 @@ def is_open_ended(value: str | None) -> bool:
 
 
 def derive_lifecycle_status(
-    signing_date: str | None,
-    commencement_date: str | None,
     expiry_date_str: str | None,
     contract_term: str | None,
     current_override: str | None,

@@ -763,7 +763,7 @@ def patch_definition(
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Edit a definition's text (D-07: user edit → Event, snapshot original)."""
+    """Edit a definition's term and/or text (D-07: user edit → Event, snapshot original)."""
     defn = (
         db.query(Definition)
         .filter(
@@ -776,13 +776,28 @@ def patch_definition(
     if defn is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Definition not found")
 
-    old_value = defn.definition
-    if defn.original_definition is None:
-        defn.original_definition = old_value
-    defn.definition = payload.definition
-    defn.edited_by_user = user.username
+    if not payload.model_fields_set:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No fields to update")
 
-    from datetime import datetime
+    event_payload: dict = {}
+
+    if "definition" in payload.model_fields_set and payload.definition is not None:
+        old_def = defn.definition
+        if defn.original_definition is None:
+            defn.original_definition = old_def
+        defn.definition = payload.definition
+        event_payload["old_definition"] = old_def
+        event_payload["new_definition"] = payload.definition
+
+    if "term" in payload.model_fields_set and payload.term is not None:
+        old_term = defn.term
+        if defn.original_term is None:
+            defn.original_term = old_term
+        defn.term = payload.term
+        event_payload["old_term"] = old_term
+        event_payload["new_term"] = payload.term
+
+    defn.edited_by_user = user.username
     defn.edited_at = datetime.utcnow()
 
     _log_event(
@@ -792,7 +807,7 @@ def patch_definition(
         entity_type="definition",
         entity_id=def_id,
         actor=user.username,
-        payload={"old_value": old_value, "new_value": payload.definition},
+        payload=event_payload,
     )
     db.commit()
     db.refresh(defn)

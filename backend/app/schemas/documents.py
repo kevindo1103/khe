@@ -359,6 +359,7 @@ class DefinitionOut(BaseModel):
     edited_by_user: str | None = None
     edited_at: datetime | None = None
     original_definition: str | None = None
+    original_term: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -369,7 +370,8 @@ class DefinitionListOut(BaseModel):
 
 
 class DefinitionPatchIn(BaseModel):
-    definition: str  # D-07 — user edits definition text only
+    term: str | None = None
+    definition: str | None = None
 
 
 class DefinitionPatchOut(BaseModel):
@@ -379,4 +381,5 @@ class DefinitionPatchOut(BaseModel):
     edited_by_user: str | None = None
     edited_at: datetime | None = None
     original_definition: str | None = None
+    original_term: str | None = None
     model_config = ConfigDict(from_attributes=True)
