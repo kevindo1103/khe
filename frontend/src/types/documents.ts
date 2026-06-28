@@ -49,6 +49,19 @@ export interface DocumentListOut {
   total: number;
 }
 
+// #364 R2 — extended party details (all new fields optional until backend migration lands)
+export interface PartyOut {
+  id?: number;
+  name: string;
+  role_label: string | null;
+  address?: string | null;
+  contact?: string | null;
+  representative?: string | null;
+  tax_code?: string | null;
+  is_self?: boolean;
+  aliases?: string[] | null;
+}
+
 export interface DocumentDetailOut {
   id: number;
   file_name: string;
@@ -61,7 +74,7 @@ export interface DocumentDetailOut {
   clause_count: number;
   confirmed_by_user_at: string | null;   // #238 — null = not yet user-confirmed
   failure_reason: string | null;
-  parties?: { name: string; role_label: string | null }[];
+  parties?: PartyOut[];
   processing_stage?: string | null;
   processing_progress?: number | null;
   title?: string | null;
