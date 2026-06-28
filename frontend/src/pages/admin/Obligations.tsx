@@ -72,6 +72,10 @@ function statusBadgeKind(status: ObligationStatus): BadgeKind {
       return 'neutral';
     case 'waiting_trigger':
       return 'needs_review';
+    case 'overdue':
+      return 'overdue';
+    case 'awaiting_confirmation':
+      return 'needs_review';
     default:
       return 'neutral';
   }

@@ -38,6 +38,8 @@ export interface DocumentListItem {
   duplicate?: boolean;
   processing_stage?: string | null;
   processing_progress?: number | null;
+  title?: string | null;
+  contract_number?: string | null;
 }
 
 export interface DocumentListOut {
@@ -62,6 +64,8 @@ export interface DocumentDetailOut {
   parties?: { name: string; role_label: string | null }[];
   processing_stage?: string | null;
   processing_progress?: number | null;
+  title?: string | null;
+  contract_number?: string | null;
 }
 
 // #238 — POST /documents/{id}/confirm (no body; self-party auto-derived from legal_name)
