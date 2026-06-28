@@ -263,12 +263,12 @@ FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge
 ## Issue #378 — DEC-050 doc-detail v3 (6 new surfaces, EPIC #362) — branch `claude/design-doc-detail-dec050-378`
 - Extends `mockup_document_detail_v2.jsx` (#281) with 6 DEC-050 surfaces into a new file.
 - **Delivered:** `mockup_document_detail_v3.jsx` (~1055 lines) — 4-tab layout:
-  1. **Tổng quan** — R8 lifecycle badge (5 states: drafting/active/expiring_soon/expired/terminated) + existing snapshot
+  1. **Tổng quan** — R8 lifecycle badge (5 states: active/expiring/expired/settled/suspended) + existing snapshot
   2. **Nghĩa vụ & Quyền lợi** — condensed from v2 (unchanged logic)
   3. **Bên ký kết** (NEW R2 #364) — `PartyCard` with self-party emerald highlight vs counterparty gray; grid details (address/representative/MST/contact); D-07 edit buttons
   4. **Nội dung hợp đồng** — R3 (#365) clause hierarchy (recursive nested accordion, 24px indent, └ connector, child count badge) + R5 (#368) `ClauseTable` HTML tables + `ImageCropRef` dashed-border + `SignatureStampSection` ✍️/🔴 + R9 (#372) `GlossarySection` collapsible term/definition pairs + R10 (#373) `renderClauseContent()` with `{{term}}` → dashed-underline tooltip and `[[ref]]` → blue link or red wavy orphan indicator + `OrphanRefPanel` warning banner
 - **QC #312 fixes baked in:** F2 sidebar badge [3] on Tổng quan tab; F3 H1 reactive to self-party (shows counterparty name when self-party selected)
-- **Sample data:** Công nghệ & IP contract ALPHATECH ↔ DANH VIỆT — exercises all party states, hierarchical clauses (3 levels), payment table, image ref, signature/stamp, glossary, orphan ref
+- **Sample data:** Công nghệ & IP contract ALPHATECH ↔ Cty TNHH Minh Phát — exercises all party states, hierarchical clauses (3 levels), payment table, image ref, signature/stamp, glossary, orphan ref
 - **Design tokens:** B&W minimalist (DS v0.2 direction). Color rationed: primary `#0F7A56`, amber `#D97706`, red `#DC2626`, muted `#6B7280`.
 - Awaiting Kevin review.
 

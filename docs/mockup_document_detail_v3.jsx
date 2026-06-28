@@ -89,6 +89,7 @@ const DOC = {
   parties: [
     {
       id: "p1", name: "Cty Phần Mềm ALPHATECH", role_label: "Bên A (cung cấp)",
+      aliases: ["ALPHATECH", "Bên A"],
       is_self: false,
       address: "Tầng 12, Tòa nhà Innovation, 123 Nguyễn Huệ, Q.1, TP.HCM",
       representative: "Nguyễn Văn Minh", representative_title: "Giám đốc",
@@ -97,6 +98,7 @@ const DOC = {
     },
     {
       id: "p2", name: "Cty TNHH Thương Mại Minh Phát", role_label: "Bên B (sử dụng)",
+      aliases: ["Minh Phát", "Bên B", "MP"],
       is_self: true,
       address: "456 Lê Lợi, Q. Thanh Khê, TP. Đà Nẵng",
       representative: "Trần Thị Hương", representative_title: "Giám đốc",
@@ -607,6 +609,8 @@ function ClauseHierarchyItem({ clause, expanded, onToggle, glossary, onRefClick,
         )}
       </div>
 
+      {/* FE NOTE: children hardcoded expanded={true} + no-op toggle for prototype.
+         Production must make each child independently collapsible (real nested accordion state). */}
       {expanded && hasChildren && clause.children.map((child) => (
         <ClauseHierarchyItem
           key={child.id}
@@ -820,6 +824,14 @@ function PartyCard({ party, isSelf }) {
             {isSelf && <span style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.semibold, color: t.color.primary, background: t.color.primarySoft, padding: `1px ${t.space[2]}px`, borderRadius: t.radius.pill }}>Bên của bạn</span>}
           </div>
           <div style={{ fontSize: t.font.size.md, color: t.color.inkMuted, marginTop: 2 }}>{party.role_label}</div>
+          {party.aliases && party.aliases.length > 0 && (
+            <div style={{ display: "flex", gap: t.space[1], marginTop: t.space[1], flexWrap: "wrap" }}>
+              <span style={{ fontSize: t.font.size.xs, color: t.color.inkSubtle }}>gọi chung là</span>
+              {party.aliases.map((a) => (
+                <span key={a} style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.medium, color: t.color.inkMuted, background: t.color.graySoft, padding: `0 ${t.space[2]}px`, borderRadius: t.radius.pill, border: `1px solid ${t.color.border}` }}>{a}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1023,7 +1035,7 @@ export default function DocumentDetailV3() {
         <div style={{ marginTop: t.space[6], padding: t.space[4], background: t.color.graySoft, borderRadius: t.radius.md, fontSize: t.font.size.xs, color: t.color.inkMuted, lineHeight: 1.7 }}>
           <div style={{ fontWeight: t.font.weight.semibold, color: t.color.ink, marginBottom: t.space[1] }}>📐 Ghi chú thiết kế — DEC-050 surfaces (không render production)</div>
 
-          <div><strong>R2 (#364) — Bên ký kết tab:</strong> self-party card highlighted (primary border + soft bg) with "Bên của bạn" badge + role label. Counterparties = full section each (name, representative+title, address, MST, contact). All fields editable → Event (D-07). When self-party unset → warning + all parties shown equal. Tab shows (2) badge = party count.</div>
+          <div><strong>R2 (#364) — Bên ký kết tab:</strong> self-party card highlighted (primary border + soft bg) with "Bên của bạn" badge + role label + <strong>alias chips</strong> ("gọi chung là ALPHATECH / Bên A" — feeds obligation direction resolution). Counterparties = full section each (name, representative+title, address, MST, contact, aliases). All fields editable → Event (D-07). When self-party unset → warning + all parties shown equal. Tab shows (2) badge = party count.</div>
 
           <div><strong>R3 (#365) — Clause hierarchy:</strong> nested accordion indent 24px/level. Parent nodes show child count badge. "└" connector at child level. Child expansion cascades with parent. Header summary shows "N điều khoản · M cấp chính". Font: parent=semibold base, child=medium md.</div>
 
