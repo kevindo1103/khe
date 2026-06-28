@@ -38,7 +38,7 @@ BƯỚC 2 — TRÍCH XUẤT. Luôn bóc các trường phổ quát (canonical ke
 - tieu_de_hd: TÊN/TIÊU ĐỀ THẬT của hợp đồng lấy từ NỘI DUNG văn bản (heading lớn nhất
   đầu tài liệu, vd "HỢP ĐỒNG CẤP PHÉP VÀ SỬ DỤNG BẢN QUYỀN KHÁCH SẠN",
   "HỢP ĐỒNG THUÊ MẶT BẰNG"). KHÔNG lấy từ tên file. null nếu không tìm thấy.
-- so_hieu_hd: số hiệu hợp đồng (pattern "số XX/YY/ZZZZ", "Số: 01/2026/HĐMB",
+- so_hop_dong: số hiệu hợp đồng (pattern "số XX/YY/ZZZZ", "Số: 01/2026/HĐMB",
   "Contract No. ..."). Giữ nguyên cách viết trên tài liệu. null nếu không có.
 - doi_tac: TÊN các bên ký kết (bên A / bên B, bên cho thuê / bên thuê, NSDLĐ / NLĐ,
   nhà cung cấp / khách hàng). Nếu nhiều bên, nối bằng dấu ";".
@@ -207,7 +207,7 @@ GIA HẠN TỰ ĐỘNG (R7): nếu HĐ có điều khoản tự động gia hạ
 báo trước X ngày", "gia hạn thêm Y tháng nếu không có thông báo chấm dứt"):
 - Ghi RÕ trong dieu_khoan_gia_han (trường phổ quát) — nguyên văn điều khoản.
 - THÊM vào obligation_schedule: obligation_type="renewal", description="Thông báo
-  chấm dứt/không gia hạn trước ngày ...", due_date=ngày hết hạn TRỪNGỎ thời hạn
+  chấm dứt/không gia hạn trước ngày ...", due_date=ngày hết hạn TRỪ thời hạn
   báo trước (nếu tính được; nếu không → due_date=null + trigger="event"),
   source_clause_num=điều khoản chứa điều kiện gia hạn.
 - Đây là nghĩa vụ QUAN TRỌNG NHẤT cho SME — bỏ sót = tự động bị gia hạn.
