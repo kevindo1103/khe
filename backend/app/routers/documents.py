@@ -33,7 +33,7 @@ from app.core.config import settings
 from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
 from app.models.master import Tenant, TenantProfile, TenantUser
-from app.models.tenant import Clause, Definition, Document, Event, Obligation, Party, Term
+from app.models.tenant import Clause, ClauseCrossRef, Definition, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
     ClauseListOut,
@@ -41,6 +41,9 @@ from app.schemas.documents import (
     ClausePatchIn,
     ClausePatchOut,
     ConfirmDocumentOut,
+    CrossRefListOut,
+    CrossRefOut,
+    CrossRefResolveOut,
     DefinitionListOut,
     DefinitionOut,
     DefinitionPatchIn,
@@ -845,6 +848,62 @@ def delete_definition(
     )
     db.delete(defn)
     db.commit()
+
+
+# ── Cross-reference resolution (#373, R10) ──
+
+@docs_router.get("/{doc_id}/cross-refs", response_model=CrossRefListOut)
+def list_cross_refs(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all cross-references detected in a document's clauses."""
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    refs = (
+        db.query(ClauseCrossRef)
+        .filter(
+            ClauseCrossRef.document_id == doc_id,
+            ClauseCrossRef.tenant_id == user.tenant_id,
+        )
+        .order_by(ClauseCrossRef.id)
+        .all()
+    )
+    orphan_count = sum(1 for r in refs if r.is_orphan)
+    return CrossRefListOut(
+        document_id=doc_id,
+        total_refs=len(refs),
+        resolved=len(refs) - orphan_count,
+        orphans=orphan_count,
+        refs=[CrossRefOut.model_validate(r) for r in refs],
+    )
+
+
+@docs_router.post("/{doc_id}/cross-refs/resolve", response_model=CrossRefResolveOut)
+def resolve_cross_refs_endpoint(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Trigger manual re-resolution of cross-references for a document (idempotent)."""
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    from app.services.cross_ref import resolve_cross_refs
+    stats = resolve_cross_refs(db, user.tenant_id, doc_id)
+    return CrossRefResolveOut(document_id=doc_id, **stats)
 
 
 # ── File download (documents) ──

@@ -383,3 +383,33 @@ class DefinitionPatchOut(BaseModel):
     original_definition: str | None = None
     original_term: str | None = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# ── Cross-reference resolution (#373, R10) ──
+
+
+class CrossRefOut(BaseModel):
+    id: int
+    source_clause_id: int
+    ref_text: str
+    ref_type: str               # "clause" | "appendix" | "document"
+    target_clause_id: int | None = None
+    target_clause_path: str | None = None
+    target_doc_id: int | None = None
+    is_orphan: bool = False
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CrossRefListOut(BaseModel):
+    document_id: int
+    total_refs: int
+    resolved: int
+    orphans: int
+    refs: list[CrossRefOut]
+
+
+class CrossRefResolveOut(BaseModel):
+    document_id: int
+    total_refs: int
+    resolved: int
+    orphans: int

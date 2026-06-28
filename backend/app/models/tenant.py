@@ -243,6 +243,23 @@ class Definition(TenantBase):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class ClauseCrossRef(TenantBase):
+    """Intra-doc or cross-doc reference detected in clause content (#373, R10)."""
+    __tablename__ = "clause_cross_refs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    source_clause_id = Column(Integer, nullable=False)     # app-level ref to clauses.id
+    ref_text = Column(String, nullable=False)              # raw text, e.g. "theo Điều 5"
+    ref_type = Column(String, nullable=False)              # "clause" | "appendix" | "document"
+    target_clause_id = Column(Integer, nullable=True)      # resolved → clauses.id
+    target_clause_path = Column(String, nullable=True)     # resolved → clause_path, e.g. "5"
+    target_doc_id = Column(Integer, nullable=True)         # resolved → documents.id (appendix)
+    is_orphan = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class DocumentRelationship(TenantBase):
     __tablename__ = "document_relationships"
 
