@@ -212,6 +212,10 @@ class ClauseOut(BaseModel):
     title: str | None = None
     content: str
     page_num: int | None = None
+    # R3 (#365): hierarchy fields — null for pre-migration / flat clauses
+    parent_id: int | None = None
+    level: int | None = None
+    clause_path: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
