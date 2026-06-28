@@ -197,7 +197,7 @@ function ObligationRow({
   ob: ObligationOut;
   onFulfill: (ob: ObligationOut) => void;
 }) {
-  const canFulfill = ['pending', 'in_progress', 'partial', 'overdue', 'awaiting_confirmation'].includes(ob.status);
+  const canFulfill = ['pending', 'in_progress', 'partial'].includes(ob.status);
   return (
     <div className="py-3 border-b border-border last:border-0">
       <div className="flex items-start justify-between gap-2">
@@ -434,7 +434,7 @@ function ClauseItem({
                 autoFocus
               />
               {saveError && (
-                <p className="text-xs text-red-600">{saveError}</p>
+                <p className="text-xs text-danger">{saveError}</p>
               )}
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={saveEdit} loading={saving}>
@@ -1341,7 +1341,16 @@ export default function DocumentDetail() {
           <div className="mb-6">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <h1 className="text-xl font-bold text-ink leading-tight">{derivedTitle}</h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl font-bold text-ink leading-tight">
+                    {doc.title || derivedTitle}
+                  </h1>
+                  {doc.contract_number && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-medium bg-surface-alt text-ink-muted border border-border">
+                      #{doc.contract_number}
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-ink-muted mt-1">
                   Tệp gốc: {doc.file_name}
                   {doc.created_at && (
