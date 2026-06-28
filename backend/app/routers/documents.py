@@ -540,8 +540,8 @@ def list_documents(
                 quyen_loi_count=quyen_loi or 0,
                 direction_null_count=dir_null or 0,
                 may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
-                processing_stage=getattr(doc, "processing_stage", None),
-                processing_progress=getattr(doc, "processing_progress", None),
+                processing_stage=doc.processing_stage,
+                processing_progress=doc.processing_progress,
             )
         )
 
@@ -622,8 +622,8 @@ def get_document(
         provider=provider,
         model=model,
         confirmed_by_user_at=doc.confirmed_by_user_at,
-        processing_stage=getattr(doc, "processing_stage", None),
-        processing_progress=getattr(doc, "processing_progress", None),
+        processing_stage=doc.processing_stage,
+        processing_progress=doc.processing_progress,
     )
 
 
