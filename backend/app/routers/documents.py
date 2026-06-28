@@ -542,8 +542,8 @@ def list_documents(
                 quyen_loi_count=quyen_loi or 0,
                 direction_null_count=dir_null or 0,
                 may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
-                title=getattr(doc, "title", None),
-                contract_number=getattr(doc, "contract_number", None),
+                title=doc.title,
+                contract_number=doc.contract_number,
             )
         )
 
@@ -624,8 +624,8 @@ def get_document(
         provider=provider,
         model=model,
         confirmed_by_user_at=doc.confirmed_by_user_at,
-        title=getattr(doc, "title", None),
-        contract_number=getattr(doc, "contract_number", None),
+        title=doc.title,
+        contract_number=doc.contract_number,
     )
 
 
@@ -652,22 +652,26 @@ def patch_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     edits = {}
-    if payload.title is not None:
-        edits["title"] = (getattr(doc, "title", None), payload.title)
+    if "title" in payload.model_fields_set:
+        edits["title"] = (doc.title, payload.title)
         doc.title = payload.title
-    if payload.contract_number is not None:
-        edits["contract_number"] = (getattr(doc, "contract_number", None), payload.contract_number)
+    if "contract_number" in payload.model_fields_set:
+        edits["contract_number"] = (doc.contract_number, payload.contract_number)
         doc.contract_number = payload.contract_number
 
+    if not edits:
+        return DocumentPatchOut.model_validate(doc)
+
     for field, (old_val, new_val) in edits.items():
-        db.add(Event(
-            tenant_id=user.tenant_id,
+        _log_event(
+            db,
+            user.tenant_id,
             event_type="document_field_edited",
             entity_type="document",
             entity_id=doc_id,
             actor=user.username,
-            payload=json.dumps({"field": field, "old_value": old_val, "new_value": new_val}),
-        ))
+            payload={"field": field, "old_value": old_val, "new_value": new_val},
+        )
 
     db.commit()
     db.refresh(doc)
