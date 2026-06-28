@@ -236,6 +236,15 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         # 9. Update document.
         doc.doc_type = result.doc_type.value
         doc.status = "extracted"
+        # R1 (#363): denormalise title + contract_number from extracted Terms so
+        # list/detail endpoints don't need a subquery per doc to display the heading.
+        # Cascade: tieu_de_hd → so_hop_dong → None (FE falls back to file_name).
+        _title_field = result.fields.get("tieu_de_hd")
+        _number_field = result.fields.get("so_hop_dong")
+        doc.title = (_title_field.value if _title_field and _title_field.value else None)
+        if doc.title is None and _number_field and _number_field.value:
+            doc.title = _number_field.value
+        doc.contract_number = (_number_field.value if _number_field and _number_field.value else None)
         # Cost tracking (#255): persist provider + token usage + cost on the doc
         # (denormalised for the pilot cost report) in the same transaction.
         doc.extraction_provider = result.provider or None

@@ -41,6 +41,8 @@ from app.schemas.documents import (
     ClausePatchIn,
     ClausePatchOut,
     ConfirmDocumentOut,
+    DocumentPatchIn,
+    DocumentPatchOut,
     EventListOut,
     EventOut,
     ReDeriveClauseIn,
@@ -540,6 +542,8 @@ def list_documents(
                 quyen_loi_count=quyen_loi or 0,
                 direction_null_count=dir_null or 0,
                 may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
+                title=getattr(doc, "title", None),
+                contract_number=getattr(doc, "contract_number", None),
             )
         )
 
@@ -620,7 +624,54 @@ def get_document(
         provider=provider,
         model=model,
         confirmed_by_user_at=doc.confirmed_by_user_at,
+        title=getattr(doc, "title", None),
+        contract_number=getattr(doc, "contract_number", None),
     )
+
+
+# ── Document-level PATCH (#363, D-07) ──
+
+@docs_router.patch("/{doc_id}", response_model=DocumentPatchOut)
+def patch_document(
+    doc_id: int,
+    payload: DocumentPatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit document-level title and/or contract_number (D-07: user edit → Event).
+
+    FE calls this when the user overrides the extracted heading. Logs a
+    document_field_edited Event per field changed for audit compliance.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    edits = {}
+    if payload.title is not None:
+        edits["title"] = (getattr(doc, "title", None), payload.title)
+        doc.title = payload.title
+    if payload.contract_number is not None:
+        edits["contract_number"] = (getattr(doc, "contract_number", None), payload.contract_number)
+        doc.contract_number = payload.contract_number
+
+    for field, (old_val, new_val) in edits.items():
+        db.add(Event(
+            tenant_id=user.tenant_id,
+            event_type="document_field_edited",
+            entity_type="document",
+            entity_id=doc_id,
+            actor=user.username,
+            payload=json.dumps({"field": field, "old_value": old_val, "new_value": new_val}),
+        ))
+
+    db.commit()
+    db.refresh(doc)
+    return DocumentPatchOut.model_validate(doc)
 
 
 # ── File download (documents) ──

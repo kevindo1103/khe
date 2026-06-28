@@ -44,6 +44,9 @@ class Document(TenantBase):
     extraction_model = Column(String, nullable=True)       # "gemini-2.5-flash" / "claude-haiku-4.5"
     extraction_latency_ms = Column(Float, nullable=True)   # total extraction latency in ms
     extraction_warnings = Column(Text, nullable=True)      # JSON array of warning strings
+    # ── tenant_021: contract title + number (#363) ──
+    title = Column(String, nullable=True)                  # extracted contract title (tieu_de_hd term)
+    contract_number = Column(String, nullable=True)        # extracted contract number (so_hop_dong term)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

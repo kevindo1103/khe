@@ -57,6 +57,9 @@ class DocumentListItem(BaseModel):
     quyen_loi_count: int = 0
     direction_null_count: int = 0
     may_have_unextracted_obligations: bool | None = None   # #276 column — NULL until that migration lands
+    # R1 (#363): contract title/number — null for pre-migration docs (FE falls back to file_name)
+    title: str | None = None
+    contract_number: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -89,6 +92,24 @@ class DocumentDetailOut(BaseModel):
     provider: str | None = None     # e.g. "gemini_flash" | "claude_haiku"
     model: str | None = None        # e.g. "gemini-2.5-flash"
     confirmed_by_user_at: datetime | None = None   # #238 — null = not yet user-confirmed
+    # R1 (#363): contract title/number — null for pre-migration docs
+    title: str | None = None
+    contract_number: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Document-level PATCH (#363 D-07) ──
+
+
+class DocumentPatchIn(BaseModel):
+    title: str | None = None
+    contract_number: str | None = None
+
+
+class DocumentPatchOut(BaseModel):
+    id: int
+    title: str | None = None
+    contract_number: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
