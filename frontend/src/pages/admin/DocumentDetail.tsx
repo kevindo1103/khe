@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState } from '../../components';
 import type { ToastKind } from '../../components/Toast';
@@ -42,6 +42,36 @@ const STATUS_LABEL: Record<string, string> = {
   extracted: 'Đã bóc tách',
   needs_review: 'Cần kiểm tra',
 };
+
+const STAGE_LABELS: Record<string, string> = {
+  queued: 'Đang chờ xử lý…',
+  ocr: 'Đang nhận dạng văn bản…',
+  llm: 'Đang phân tích hợp đồng…',
+  saving: 'Đang lưu kết quả…',
+  done: 'Hoàn tất',
+  failed: 'Lỗi xử lý',
+};
+
+function ExtractionProgress({ stage, progress }: { stage: string | null | undefined; progress: number | null | undefined }) {
+  const pct = progress ?? 0;
+  const label = (stage && STAGE_LABELS[stage]) || STAGE_LABELS.queued;
+  const failed = stage === 'failed';
+
+  return (
+    <div className="mb-5">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className={`text-xs font-medium ${failed ? 'text-danger' : 'text-ink-muted'}`}>{label}</span>
+        <span className="text-2xs text-ink-subtle">{pct}%</span>
+      </div>
+      <div className="w-full h-2 bg-surface-sunken rounded-pill overflow-hidden">
+        <div
+          className={`h-full rounded-pill transition-all duration-[1200ms] ease-out ${failed ? 'bg-danger' : 'bg-primary'}`}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 // ── Direction badge ──────────────────────────────────────────────────────────
 function DirectionBadge({ direction }: { direction: ObligationOut['direction'] }) {
@@ -1018,6 +1048,24 @@ export default function DocumentDetail() {
     load();
   }, [load]);
 
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (doc?.status === 'processing') {
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await apiFetch<DocumentDetailOut>(`/documents/${docId}`);
+          setDoc(res);
+          if (res.status !== 'processing') {
+            if (pollRef.current) clearInterval(pollRef.current);
+          }
+        } catch { /* ignore poll errors */ }
+      }, 3000);
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [doc?.status, docId]);
+
   useEffect(() => {
     if (activeTab === 'clauses') {
       loadClauses();
@@ -1323,6 +1371,11 @@ export default function DocumentDetail() {
               )}
             </div>
           </div>
+
+          {/* Extraction progress bar */}
+          {(doc.status === 'processing' || doc.processing_stage === 'failed') && (
+            <ExtractionProgress stage={doc.processing_stage} progress={doc.processing_progress} />
+          )}
 
           {/* Unconfirmed warning banner */}
           {doc.terms.length > 0 && !doc.confirmed_by_user_at && (

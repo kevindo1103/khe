@@ -36,6 +36,8 @@ export interface DocumentListItem {
   direction_null_count?: number;
   may_have_unextracted_obligations?: boolean | null;
   duplicate?: boolean;
+  processing_stage?: string | null;
+  processing_progress?: number | null;
 }
 
 export interface DocumentListOut {
@@ -58,6 +60,8 @@ export interface DocumentDetailOut {
   confirmed_by_user_at: string | null;   // #238 — null = not yet user-confirmed
   failure_reason: string | null;
   parties?: { name: string; role_label: string | null }[];
+  processing_stage?: string | null;
+  processing_progress?: number | null;
 }
 
 // #238 — POST /documents/{id}/confirm (no body; self-party auto-derived from legal_name)

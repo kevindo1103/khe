@@ -50,6 +50,9 @@ class DocumentListItem(BaseModel):
     clause_count: int = 0
     confirmed_by_user_at: datetime | None = None   # #238 — null = "Cần xác nhận"
     created_at: datetime | None = None
+    # Extraction progress (#360) — None for pre-migration / not-yet-started docs.
+    processing_stage: str | None = None
+    processing_progress: int | None = None
     # Obligation-centric redesign (#279, mockup #278/#283)
     primary_party: str | None = None
     next_due_date: str | None = None          # ISO date string; due_date is stored as String
@@ -92,6 +95,9 @@ class DocumentDetailOut(BaseModel):
     provider: str | None = None     # e.g. "gemini_flash" | "claude_haiku"
     model: str | None = None        # e.g. "gemini-2.5-flash"
     confirmed_by_user_at: datetime | None = None   # #238 — null = not yet user-confirmed
+    # Extraction progress (#360) — None for pre-migration / not-yet-started docs.
+    processing_stage: str | None = None
+    processing_progress: int | None = None
     # R1 (#363): contract title/number — null for pre-migration docs
     title: str | None = None
     contract_number: str | None = None
