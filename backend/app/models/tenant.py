@@ -143,6 +143,13 @@ class Party(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
     role_label = Column(Text, nullable=True)           # role as stated IN the contract
     created_at = Column(DateTime, server_default=func.now())
+    # ── tenant_022: extended party details + self-mapping (#364) ──
+    address = Column(Text, nullable=True)              # địa chỉ pháp lý
+    contact = Column(String, nullable=True)            # SĐT / email liên hệ
+    representative = Column(String, nullable=True)     # người đại diện (tên + chức vụ)
+    tax_code = Column(String, nullable=True)           # mã số thuế (MST)
+    is_self = Column(Boolean, default=False)           # auto-mapped from tenant_profile.legal_name
+    aliases = Column(Text, nullable=True)              # JSON array of alternative names/abbreviations
 
 
 class Event(TenantBase):
@@ -204,6 +211,10 @@ class Clause(TenantBase):
     edited_by_user = Column(String, nullable=True)    # username who last edited
     edited_at = Column(DateTime, nullable=True)       # when last edited
     original_content = Column(Text, nullable=True)    # AI-extracted original (snapshot on first edit)
+    # ── tenant_023: clause hierarchy (#365) ──
+    parent_id = Column(Integer, ForeignKey("clauses.id"), nullable=True)  # NULL = top-level
+    level = Column(Integer, nullable=True)            # 0=top, 1=sub, 2=sub-sub (derived, not user-editable)
+    clause_path = Column(String, nullable=True)       # dotted path e.g. "2.1.1" (for hierarchy sort)
 
 
 class DocumentRelationship(TenantBase):

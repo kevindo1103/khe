@@ -237,17 +237,25 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         # 8b. Persist clauses (DEC-026). Gemini returns a full clause list; Claude
         #     fallback returns []. READ-ONLY verbatim text (D-06) — no page_num on
         #     ClauseItem yet, so it stays NULL.
+        new_clauses: list[Clause] = []
         for clause_item in result.clauses:
-            db.add(
-                Clause(
-                    tenant_id=tenant_id,
-                    document_id=doc_id,
-                    clause_num=clause_item.num,
-                    title=clause_item.title,
-                    content=clause_item.content,
-                    page_num=None,
-                )
+            c = Clause(
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                clause_num=clause_item.num,
+                title=clause_item.title,
+                content=clause_item.content,
+                page_num=None,
             )
+            db.add(c)
+            new_clauses.append(c)
+
+        # 8b-ii. Build clause hierarchy (#365): flush clause rows to get IDs, then
+        #        infer parent/child links from numbering patterns.
+        if new_clauses:
+            db.flush()
+            from app.services.clause_hierarchy import build_clause_hierarchy
+            build_clause_hierarchy(new_clauses, db)
 
         # 8c. Persist parties (DEC-030, #155). Idempotent: delete existing
         #     per-doc Party rows first, then re-insert from result.parties[].
