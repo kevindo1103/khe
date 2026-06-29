@@ -45,12 +45,13 @@ _REGISTRY: dict[str, tuple[type, tuple[str, ...]]] = {
     "gemini_flash": (GeminiFlashProvider, ("GEMINI_API_KEY", "GOOGLE_API_KEY")),
     "claude_haiku": (ClaudeHaikuProvider, ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY")),
     "claude_sonnet": (ClaudeSonnetProvider, ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY")),
-    # DEC-049: hybrid OCR pipeline — Document AI + Gemini Flash text extraction.
-    # Requires Gemini key + GOOGLE_APPLICATION_CREDENTIALS (service account for DocAI).
-    # GOOGLE_APPLICATION_CREDENTIALS gates the registry — without it, scanned PDFs
-    # hit DocAI and fail. pdftotext-only (digital PDFs) still works but not worth
-    # advertising as "ready" without the full pipeline.
-    "hybrid_ocr": (HybridOCRProvider, ("GOOGLE_APPLICATION_CREDENTIALS",)),
+    # DEC-049: hybrid OCR pipeline — 2 paths:
+    #   Digital PDFs → pdftotext (free, local) → Gemini text extraction
+    #   Scanned PDFs → Document AI OCR → Gemini text extraction
+    # Gated on Gemini key only — pdftotext path works without DocAI credentials.
+    # Scanned path gracefully fails if GOOGLE_APPLICATION_CREDENTIALS is missing
+    # (provider returns empty_result, fallback chain picks up).
+    "hybrid_ocr": (HybridOCRProvider, ("GEMINI_API_KEY", "GOOGLE_API_KEY")),
 }
 
 # DEC-002 default preference: Gemini primary, Claude Haiku fallback. `prefer` moves

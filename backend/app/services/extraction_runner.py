@@ -170,13 +170,10 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             _mark_failed(db, doc_id, tenant_id, f"Failed to read file: {exc}")
             return
 
-        # 4. DEC-049: route scanned PDFs through hybrid_ocr (DocAI OCR + Gemini text),
-        #    digital PDFs/images through gemini_flash (vision-only).
-        prefer = "gemini_flash"
-        if file_bytes[:4] == b"%PDF":
-            from modules.extraction.scan_detect import is_scanned_pdf
-            if is_scanned_pdf(file_bytes):
-                prefer = "hybrid_ocr"
+        # 4. DEC-049 (#413): route ALL PDFs through hybrid_ocr.
+        #    Digital → pdftotext (free) → Gemini text. Scanned → DocAI → Gemini text.
+        #    Non-PDF (images) → gemini_flash vision-only.
+        prefer = "hybrid_ocr" if file_bytes[:4] == b"%PDF" else "gemini_flash"
 
         try:
             provider = get_extraction_provider(prefer=prefer)
