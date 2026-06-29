@@ -52,6 +52,7 @@ jobs:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GOOGLE_SA_JSON_B64: ${{ secrets.GOOGLE_SA_JSON_B64 }}
         run: |
           if [ -z "$VPS_HOST" ]; then
             echo "⚠️  VPS_HOST secret not set — skipping VPS deploy (set secret to enable)"
@@ -75,15 +76,30 @@ jobs:
 
           rsync -az --delete --exclude=venv --exclude=.env \
             --exclude=master.db --exclude='tenants/' --exclude='storage/' \
+            --exclude='google-sa.json' \
             -e "ssh -i ~/.ssh/deploy_key" \
             ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend-staging/"
 
+          # Deploy Google Cloud service account JSON for Document AI (hybrid_ocr)
+          if [ -n "$GOOGLE_SA_JSON_B64" ]; then
+            echo "$GOOGLE_SA_JSON_B64" | base64 -d \
+              | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+                "cat > /opt/khe/backend-staging/google-sa.json && chmod 600 /opt/khe/backend-staging/google-sa.json"
+            echo "✅ Google SA JSON deployed to staging"
+            GOOGLE_CREDS_LINE="GOOGLE_APPLICATION_CREDENTIALS=/opt/khe/backend-staging/google-sa.json"
+          else
+            echo "⚠️  GOOGLE_SA_JSON_B64 not set — hybrid_ocr Document AI will be unavailable"
+            GOOGLE_CREDS_LINE=""
+          fi
+
           # Write secrets to .env on VPS via stdin pipe (values masked by GH Actions in logs)
-          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\n' \
-            "$GEMINI_API_KEY" "$CLAUDE_API_KEY" "$JWT_SECRET" "$TELEGRAM_BOT_TOKEN" \
-            "https://staging.khe.iceflow.cloud" \
-            "/opt/khe/data-staging" \
-            | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+          {
+            printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\n' \
+              "$GEMINI_API_KEY" "$CLAUDE_API_KEY" "$JWT_SECRET" "$TELEGRAM_BOT_TOKEN" \
+              "https://staging.khe.iceflow.cloud" \
+              "/opt/khe/data-staging"
+            [ -n "$GOOGLE_CREDS_LINE" ] && printf '%s\n' "$GOOGLE_CREDS_LINE"
+          } | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
               "cat > /opt/khe/backend-staging/.env && chmod 600 /opt/khe/backend-staging/.env"
 
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash <<'REMOTE'
