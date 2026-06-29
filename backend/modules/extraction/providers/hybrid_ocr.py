@@ -109,7 +109,7 @@ class HybridOCRProvider:
                     provider=self.name,
                     model=self.model,
                     latency_ms=latency_ms,
-                    warning=f"Document AI OCR failed: {type(exc).__name__}: {exc}",
+                    warning=" | ".join([*ocr_warnings, f"Document AI OCR failed: {type(exc).__name__}: {exc}"]),
                 )
 
         if not ocr_text or not ocr_text.strip():
