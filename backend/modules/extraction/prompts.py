@@ -207,13 +207,21 @@ Ngoài ra, bóc TẤT CẢ điều/khoản/mục CHÍNH THỨC thành danh sách
   TRƯỜNG HỢP B — HĐ KHÔNG dùng từ "Điều" (chỉ đánh số 1., 1.1, 2., ...):
     Nếu toàn bộ tài liệu KHÔNG có nhãn "Điều"/"ĐIỀU"/"Article"/"Chương"/"Mục"/"Phần" nào,
     thì các mục đánh số "1.", "2.", "1.1", "1.2" chính LÀ điều khoản → bóc TẤT CẢ.
+
+    ⚠️ num PHẢI chứa SỐ THỨ TỰ — KHÔNG ĐƯỢC để null hoặc chỉ có title:
+      ✅ Đúng: num="1", title="ĐỊNH NGHĨA VÀ DIỄN GIẢI"
+      ❌ Sai:  num=null, title="ĐỊNH NGHĨA VÀ DIỄN GIẢI"
+      ❌ Sai:  num="ĐỊNH NGHĨA VÀ DIỄN GIẢI", title=null
+
     PHÂN CẤP theo numbering pattern:
       "6" hoặc "6." → level=1, clause_path="6", num="6"
       "6.1" → level=2, clause_path="6.1", num="6.1" (con của "6")
       items a., b., c. bên trong 6.1 → gộp vào content (QUY TẮC 2)
-    Ví dụ: mục "6. XỬ LÝ CHẬM THANH TOÁN" có 6.1, 6.2, 6.3:
-      → num="6", title="XỬ LÝ CHẬM THANH TOÁN...", level=1, clause_path="6"
-      → num="6.1", level=2, clause_path="6.1" (con của "6")
+    Ví dụ thực tế:
+      Heading "5. MỤC ĐÍCH KÝ QUỸ VÀ KÝ KẾT HỢP ĐỒNG MUA BÁN"
+      → num="5", title="MỤC ĐÍCH KÝ QUỸ VÀ KÝ KẾT HỢP ĐỒNG MUA BÁN", level=1, clause_path="5"
+      Sub "5.1. Tiền Ký quỹ sẽ được Bên A giữ lại..."
+      → num="5.1", title=null, level=2, clause_path="5.1"
 
 ⚠️ QUY TẮC 2 — LETTERED ITEMS (a, b, c, ...) KHÔNG PHẢI ĐIỀU:
   Các mục đánh ký tự a), b), c), ..., k), l), m), n) bên trong một Điều/Khoản là
