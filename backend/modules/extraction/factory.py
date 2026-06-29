@@ -19,7 +19,10 @@ Design notes:
 
 from __future__ import annotations
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 from .provider import VisionExtractionProvider
 from .providers import (
@@ -126,11 +129,21 @@ class _FallbackProvider:
 
     async def extract(self, image_bytes: bytes, doc_type: str = "auto") -> ExtractionResult:
         result: ExtractionResult | None = None
+        prior_warnings: list[str] = []
         for provider in self._providers:
             result = await provider.extract(image_bytes, doc_type)
             if not result.is_error:
+                if prior_warnings:
+                    result.warnings = [*prior_warnings, *result.warnings]
                 return result
-        # Every provider failed — return the last honest error result (it carries
-        # the warnings); never fabricate (D-08).
-        assert result is not None  # _providers is non-empty by construction
+            logger.warning(
+                "Provider %s failed, advancing fallback: %s",
+                provider.name,
+                "; ".join(result.warnings),
+            )
+            prior_warnings.extend(
+                f"[{provider.name}] {w}" for w in result.warnings
+            )
+        assert result is not None
+        result.warnings = [*prior_warnings, *result.warnings]
         return result
