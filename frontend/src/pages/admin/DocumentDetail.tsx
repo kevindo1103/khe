@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState, LifecycleBadge } from '../../components';
 import type { ToastKind } from '../../components/Toast';
 import { apiFetch } from '../../lib/api';
@@ -360,19 +360,18 @@ function CompletenessBanner({ doc }: { doc: DocumentDetailOut }) {
 function renderClauseContent(
   content: string,
   clauseRefs: CrossRefOut[],
+  onNavigateDoc?: (docId: number) => void,
 ): React.ReactNode {
   if (clauseRefs.length === 0) return content;
 
-  // Split content on ref_text occurrences — maintain insertion order
   type Segment = { text: string; ref?: CrossRefOut };
   const segments: Segment[] = [];
   let remaining = content;
 
-  // Sort refs by position in content for correct splitting
   const sortedRefs = [...clauseRefs].sort((a, b) => {
     const posA = content.indexOf(a.ref_text);
     const posB = content.indexOf(b.ref_text);
-    return posA - posB;
+    return (posA === -1 ? Infinity : posA) - (posB === -1 ? Infinity : posB);
   });
 
   for (const ref of sortedRefs) {
@@ -400,6 +399,19 @@ function renderClauseContent(
             </span>
           );
         }
+        if (seg.ref.ref_type === 'appendix' && seg.ref.target_doc_id != null) {
+          return (
+            <button
+              key={i}
+              type="button"
+              className="text-primary font-medium underline cursor-pointer hover:text-primary-hover"
+              onClick={() => onNavigateDoc?.(seg.ref!.target_doc_id!)}
+              title={`Mở phụ lục (tài liệu #${seg.ref.target_doc_id})`}
+            >
+              {seg.text}
+            </button>
+          );
+        }
         return (
           <button
             key={i}
@@ -407,7 +419,9 @@ function renderClauseContent(
             className="text-primary font-medium underline cursor-pointer hover:text-primary-hover"
             onClick={() => {
               const el = document.getElementById(`clause-${seg.ref!.target_clause_id}`);
-              el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
             }}
           >
             {seg.text}
@@ -476,12 +490,14 @@ function ClauseItem({
   docId,
   onSaved,
   crossRefs,
+  onNavigateDoc,
 }: {
   clause: ClauseOut;
   defaultOpen: boolean;
   docId: number;
   onSaved: (updated: ClauseOut) => void;
   crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -573,7 +589,7 @@ function ClauseItem({
           ) : (
             <div className="flex flex-col gap-1">
               <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
-                {renderClauseContent(displayContent, clauseRefs)}
+                {renderClauseContent(displayContent, clauseRefs, onNavigateDoc)}
               </p>
               <div className="flex items-center gap-3 pt-1 flex-wrap">
                 {clause.original_content && (
@@ -1082,12 +1098,14 @@ function ClauseTreeItem({
   docId,
   onSaved,
   crossRefs,
+  onNavigateDoc,
 }: {
   node: ClauseNode;
   depth: number;
   docId: number;
   onSaved: (updated: ClauseOut) => void;
   crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
 }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [editing, setEditing] = useState(false);
@@ -1174,7 +1192,7 @@ function ClauseTreeItem({
             ) : (
               <div className="flex flex-col gap-1">
                 <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
-                  {renderClauseContent(displayContent, nodeRefs)}
+                  {renderClauseContent(displayContent, nodeRefs, onNavigateDoc)}
                 </p>
                 <div className="flex items-center gap-3 pt-1 flex-wrap">
                   {node.original_content && (
@@ -1212,6 +1230,7 @@ function ClauseTreeItem({
                 docId={docId}
                 onSaved={onSaved}
                 crossRefs={crossRefs}
+                onNavigateDoc={onNavigateDoc}
               />
             ))}
           </div>
@@ -1374,6 +1393,7 @@ function TabClauses({
   orphanRefs,
   onResolveRefs,
   resolvingRefs,
+  onNavigateDoc,
 }: {
   clauses: ClauseOut[];
   loading: boolean;
@@ -1391,6 +1411,7 @@ function TabClauses({
   orphanRefs: CrossRefOut[];
   onResolveRefs: () => void;
   resolvingRefs: boolean;
+  onNavigateDoc: (docId: number) => void;
 }) {
   if (loading) {
     return (
@@ -1439,6 +1460,7 @@ function TabClauses({
               docId={docId}
               onSaved={onClauseSaved}
               crossRefs={crossRefs}
+              onNavigateDoc={onNavigateDoc}
             />
           ))}
         </Card>
@@ -1467,6 +1489,7 @@ function TabClauses({
             docId={docId}
             onSaved={onClauseSaved}
             crossRefs={crossRefs}
+            onNavigateDoc={onNavigateDoc}
           />
         ))}
       </Card>
@@ -1538,6 +1561,7 @@ function TabParties({ parties }: { parties?: PartyOut[] }) {
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
   const docId = Number(id);
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [doc, setDoc] = useState<DocumentDetailOut | null>(null);
@@ -1631,7 +1655,8 @@ export default function DocumentDetail() {
     setResolvingRefs(true);
     try {
       await apiFetch<CrossRefResolveOut>(`/documents/${docId}/cross-refs/resolve`, { method: 'POST' });
-      setCrossRefsLoaded(false); // force reload
+      const res = await apiFetch<CrossRefListOut>(`/documents/${docId}/cross-refs`);
+      setCrossRefs(res.refs);
     } catch (err) {
       showToast((err as ApiError).message || 'Phân giải lại thất bại', 'error');
     } finally {
@@ -2100,6 +2125,7 @@ export default function DocumentDetail() {
               orphanRefs={crossRefs.filter((r) => r.is_orphan)}
               onResolveRefs={resolveRefs}
               resolvingRefs={resolvingRefs}
+              onNavigateDoc={(targetDocId) => navigate(`/documents/${targetDocId}`)}
             />
           )}
 
