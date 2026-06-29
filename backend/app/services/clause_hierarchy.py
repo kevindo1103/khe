@@ -4,13 +4,12 @@ Called from extraction_runner after clause rows are flushed (within the same
 transaction). Operates in-place: sets parent_id, level, clause_path on each
 Clause row. Synthesizes stub parent nodes for missing intermediate levels.
 
-Vietnamese numbering conventions handled:
-  Điều X           → top-level path "X"          (level 0)
-  Khoản X.Y        → sub path "X.Y"              (level 1)
-  Mục X.Y          → sub path "X.Y"              (level 1)
-  X.Y              → sub path "X.Y"              (level 1)
-  X.Y.Z            → sub-sub path "X.Y.Z"        (level 2)
-  X.Y.Z.W and deeper → clamped to level 2, path preserved
+Vietnamese numbering conventions handled (1-indexed, matching prompt schema):
+  Điều X           → top-level path "X"          (level 1)
+  Khoản X.Y        → sub path "X.Y"              (level 2)
+  Mục X.Y          → sub path "X.Y"              (level 2)
+  X.Y              → sub path "X.Y"              (level 2)
+  X.Y.Z            → sub-sub path "X.Y.Z"        (level 3)
 
 Clauses with unrecognised numbering (Roman numerals, letters, bare titles)
 keep clause_path=None, parent_id=None, level=None.
@@ -51,8 +50,9 @@ def _parse_path(clause_num: Optional[str]) -> Optional[str]:
 
 
 def _level_from_path(path: str) -> int:
-    """Return hierarchy depth: "2"→0, "2.1"→1, "2.1.1"→2 (capped at 2)."""
-    return min(path.count("."), 2)
+    """Return hierarchy depth (1-indexed, matching prompt schema):
+    "2"→1, "2.1"→2, "2.1.1"→3."""
+    return path.count(".") + 1
 
 
 def _parent_path(path: str) -> Optional[str]:
@@ -74,11 +74,11 @@ def build_clause_hierarchy(clauses: list, db) -> None:
         return
 
     # Step 1: parse paths for all existing clauses.
-    # LLM may have already set clause_path/level — prefer those over regex inference.
+    # Always compute level from clause_path (source of truth) — LLM-provided
+    # level is often wrong (e.g. path="1.1" but level=1 instead of 2).
     for clause in clauses:
         if clause.clause_path is not None:
-            if clause.level is None:
-                clause.level = _level_from_path(clause.clause_path)
+            clause.level = _level_from_path(clause.clause_path)
         else:
             path = _parse_path(clause.clause_num)
             if path is not None:

@@ -181,11 +181,11 @@ def test_parse_path_unrecognised():
 
 
 def test_level_from_path():
-    """Level derived from dot count, capped at 2."""
-    assert _level_from_path("2") == 0
-    assert _level_from_path("2.1") == 1
-    assert _level_from_path("2.1.1") == 2
-    assert _level_from_path("2.1.1.1") == 2   # capped at 2
+    """Level derived from dot count + 1 (1-indexed, matching prompt schema)."""
+    assert _level_from_path("2") == 1
+    assert _level_from_path("2.1") == 2
+    assert _level_from_path("2.1.1") == 3
+    assert _level_from_path("2.1.1.1") == 4
 
 
 # ── build_clause_hierarchy unit tests ────────────────────────────────────────
@@ -204,11 +204,11 @@ def test_build_hierarchy_links_parent(test_tenant, db):
     db.refresh(c_child)
 
     assert c_parent.clause_path == "2"
-    assert c_parent.level == 0
+    assert c_parent.level == 1
     assert c_parent.parent_id is None
 
     assert c_child.clause_path == "2.1"
-    assert c_child.level == 1
+    assert c_child.level == 2
     assert c_child.parent_id == c_parent.id
 
 
@@ -227,7 +227,7 @@ def test_build_hierarchy_three_levels(test_tenant, db):
     assert c1.parent_id is None
     assert c2.parent_id == c1.id
     assert c3.parent_id == c2.id
-    assert c3.level == 2
+    assert c3.level == 3
 
 
 def test_build_hierarchy_synthesizes_missing_parent(test_tenant, db):
@@ -248,7 +248,7 @@ def test_build_hierarchy_synthesizes_missing_parent(test_tenant, db):
     ).first()
     assert stub is not None
     assert stub.content == "(tổng hợp từ mục con)"
-    assert stub.level == 0
+    assert stub.level == 1
     assert c_child.parent_id == stub.id
 
 
@@ -309,11 +309,11 @@ def test_extraction_builds_hierarchy(test_tenant, tmp_path):
     assert "2.1" in by_path
     assert "2.1.1" in by_path
 
-    assert by_path["2"]["level"] == 0
+    assert by_path["2"]["level"] == 1
     assert by_path["2"]["parent_id"] is None
-    assert by_path["2.1"]["level"] == 1
+    assert by_path["2.1"]["level"] == 2
     assert by_path["2.1"]["parent_id"] == by_path["2"]["id"]
-    assert by_path["2.1.1"]["level"] == 2
+    assert by_path["2.1.1"]["level"] == 3
     assert by_path["2.1.1"]["parent_id"] == by_path["2.1"]["id"]
 
 
@@ -373,7 +373,7 @@ def test_get_clauses_includes_hierarchy_fields(auth_client, test_tenant, db):
         clause_num="Điều 1",
         content="Nội dung điều 1",
         clause_path="1",
-        level=0,
+        level=1,
     )
     db.add(c_parent)
     db.flush()
@@ -384,7 +384,7 @@ def test_get_clauses_includes_hierarchy_fields(auth_client, test_tenant, db):
         clause_num="Khoản 1.1",
         content="Nội dung 1.1",
         clause_path="1.1",
-        level=1,
+        level=2,
         parent_id=c_parent.id,
     )
     db.add(c_child)
@@ -396,11 +396,11 @@ def test_get_clauses_includes_hierarchy_fields(auth_client, test_tenant, db):
     clauses = {c["clause_num"]: c for c in data["clauses"]}
 
     assert clauses["Điều 1"]["clause_path"] == "1"
-    assert clauses["Điều 1"]["level"] == 0
+    assert clauses["Điều 1"]["level"] == 1
     assert clauses["Điều 1"]["parent_id"] is None
 
     assert clauses["Khoản 1.1"]["clause_path"] == "1.1"
-    assert clauses["Khoản 1.1"]["level"] == 1
+    assert clauses["Khoản 1.1"]["level"] == 2
     assert clauses["Khoản 1.1"]["parent_id"] == c_parent.id
 
 
