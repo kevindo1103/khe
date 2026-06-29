@@ -55,8 +55,6 @@ V2_UNIVERSAL_FIELDS: tuple[str, ...] = (
     "tien_dat_coc",           # deposit / guarantee amount
     "thoi_han_bao_hanh",      # warranty period
     "thoi_han_thong_bao",     # notice period before termination
-    "tieu_de_hd",             # R1 (#363): contract title from doc body heading
-    "so_hop_dong",            # R1 (#363): contract number e.g. "XX/2025/HDMB"
 )
 # Full universal set (12) — what the terms layer + Gemini Full schema bind to.
 CANONICAL_FIELDS: tuple[str, ...] = (*BASE_CANONICAL_FIELDS, *V2_UNIVERSAL_FIELDS)
