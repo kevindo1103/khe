@@ -207,7 +207,8 @@ Bóc TẤT CẢ điều khoản thành danh sách "clauses". Mỗi phần tử g
      {"num":"10.2", "title":null, "content":"Bên B không được chuyển nhượng...", "level":2, "clause_path":"10.2"}]
 
   Khi Điều cha chỉ chứa sub-clauses → content của Điều cha = "" (rỗng).
-  KIỂM TRA: nếu tất cả clauses đều level=1 → bạn đã gộp sub-clauses. Tách ra.
+  KIỂM TRA: nếu tất cả clauses đều level=1 VÀ tài liệu có sub-headings dạng X.Y
+  → bạn đã gộp sub-clauses. Tách ra. Nếu tài liệu KHÔNG có sub-headings → all-level-1 là đúng.
 
 ⚠️ QUY TẮC 1 — PREAMBLE vs ĐIỀU KHOẢN:
 
