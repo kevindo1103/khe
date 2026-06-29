@@ -366,3 +366,164 @@ class TestRelationshipEndpoints:
     def test_cross_tenant_document_404(self, auth_client, tenant_db):
         r = auth_client.get("/documents/99999/relationships")
         assert r.status_code == 404
+
+
+# ── R4a (#366): annex type extension ─────────────────────────────────────────
+
+
+class TestAnnexType:
+    """Tests for annex relationship type — R4a (#366)."""
+
+    def test_annex_in_valid_relationship_types(self):
+        """annex is accepted in VALID_RELATIONSHIP_TYPES."""
+        from app.services.relationships import VALID_RELATIONSHIP_TYPES
+        assert "annex" in VALID_RELATIONSHIP_TYPES
+
+    def test_annex_in_schema_literal(self):
+        """Schema Literal accepts annex without validation error."""
+        from app.schemas.relationships import RelationshipOut
+        from datetime import datetime
+        obj = RelationshipOut(
+            id=1,
+            from_doc_id=1,
+            to_doc_id=2,
+            relationship_type="annex",
+            status="pending",
+            confirmed_by_sme=False,
+        )
+        assert obj.relationship_type == "annex"
+
+    def test_extract_reference_hints_standalone_phu_luc_is_annex(self):
+        """'phụ lục số 1' → annex (not amends)."""
+        from app.services.relationships import _extract_reference_hints
+        hints = _extract_reference_hints("Tài liệu đính kèm: phụ lục số 1")
+        types = {rel_type for _, rel_type in hints}
+        assert "annex" in types
+        assert "amends" not in types
+
+    def test_extract_reference_hints_phu_luc_so_number_is_annex(self):
+        """'Phụ lục số 2' standalone → annex."""
+        from app.services.relationships import _extract_reference_hints
+        hints = _extract_reference_hints("Phụ lục số 2 của hợp đồng")
+        types = {rel_type for _, rel_type in hints}
+        assert "annex" in types
+
+    def test_extract_reference_hints_lettered_phu_luc_is_annex(self):
+        """'phụ lục A' / 'phụ lục B' → annex (lettered appendix)."""
+        from app.services.relationships import _extract_reference_hints
+        for text in ["phụ lục A", "Phụ lục B của hợp đồng", "phụ lục HĐ ABC-001"]:
+            hints = _extract_reference_hints(text)
+            types = {rel_type for _, rel_type in hints}
+            assert "annex" in types, f"Expected annex for '{text}', got {hints}"
+
+    def test_extract_reference_hints_amendment_phu_luc_is_amends(self):
+        """'phụ lục sửa đổi HĐ số X' → amends, NOT annex."""
+        from app.services.relationships import _extract_reference_hints
+        hints = _extract_reference_hints("phụ lục sửa đổi HĐ số ABC-001")
+        types = {rel_type for _, rel_type in hints}
+        assert "amends" in types
+        assert "annex" not in types
+
+    def test_extract_reference_hints_phu_luc_bo_sung_is_amends(self):
+        """'phụ lục bổ sung' → amends, NOT annex."""
+        from app.services.relationships import _extract_reference_hints
+        hints = _extract_reference_hints("phụ lục bổ sung số X99")
+        types = {rel_type for _, rel_type in hints}
+        assert "amends" in types
+
+    def test_amendment_pattern_does_not_match_across_clauses(self):
+        """Amendment pattern capped at 80 chars — won't grab distant reference."""
+        from app.services.relationships import _extract_reference_hints
+        filler = "a" * 100
+        text = f"phụ lục bổ sung quy trình nội bộ {filler} tham chiếu ABC-999"
+        hints = _extract_reference_hints(text)
+        tokens = {tok for tok, _ in hints}
+        assert "abc-999" not in tokens, "Should not match reference 100+ chars away"
+
+    def test_resolve_chain_skips_annex_edges(self, tenant_db, test_tenant):
+        """resolve_chain does NOT override terms via annex edges."""
+        from app.models.tenant import Document, DocumentRelationship, Term
+        from app.services.relationships import resolve_chain
+
+        parent = Document(
+            tenant_id=test_tenant,
+            file_name="main.pdf",
+            file_path=f"{test_tenant}/main.pdf",
+            status="extracted",
+        )
+        annex_doc = Document(
+            tenant_id=test_tenant,
+            file_name="phu-luc-1.pdf",
+            file_path=f"{test_tenant}/phu-luc-1.pdf",
+            status="extracted",
+        )
+        tenant_db.add(parent)
+        tenant_db.add(annex_doc)
+        tenant_db.flush()
+
+        # Term in parent doc
+        t_parent = Term(
+            tenant_id=test_tenant,
+            document_id=parent.id,
+            field_name="contract_value",
+            field_value="100,000,000 VND",
+            confidence=0.9,
+        )
+        # Term in annex doc — same field_name, different value
+        t_annex = Term(
+            tenant_id=test_tenant,
+            document_id=annex_doc.id,
+            field_name="contract_value",
+            field_value="999,999,999 VND",
+            confidence=0.9,
+        )
+        tenant_db.add(t_parent)
+        tenant_db.add(t_annex)
+
+        # Annex edge (confirmed)
+        rel = DocumentRelationship(
+            tenant_id=test_tenant,
+            from_doc_id=annex_doc.id,
+            to_doc_id=parent.id,
+            relationship_type="annex",
+            status="confirmed",
+            confirmed_by_sme=True,
+        )
+        tenant_db.add(rel)
+        tenant_db.commit()
+
+        result = resolve_chain(tenant_db, test_tenant, annex_doc.id)
+
+        # annex edge must not trigger term override
+        tenant_db.refresh(t_parent)
+        tenant_db.refresh(t_annex)
+        assert t_parent.is_superseded is False, "annex must NOT supersede parent terms"
+        assert t_annex.overrides_term_id is None
+        assert result["terms_resolved"] == 0
+
+    def test_suggest_relationships_creates_annex_edge(self, tenant_db, test_tenant):
+        """suggest_relationships classifies 'phụ lục số 1' as annex."""
+        from app.models.tenant import Document, Term
+        from app.services.relationships import suggest_relationships
+
+        doc = Document(
+            tenant_id=test_tenant,
+            file_name="contract-main.pdf",
+            file_path=f"{test_tenant}/contract-main.pdf",
+            status="extracted",
+        )
+        tenant_db.add(doc)
+        tenant_db.flush()
+
+        term = Term(
+            tenant_id=test_tenant,
+            document_id=doc.id,
+            field_name="reference",
+            field_value="Đính kèm phụ lục số 1",
+        )
+        tenant_db.add(term)
+        tenant_db.commit()
+
+        rels = suggest_relationships(tenant_db, test_tenant, doc.id)
+        rel_types = {r.relationship_type for r in rels}
+        assert "annex" in rel_types, f"Expected annex in {rel_types}"

@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-26 (#305 — DEC-048 §13 re-read surfaces, QC D1–D4 fixes)_
+_Last updated: 2026-06-28 (#378 — DEC-050 doc-detail v3, 6 new surfaces)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
@@ -253,10 +253,24 @@ FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge
 - **#247** — FE follow-up filed (note 2 already done in #246).
 
 ### Open for next session
+- **#378 DEC-050 v3** — mockup delivered, awaiting Kevin review. PR TBD.
+- **PR #310** — approved by QC, awaiting Kevin merge (will auto-close #305).
+- **#312 follow-up** — F1 audit drawer remaining (F2/F3 baked into v3).
 - **#246 not merged** — waiting on owner (failed-doc badge fix flagged).
 - **DEC-040 canonical fold** — awaiting KHE_Docs → BRD/SRS.
 - **#243 forward notes** — 4 items need PM ratify pass.
-- **No new design work queued** — kickoff: list `for:designer` issues, read this file.
+
+## Issue #378 — DEC-050 doc-detail v3 (6 new surfaces, EPIC #362) — branch `claude/design-doc-detail-dec050-378`
+- Extends `mockup_document_detail_v2.jsx` (#281) with 6 DEC-050 surfaces into a new file.
+- **Delivered:** `mockup_document_detail_v3.jsx` (~1055 lines) — 4-tab layout:
+  1. **Tổng quan** — R8 lifecycle badge (5 states: active/expiring/expired/settled/suspended) + existing snapshot
+  2. **Nghĩa vụ & Quyền lợi** — condensed from v2 (unchanged logic)
+  3. **Bên ký kết** (NEW R2 #364) — `PartyCard` with self-party emerald highlight vs counterparty gray; grid details (address/representative/MST/contact); D-07 edit buttons
+  4. **Nội dung hợp đồng** — R3 (#365) clause hierarchy (recursive nested accordion, 24px indent, └ connector, child count badge) + R5 (#368) `ClauseTable` HTML tables + `ImageCropRef` dashed-border + `SignatureStampSection` ✍️/🔴 + R9 (#372) `GlossarySection` collapsible term/definition pairs + R10 (#373) `renderClauseContent()` with `{{term}}` → dashed-underline tooltip and `[[ref]]` → blue link or red wavy orphan indicator + `OrphanRefPanel` warning banner
+- **QC #312 fixes baked in:** F2 sidebar badge [3] on Tổng quan tab; F3 H1 reactive to self-party (shows counterparty name when self-party selected)
+- **Sample data:** Công nghệ & IP contract ALPHATECH ↔ Cty TNHH Minh Phát — exercises all party states, hierarchical clauses (3 levels), payment table, image ref, signature/stamp, glossary, orphan ref
+- **Design tokens:** B&W minimalist (DS v0.2 direction). Color rationed: primary `#0F7A56`, amber `#D97706`, red `#DC2626`, muted `#6B7280`.
+- Awaiting Kevin review.
 
 ## Inbox
 - issue #24 (`for:designer`, `task-assignment`, GATING #30 + #31) — Sprint 1

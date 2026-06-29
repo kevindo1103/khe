@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Button } from '../../components';
+import { Button, LifecycleBadge } from '../../components';
 import { apiFetch } from '../../lib/api';
 import type { DocumentListOut, DocumentListItem } from '../../types/documents';
 import type { ApiError } from '../../lib/api';
@@ -10,6 +10,7 @@ import { DOC_TYPE_LABELS } from '../../lib/labels';
 
 const docTypeLabel = (docType: string | null): string =>
   docType ? (DOC_TYPE_LABELS[docType] ?? docType) : 'Chưa phân loại';
+
 
 type ActiveFilter =
   | 'all' | 'due7' | 'overdue' | 'pending' | 'rights'
@@ -228,12 +229,18 @@ function DocCard({ doc, onClick }: { doc: DocumentListItem; onClick: () => void 
     >
       {/* Title + status pill */}
       <div className="flex items-start justify-between gap-2 min-w-0">
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
           <span className="text-xs font-medium text-ink truncate">
-            HĐ {docTypeLabel(doc.doc_type)}{doc.primary_party ? ` với ${doc.primary_party}` : ''}
+            {doc.title || (`HĐ ${docTypeLabel(doc.doc_type)}${doc.primary_party ? ` với ${doc.primary_party}` : ''}`)}
           </span>
           {doc.duplicate && (
             <span className="shrink-0 text-warning font-bold text-xs" title="Tệp trùng — kiểm tra">!</span>
+          )}
+          <LifecycleBadge status={doc.lifecycle_status} />
+          {doc.has_signature != null && (
+            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>
+              {doc.has_signature ? 'Đã ký' : 'Chưa ký'}
+            </span>
           )}
         </div>
         <div className="shrink-0">
@@ -342,7 +349,7 @@ export default function DocumentList() {
     (doc: DocumentListItem): boolean => {
       if (q) {
         const search = q.toLowerCase();
-        const haystack = [doc.file_name, doc.primary_party ?? '', docTypeLabel(doc.doc_type)]
+        const haystack = [doc.title ?? '', doc.file_name, doc.primary_party ?? '', docTypeLabel(doc.doc_type)]
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(search)) return false;
@@ -576,9 +583,9 @@ export default function DocumentList() {
               >
                 {/* Col 1 — Hợp đồng */}
                 <td className="px-3 py-3 align-middle">
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                     <span className="text-xs font-medium text-ink group-hover:underline truncate">
-                      HĐ {docTypeLabel(doc.doc_type)}{doc.primary_party ? ` với ${doc.primary_party}` : ''}
+                      {doc.title || (`HĐ ${docTypeLabel(doc.doc_type)}${doc.primary_party ? ` với ${doc.primary_party}` : ''}`)}
                     </span>
                     {doc.duplicate && (
                       <span
@@ -589,6 +596,12 @@ export default function DocumentList() {
                         !
                       </span>
                     )}
+                    <LifecycleBadge status={doc.lifecycle_status} />
+          {doc.has_signature != null && (
+            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>
+              {doc.has_signature ? 'Đã ký' : 'Chưa ký'}
+            </span>
+          )}
                   </div>
                   {/* Filename — always shown as secondary context */}
                   <div className="text-2xs text-ink-muted mt-0.5 truncate max-w-xs">

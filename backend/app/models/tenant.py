@@ -44,6 +44,21 @@ class Document(TenantBase):
     extraction_model = Column(String, nullable=True)       # "gemini-2.5-flash" / "claude-haiku-4.5"
     extraction_latency_ms = Column(Float, nullable=True)   # total extraction latency in ms
     extraction_warnings = Column(Text, nullable=True)      # JSON array of warning strings
+    # ── tenant_020: extraction progress (#360) ──
+    processing_stage = Column(String, nullable=True)       # queued|ocr|llm|saving|done|failed
+    processing_progress = Column(Integer, nullable=True)   # 0-100
+    # ── tenant_021: contract title + number (#363) ──
+    title = Column(String, nullable=True)                  # extracted contract title (tieu_de_hd term)
+    contract_number = Column(String, nullable=True)        # extracted contract number (so_hop_dong term)
+    # ── tenant_024: date taxonomy (#369) ──
+    signing_date = Column(String, nullable=True)           # ngay_ky term value (ISO date)
+    commencement_date = Column(String, nullable=True)      # ngay_khai_truong term value (ISO date)
+    # ── tenant_025: contract term + lifecycle status (#371) ──
+    contract_term = Column(String, nullable=True)          # raw duration e.g. "12 tháng" / "vô thời hạn"
+    lifecycle_status = Column(String, nullable=True)       # active|expiring|expired|settled|suspended
+    # ── tenant_028: signature detection (#368, R5) ──
+    has_signature = Column(Boolean, nullable=True)         # True if doc has physical/digital signature
+    signature_pages = Column(Text, nullable=True)          # JSON list e.g. "[1, 3]"
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -137,6 +152,13 @@ class Party(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
     role_label = Column(Text, nullable=True)           # role as stated IN the contract
     created_at = Column(DateTime, server_default=func.now())
+    # ── tenant_022: extended party details + self-mapping (#364) ──
+    address = Column(Text, nullable=True)              # địa chỉ pháp lý
+    contact = Column(String, nullable=True)            # SĐT / email liên hệ
+    representative = Column(String, nullable=True)     # người đại diện (tên + chức vụ)
+    tax_code = Column(String, nullable=True)           # mã số thuế (MST)
+    is_self = Column(Boolean, default=False)           # auto-mapped from tenant_profile.legal_name
+    aliases = Column(Text, nullable=True)              # JSON array of alternative names/abbreviations
 
 
 class Event(TenantBase):
@@ -198,6 +220,47 @@ class Clause(TenantBase):
     edited_by_user = Column(String, nullable=True)    # username who last edited
     edited_at = Column(DateTime, nullable=True)       # when last edited
     original_content = Column(Text, nullable=True)    # AI-extracted original (snapshot on first edit)
+    # ── tenant_023: clause hierarchy (#365) ──
+    parent_id = Column(Integer, nullable=True)  # self-ref to clauses.id; app-level (no FK — avoids delete-order issues)
+    level = Column(Integer, nullable=True)            # 0=top, 1=sub, 2=sub-sub (derived, not user-editable)
+    clause_path = Column(String, nullable=True)       # dotted path e.g. "2.1.1" (for hierarchy sort)
+
+
+class Definition(TenantBase):
+    """Glossary term extracted from a document's Định nghĩa section (#372, R9)."""
+    __tablename__ = "definitions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    term = Column(String, nullable=False)               # e.g. "Năm Tài chính", "Khách sạn"
+    definition = Column(Text, nullable=False)           # full definition text
+    source_clause_num = Column(String, nullable=True)   # e.g. "Điều 1" or clause_path
+    source_clause_id = Column(Integer, nullable=True)   # app-level ref to clauses.id (no FK constraint)
+    # ── D-07 edit tracking ──
+    edited_by_user = Column(String, nullable=True)
+    edited_at = Column(DateTime, nullable=True)
+    original_definition = Column(Text, nullable=True)   # AI-extracted snapshot on first edit
+    original_term = Column(String, nullable=True)       # AI-extracted term snapshot on first edit
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ClauseCrossRef(TenantBase):
+    """Intra-doc or cross-doc reference detected in clause content (#373, R10)."""
+    __tablename__ = "clause_cross_refs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    source_clause_id = Column(Integer, nullable=False)     # app-level ref to clauses.id
+    ref_text = Column(String, nullable=False)              # raw text, e.g. "theo Điều 5"
+    ref_type = Column(String, nullable=False)              # "clause" | "appendix" | "document"
+    target_clause_id = Column(Integer, nullable=True)      # resolved → clauses.id
+    target_clause_path = Column(String, nullable=True)     # resolved → clause_path, e.g. "5"
+    target_doc_id = Column(Integer, nullable=True)         # resolved → documents.id (appendix)
+    is_orphan = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class DocumentRelationship(TenantBase):

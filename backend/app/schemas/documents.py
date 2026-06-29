@@ -6,6 +6,68 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
+def _parse_json_list(v: Any) -> Any:
+    """Deserialize a JSON TEXT column to a Python list. Returns None on corrupt data."""
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return None
+    return v
+
+
+# ── Parties ──
+
+
+class _PartyAliasesMixin(BaseModel):
+    aliases: list[str] | None = None
+
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def _parse_aliases(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+
+class PartyOut(_PartyAliasesMixin):
+    id: int
+    name: str
+    role_label: str | None = None
+    address: str | None = None
+    contact: str | None = None
+    representative: str | None = None
+    tax_code: str | None = None
+    is_self: bool = False
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PartyPatchIn(BaseModel):
+    name: str | None = None
+    role_label: str | None = None
+    address: str | None = None
+    contact: str | None = None
+    representative: str | None = None
+    tax_code: str | None = None
+    is_self: bool | None = None
+    aliases: list[str] | None = None
+
+
+class PartyPatchOut(_PartyAliasesMixin):
+    id: int
+    name: str
+    role_label: str | None = None
+    address: str | None = None
+    contact: str | None = None
+    representative: str | None = None
+    tax_code: str | None = None
+    is_self: bool = False
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ── Terms ──
 
 class TermOut(BaseModel):
@@ -50,6 +112,9 @@ class DocumentListItem(BaseModel):
     clause_count: int = 0
     confirmed_by_user_at: datetime | None = None   # #238 — null = "Cần xác nhận"
     created_at: datetime | None = None
+    # Extraction progress (#360) — None for pre-migration / not-yet-started docs.
+    processing_stage: str | None = None
+    processing_progress: int | None = None
     # Obligation-centric redesign (#279, mockup #278/#283)
     primary_party: str | None = None
     next_due_date: str | None = None          # ISO date string; due_date is stored as String
@@ -57,7 +122,23 @@ class DocumentListItem(BaseModel):
     quyen_loi_count: int = 0
     direction_null_count: int = 0
     may_have_unextracted_obligations: bool | None = None   # #276 column — NULL until that migration lands
+    # R1 (#363): contract title/number — null for pre-migration docs (FE falls back to file_name)
+    title: str | None = None
+    contract_number: str | None = None
+    # R6 (#369): date taxonomy — null for pre-migration docs
+    signing_date: str | None = None
+    commencement_date: str | None = None
+    # R8 (#371): contract term + lifecycle status
+    contract_term: str | None = None
+    lifecycle_status: str | None = None
+    # R9 (#372): definitions count
+    definition_count: int = 0
+    # R5 (#368): signature detection — null for pre-migration docs
+    has_signature: bool | None = None
+    signature_pages: list[int] | None = None
     model_config = ConfigDict(from_attributes=True)
+
+    _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
 
 
 class DocumentListOut(BaseModel):
@@ -77,7 +158,7 @@ class DocumentDetailOut(BaseModel):
     terms: list[TermOut] = []
     obligations: list[Any] = []
     clause_count: int = 0
-    parties: list[dict] = []
+    parties: list[PartyOut] = []
     # When status == "failed", populated from the most recent extraction_failed
     # Event's payload.reason — surfaces the exact failure path (#79 follow-up)
     # so UAT can self-diagnose without VPS access. Null for non-failed docs.
@@ -89,6 +170,42 @@ class DocumentDetailOut(BaseModel):
     provider: str | None = None     # e.g. "gemini_flash" | "claude_haiku"
     model: str | None = None        # e.g. "gemini-2.5-flash"
     confirmed_by_user_at: datetime | None = None   # #238 — null = not yet user-confirmed
+    # Extraction progress (#360) — None for pre-migration / not-yet-started docs.
+    processing_stage: str | None = None
+    processing_progress: int | None = None
+    # R1 (#363): contract title/number — null for pre-migration docs
+    title: str | None = None
+    contract_number: str | None = None
+    # R6 (#369): date taxonomy — null for pre-migration docs
+    signing_date: str | None = None
+    commencement_date: str | None = None
+    # R8 (#371): contract term + lifecycle status
+    contract_term: str | None = None
+    lifecycle_status: str | None = None
+    # R9 (#372): definitions count
+    definition_count: int = 0
+    # R5 (#368): signature detection — null for pre-migration docs
+    has_signature: bool | None = None
+    signature_pages: list[int] | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+    _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
+
+
+# ── Document-level PATCH (#363 D-07 + #371 R8) ──
+
+
+class DocumentPatchIn(BaseModel):
+    title: str | None = None
+    contract_number: str | None = None
+    lifecycle_status: str | None = None  # only "settled" | "suspended" | None (manual override)
+
+
+class DocumentPatchOut(BaseModel):
+    id: int
+    title: str | None = None
+    contract_number: str | None = None
+    lifecycle_status: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -133,6 +250,10 @@ class ClauseOut(BaseModel):
     title: str | None = None
     content: str
     page_num: int | None = None
+    # R3 (#365): hierarchy fields — null for pre-migration / flat clauses
+    parent_id: int | None = None
+    level: int | None = None
+    clause_path: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -244,3 +365,71 @@ class EventListOut(BaseModel):
     limit: int
     offset: int
     items: list[EventOut]
+
+
+# ── Definitions glossary (#372, R9) ──
+
+
+class DefinitionOut(BaseModel):
+    id: int
+    term: str
+    definition: str
+    source_clause_num: str | None = None
+    source_clause_id: int | None = None
+    edited_by_user: str | None = None
+    edited_at: datetime | None = None
+    original_definition: str | None = None
+    original_term: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DefinitionListOut(BaseModel):
+    document_id: int
+    definition_count: int
+    definitions: list[DefinitionOut]
+
+
+class DefinitionPatchIn(BaseModel):
+    term: str | None = None
+    definition: str | None = None
+
+
+class DefinitionPatchOut(BaseModel):
+    id: int
+    term: str
+    definition: str
+    edited_by_user: str | None = None
+    edited_at: datetime | None = None
+    original_definition: str | None = None
+    original_term: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Cross-reference resolution (#373, R10) ──
+
+
+class CrossRefOut(BaseModel):
+    id: int
+    source_clause_id: int
+    ref_text: str
+    ref_type: str               # "clause" | "sub_clause" | "appendix" | "document"
+    target_clause_id: int | None = None
+    target_clause_path: str | None = None
+    target_doc_id: int | None = None
+    is_orphan: bool = False
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CrossRefListOut(BaseModel):
+    document_id: int
+    total_refs: int
+    resolved: int
+    orphans: int
+    refs: list[CrossRefOut]
+
+
+class CrossRefResolveOut(BaseModel):
+    document_id: int
+    total_refs: int
+    resolved: int
+    orphans: int

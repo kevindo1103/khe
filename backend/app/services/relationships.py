@@ -15,20 +15,31 @@ from sqlalchemy.orm import Session
 from app.models.tenant import Document, DocumentRelationship, Obligation, Term
 
 # MVP relationship types; "supersedes" / "renews" / "related" are Sprint 2.
-VALID_RELATIONSHIP_TYPES = {"amends", "references_framework"}
+# R4a (#366): added "annex" — Phụ lục ký cùng HĐ, part-of (structural), NOT amends.
+VALID_RELATIONSHIP_TYPES = {"amends", "references_framework", "annex"}
 
-# Heuristic patterns → (regex, relationship_type). Order = specificity:
-#   "phụ lục …"      → amends                (an addendum supersedes terms)
-#   "theo/căn cứ …"  → references_framework  (a basis/framework ref — NOT an
-#                       amendment; resolve_chain is amends-only so it won't
-#                       supersede framework terms)
-#   generic "HĐ số …" → amends                (fallback)
-# More specific patterns are tried first so a token gets its strongest signal.
+# Heuristic patterns → (regex, relationship_type). Order = specificity (first match wins):
+#   "phụ lục sửa đổi/bổ sung …" → amends  (amendment addendum supersedes terms)
+#   "phụ lục số N" (standalone)  → annex   (structural appendix, part of same HĐ)
+#   "theo/căn cứ …"              → references_framework
+#   generic "HĐ số …"           → amends   (fallback)
 _REFERENCE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # Amendment phụ lục (must appear before standalone — more specific).
     (re.compile(
-        r"(?:phụ lục|Phụ lục|phu luc|Phu luc)\s*(?:HĐ|HD)?\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
+        r"(?:phụ lục|Phụ lục|phu luc)\s+(?:sửa đổi|bổ sung|thay thế|sua doi|bo sung|thay the)"
+        r".{0,80}?(?:HĐ|HD)?\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
         re.IGNORECASE,
     ), "amends"),
+    # Standalone phụ lục — alphanumeric appendix bundled with the same agreement.
+    # Captures "phụ lục A", "phụ lục 1", "phụ lục HĐ ABC-001" etc.
+    # Negative lookahead excludes amendment keywords so "phụ lục sửa đổi" doesn't
+    # also match as annex (ordering alone is insufficient — annex min_len=1).
+    (re.compile(
+        r"(?:phụ lục|Phụ lục|phu luc|Phu luc)"
+        r"(?!\s*(?:sửa đổi|bổ sung|thay thế|sua doi|bo sung|thay the))"
+        r"\s*(?:HĐ|HD)?\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
+        re.IGNORECASE,
+    ), "annex"),
     (re.compile(
         r"(?:theo|căn cứ|căn_cứ)\s+(?:HĐ|HD|hợp đồng|Hợp đồng)\s*(?:số|so|#)?\s*([A-Za-z0-9\-]+)",
         re.IGNORECASE,
@@ -57,7 +68,8 @@ def _extract_reference_hints(text: str | None) -> set[tuple[str, str]]:
     for pattern, rel_type in _REFERENCE_PATTERNS:
         for match in pattern.finditer(text):
             token = match.group(1).strip("-_.").lower()
-            if token and len(token) >= _MIN_TOKEN_LEN and token not in classified:
+            min_len = 1 if rel_type == "annex" else _MIN_TOKEN_LEN
+            if token and len(token) >= min_len and token not in classified:
                 classified[token] = rel_type
     return set(classified.items())
 

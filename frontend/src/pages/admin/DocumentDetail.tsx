@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState } from '../../components';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState, LifecycleBadge } from '../../components';
 import type { ToastKind } from '../../components/Toast';
 import { apiFetch } from '../../lib/api';
 import type {
   DocumentDetailOut,
+  PartyOut,
   TermOut,
   SelfPartyConfirmOut,
   ConfirmDocumentOut,
@@ -14,6 +18,12 @@ import type {
   ClausePatchOut,
   ReReadDiff,
   ReReadOut,
+  DefinitionOut,
+  DefinitionListOut,
+  DefinitionPatchOut,
+  CrossRefOut,
+  CrossRefListOut,
+  CrossRefResolveOut,
 } from '../../types/documents';
 import type { ObligationOut, ObligationPatchOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
@@ -27,7 +37,7 @@ import {
   labelFor,
 } from '../../lib/labels';
 
-type TabKey = 'overview' | 'obligations' | 'clauses';
+type TabKey = 'overview' | 'obligations' | 'clauses' | 'parties';
 
 const DOC_TYPE_GROUPS = Object.keys(DOC_TYPE_GROUP_LABELS);
 
@@ -42,6 +52,37 @@ const STATUS_LABEL: Record<string, string> = {
   extracted: 'Đã bóc tách',
   needs_review: 'Cần kiểm tra',
 };
+
+
+const STAGE_LABELS: Record<string, string> = {
+  queued: 'Đang chờ xử lý…',
+  ocr: 'Đang nhận dạng văn bản…',
+  llm: 'Đang phân tích hợp đồng…',
+  saving: 'Đang lưu kết quả…',
+  done: 'Hoàn tất',
+  failed: 'Lỗi xử lý',
+};
+
+function ExtractionProgress({ stage, progress }: { stage: string | null | undefined; progress: number | null | undefined }) {
+  const pct = progress ?? 0;
+  const label = (stage && STAGE_LABELS[stage]) || STAGE_LABELS.queued;
+  const failed = stage === 'failed';
+
+  return (
+    <div className="mb-5">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className={`text-xs font-medium ${failed ? 'text-danger' : 'text-ink-muted'}`}>{label}</span>
+        <span className="text-2xs text-ink-subtle">{pct}%</span>
+      </div>
+      <div className="w-full h-2 bg-surface-sunken rounded-pill overflow-hidden">
+        <div
+          className={`h-full rounded-pill transition-all duration-[1200ms] ease-out ${failed ? 'bg-danger' : 'bg-primary'}`}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 // ── Direction badge ──────────────────────────────────────────────────────────
 function DirectionBadge({ direction }: { direction: ObligationOut['direction'] }) {
@@ -60,6 +101,24 @@ function DirectionBadge({ direction }: { direction: ObligationOut['direction'] }
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-amber-100 text-amber-700">
       ? Chưa rõ — chọn bên
+    </span>
+  );
+}
+
+// ── #368 R5b: Signature presence badge ───────────────────────────────────────
+function SignatureBadge({ hasSig, pages }: { hasSig?: boolean | null; pages?: number[] | null }) {
+  if (hasSig == null) return null;
+  if (hasSig) {
+    const pageText = pages && pages.length > 0 ? `trang ${pages.join(', ')}` : '';
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-soft text-success">
+        Đã ký{pageText && <span className="text-2xs opacity-75"> ({pageText})</span>}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-soft text-warning">
+      Chưa ký
     </span>
   );
 }
@@ -167,7 +226,7 @@ function ObligationRow({
   ob: ObligationOut;
   onFulfill: (ob: ObligationOut) => void;
 }) {
-  const canFulfill = ['pending', 'in_progress', 'partial', 'overdue', 'awaiting_confirmation'].includes(ob.status);
+  const canFulfill = ['pending', 'in_progress', 'partial'].includes(ob.status);
   return (
     <div className="py-3 border-b border-border last:border-0">
       <div className="flex items-start justify-between gap-2">
@@ -317,17 +376,205 @@ function CompletenessBanner({ doc }: { doc: DocumentDetailOut }) {
   return null;
 }
 
+// ── #373 R10: Cross-ref inline rendering ─────────────────────────────────────
+
+function renderClauseContent(
+  content: string,
+  clauseRefs: CrossRefOut[],
+  onNavigateDoc?: (docId: number) => void,
+): React.ReactNode {
+  if (clauseRefs.length === 0) return content;
+
+  type Segment = { text: string; ref?: CrossRefOut };
+  const segments: Segment[] = [];
+  let remaining = content;
+
+  const sortedRefs = [...clauseRefs].sort((a, b) => {
+    const posA = content.indexOf(a.ref_text);
+    const posB = content.indexOf(b.ref_text);
+    return (posA === -1 ? Infinity : posA) - (posB === -1 ? Infinity : posB);
+  });
+
+  for (const ref of sortedRefs) {
+    const idx = remaining.indexOf(ref.ref_text);
+    if (idx === -1) continue;
+    if (idx > 0) segments.push({ text: remaining.slice(0, idx) });
+    segments.push({ text: ref.ref_text, ref });
+    remaining = remaining.slice(idx + ref.ref_text.length);
+  }
+  if (remaining) segments.push({ text: remaining });
+
+  return (
+    <>
+      {segments.map((seg, i) => {
+        if (!seg.ref) return <span key={i}>{seg.text}</span>;
+        if (seg.ref.is_orphan) {
+          return (
+            <span
+              key={i}
+              className="text-danger font-medium underline decoration-wavy cursor-default"
+              title={`Tham chiếu không tìm thấy: ${seg.ref.ref_text}`}
+            >
+              {seg.text}
+              <span className="text-xs ml-0.5" aria-hidden="true">⚠</span>
+            </span>
+          );
+        }
+        if (seg.ref.ref_type === 'appendix' && seg.ref.target_doc_id != null) {
+          return (
+            <button
+              key={i}
+              type="button"
+              className="text-primary font-medium underline cursor-pointer hover:text-primary-hover"
+              onClick={() => onNavigateDoc?.(seg.ref!.target_doc_id!)}
+              title={`Mở phụ lục (tài liệu #${seg.ref.target_doc_id})`}
+            >
+              {seg.text}
+            </button>
+          );
+        }
+        return (
+          <button
+            key={i}
+            type="button"
+            className="text-primary font-medium underline cursor-pointer hover:text-primary-hover"
+            onClick={() => {
+              const el = document.getElementById(`clause-${seg.ref!.target_clause_id}`);
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+          >
+            {seg.text}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+// ── #373 R10: Orphan reference warning panel ──────────────────────────────────
+function OrphanRefPanel({
+  orphanRefs,
+  clauses,
+  onResolve,
+  resolving,
+}: {
+  orphanRefs: CrossRefOut[];
+  clauses: ClauseOut[];
+  onResolve: () => void;
+  resolving: boolean;
+}) {
+  if (orphanRefs.length === 0) return null;
+  const clauseMap = new Map(clauses.map((c) => [c.id, c]));
+  return (
+    <div className="mb-4 rounded-lg bg-danger-soft border border-danger/30 p-4">
+      <div className="flex items-start gap-3">
+        <span className="text-danger text-lg shrink-0" aria-hidden="true">⚠</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-ink mb-2">
+            {orphanRefs.length} tham chiếu không tìm thấy
+          </div>
+          <div className="space-y-1">
+            {orphanRefs.map((ref) => {
+              const srcClause = clauseMap.get(ref.source_clause_id);
+              const srcLabel = srcClause
+                ? (srcClause.title || (srcClause.clause_num ? `Điều ${srcClause.clause_num}` : `#${srcClause.id}`))
+                : `#${ref.source_clause_id}`;
+              return (
+                <div key={ref.id} className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-danger font-medium">{ref.ref_text}</span>
+                  <span className="text-ink-muted">trong {srcLabel}</span>
+                  <span className="text-ink-subtle">— có thể phụ lục chưa được tải lên hoặc không tồn tại</span>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="mt-3 text-2xs text-danger hover:underline disabled:opacity-50"
+            onClick={onResolve}
+            disabled={resolving}
+          >
+            {resolving ? 'Đang phân giải lại…' : 'Thử phân giải lại →'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── #368 R5: Clause content renderer — markdown tables + plain text fallback ──
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeSanitize];
+const MD_TABLE_SEP = /\|[\s-:]+\|/;
+
+const MD_COMPONENTS = {
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <table className="w-full border-collapse text-sm my-3 border border-border">{children}</table>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th className="text-left p-2 font-semibold bg-surface-alt text-ink border-b border-border">{children}</th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td className="p-2 text-ink border-b border-border">{children}</td>
+  ),
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="whitespace-pre-wrap mb-2">{children}</p>
+  ),
+};
+
+function ClauseContent({
+  content,
+  crossRefs,
+  onNavigateDoc,
+}: {
+  content: string;
+  crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
+}) {
+  const hasTable = content.includes('|') && MD_TABLE_SEP.test(content);
+  if (hasTable) {
+    return (
+      <div className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          rehypePlugins={REHYPE_PLUGINS}
+          components={MD_COMPONENTS}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+  const clauseRefs = crossRefs ?? [];
+  if (clauseRefs.length > 0) {
+    return (
+      <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+        {renderClauseContent(content, clauseRefs, onNavigateDoc)}
+      </p>
+    );
+  }
+  return (
+    <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">{content}</p>
+  );
+}
+
 // ── Clause accordion item (Phase 2 — inline edit, D-07) ─────────────────────
 function ClauseItem({
   clause,
   defaultOpen,
   docId,
   onSaved,
+  crossRefs,
+  onNavigateDoc,
 }: {
   clause: ClauseOut;
   defaultOpen: boolean;
   docId: number;
   onSaved: (updated: ClauseOut) => void;
+  crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -372,9 +619,10 @@ function ClauseItem({
 
   const displayContent =
     showOriginal && clause.original_content ? clause.original_content : clause.content;
+  const clauseRefs = (crossRefs ?? []).filter((r) => r.source_clause_id === clause.id);
 
   return (
-    <div className="border-b border-border last:border-0">
+    <div id={`clause-${clause.id}`} className="border-b border-border last:border-0">
       <button
         className="w-full flex items-center justify-between py-3 text-left gap-2 hover:bg-surface-hover transition-colors"
         onClick={() => !editing && setOpen((v) => !v)}
@@ -404,7 +652,7 @@ function ClauseItem({
                 autoFocus
               />
               {saveError && (
-                <p className="text-xs text-red-600">{saveError}</p>
+                <p className="text-xs text-danger">{saveError}</p>
               )}
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={saveEdit} loading={saving}>
@@ -417,9 +665,7 @@ function ClauseItem({
             </div>
           ) : (
             <div className="flex flex-col gap-1">
-              <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
-                {displayContent}
-              </p>
+              <ClauseContent content={displayContent} crossRefs={clauseRefs} onNavigateDoc={onNavigateDoc} />
               <div className="flex items-center gap-3 pt-1 flex-wrap">
                 {clause.original_content && (
                   <button
@@ -764,6 +1010,20 @@ function TabOverview({
         </Card>
       )}
 
+      {doc.contract_term && (
+        <Card className="mb-4 bg-surface-alt border-border">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-2xs text-ink-muted uppercase tracking-wide font-medium mb-1">
+                Thời hạn hợp đồng
+              </p>
+              <p className="text-sm text-ink">{doc.contract_term}</p>
+            </div>
+            <LifecycleBadge status={doc.lifecycle_status} />
+          </div>
+        </Card>
+      )}
+
       {doc.terms.length === 0 ? (
         <Card title="Thông tin trích xuất">
           <EmptyState
@@ -880,6 +1140,314 @@ function TabObligations({
   );
 }
 
+// ── Clause hierarchy tree (#365 R3) ─────────────────────────────────────────
+interface ClauseNode extends ClauseOut {
+  children: ClauseNode[];
+}
+
+function buildClauseTree(clauses: ClauseOut[]): ClauseNode[] {
+  const map = new Map<number, ClauseNode>();
+  const roots: ClauseNode[] = [];
+  for (const c of clauses) map.set(c.id, { ...c, children: [] });
+  for (const c of clauses) {
+    const node = map.get(c.id)!;
+    if (c.parent_id != null && map.has(c.parent_id)) {
+      map.get(c.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  const sortByPath = (nodes: ClauseNode[]) => {
+    nodes.sort((a, b) =>
+      (a.clause_path ?? '').localeCompare(b.clause_path ?? '', undefined, { numeric: true })
+    );
+    nodes.forEach(n => sortByPath(n.children));
+  };
+  sortByPath(roots);
+  return roots;
+}
+
+function ClauseTreeItem({
+  node,
+  depth,
+  docId,
+  onSaved,
+  crossRefs,
+  onNavigateDoc,
+}: {
+  node: ClauseNode;
+  depth: number;
+  docId: number;
+  onSaved: (updated: ClauseOut) => void;
+  crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(depth === 0);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  const isStub = node.content === '(tổng hợp từ mục con)';
+  const hasChildren = node.children.length > 0;
+  const title = node.title || node.clause_num || `Điều khoản #${node.id}`;
+
+  const startEdit = () => { setDraft(node.content); setEditing(true); setExpanded(true); };
+  const cancelEdit = () => { setEditing(false); setDraft(''); };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    setSaveError('');
+    try {
+      const res = await apiFetch<ClausePatchOut>(
+        `/documents/${docId}/clauses/${node.id}`,
+        { method: 'PATCH', body: JSON.stringify({ content: draft }) }
+      );
+      onSaved({ ...node, ...res });
+      setEditing(false);
+      setDraft('');
+      setShowOriginal(false);
+    } catch (err) {
+      setSaveError((err as ApiError).message || 'Lưu điều khoản thất bại');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const displayContent = showOriginal && node.original_content ? node.original_content : node.content;
+  const nodeRefs = (crossRefs ?? []).filter((r) => r.source_clause_id === node.id);
+
+  return (
+    <div id={`clause-${node.id}`} className={depth > 0 ? 'border-l border-border ml-3' : ''}>
+      <div style={{ paddingLeft: depth * 24 }}>
+        <button
+          className="w-full flex items-center justify-between py-2 px-1 text-left gap-2 hover:bg-surface-alt transition-colors"
+          onClick={() => !editing && setExpanded((v) => !v)}
+          aria-expanded={expanded}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            {depth > 0 && <span className="text-ink-subtle text-xs shrink-0">└</span>}
+            <span className={`text-sm ${hasChildren ? 'font-semibold' : 'font-medium'} text-ink truncate`}>
+              {title}
+            </span>
+            {node.edited_by_user && (
+              <span className="shrink-0 text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                đã sửa
+              </span>
+            )}
+            {hasChildren && (
+              <Badge kind="neutral" className="shrink-0">{node.children.length}</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {node.page_num != null && (
+              <span className="text-2xs text-ink-muted">tr.{node.page_num}</span>
+            )}
+            <span className="text-ink-muted text-xs">{expanded ? '▲' : '▼'}</span>
+          </div>
+        </button>
+
+        {expanded && !isStub && (
+          <div className="pb-2 px-1">
+            {editing ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[8rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  autoFocus
+                />
+                {saveError && <p className="text-xs text-danger">{saveError}</p>}
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={saveEdit} loading={saving}>Lưu</Button>
+                  <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={saving}>Hủy</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <ClauseContent content={displayContent} crossRefs={nodeRefs} onNavigateDoc={onNavigateDoc} />
+                <div className="flex items-center gap-3 pt-1 flex-wrap">
+                  {node.original_content && (
+                    <button
+                      className="text-2xs text-primary hover:underline"
+                      onClick={() => setShowOriginal((v) => !v)}
+                    >
+                      {showOriginal ? 'Xem bản đã sửa' : 'Xem bản gốc (AI)'}
+                    </button>
+                  )}
+                  {node.edited_by_user && node.edited_at && (
+                    <span className="text-2xs text-ink-muted">
+                      Sửa bởi {node.edited_by_user} · {new Date(node.edited_at).toLocaleDateString('vi-VN')}
+                    </span>
+                  )}
+                  <button
+                    className="text-2xs text-ink-muted hover:text-primary ml-auto"
+                    onClick={startEdit}
+                  >
+                    ✎ Sửa nội dung
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {expanded && hasChildren && (
+          <div className="mb-1">
+            {node.children.map((child) => (
+              <ClauseTreeItem
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                docId={docId}
+                onSaved={onSaved}
+                crossRefs={crossRefs}
+                onNavigateDoc={onNavigateDoc}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── #372 Definition row (D-07 inline edit) ───────────────────────────────────
+function DefinitionRow({
+  def,
+  docId,
+  onSaved,
+}: {
+  def: DefinitionOut;
+  docId: number;
+  onSaved: (updated: DefinitionOut) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  const startEdit = () => { setDraft(def.definition); setEditing(true); };
+  const cancelEdit = () => { setEditing(false); setDraft(''); };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    setSaveError('');
+    try {
+      const res = await apiFetch<DefinitionPatchOut>(
+        `/documents/${docId}/definitions/${def.id}`,
+        { method: 'PATCH', body: JSON.stringify({ definition: draft }) }
+      );
+      onSaved({ ...def, ...res });
+      setEditing(false);
+      setDraft('');
+      setShowOriginal(false);
+    } catch (err) {
+      setSaveError((err as ApiError).message || 'Lưu định nghĩa thất bại');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const displayDef = showOriginal && def.original_definition ? def.original_definition : def.definition;
+
+  return (
+    <div className="py-3 border-b border-border last:border-0">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-sm font-semibold text-primary">{def.term}</span>
+            {def.edited_by_user && (
+              <span className="text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                đã sửa
+              </span>
+            )}
+            {def.source_clause_num && (
+              <span className="text-2xs text-ink-muted">{def.source_clause_num}</span>
+            )}
+          </div>
+          {editing ? (
+            <div className="flex flex-col gap-2">
+              <textarea
+                className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[5rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                autoFocus
+              />
+              {saveError && <p className="text-xs text-danger">{saveError}</p>}
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={saveEdit} loading={saving}>Lưu</Button>
+                <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={saving}>Hủy</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-ink leading-relaxed">{displayDef}</p>
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
+                {def.original_definition && (
+                  <button
+                    className="text-2xs text-primary hover:underline"
+                    onClick={() => setShowOriginal((v) => !v)}
+                  >
+                    {showOriginal ? 'Xem bản đã sửa' : 'Xem bản gốc (AI)'}
+                  </button>
+                )}
+                {def.edited_by_user && def.edited_at && (
+                  <span className="text-2xs text-ink-muted">
+                    Sửa bởi {def.edited_by_user} · {new Date(def.edited_at).toLocaleDateString('vi-VN')}
+                  </span>
+                )}
+                <button
+                  className="text-2xs text-ink-muted hover:text-primary ml-auto"
+                  onClick={startEdit}
+                >
+                  ✎ Sửa định nghĩa
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GlossarySection({
+  definitions,
+  docId,
+  onSaved,
+}: {
+  definitions: DefinitionOut[];
+  docId: number;
+  onSaved: (updated: DefinitionOut) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (definitions.length === 0) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-border overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 bg-surface-alt text-left hover:bg-surface-sunken transition-colors"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="text-sm font-semibold text-ink">
+          Định nghĩa ({definitions.length})
+        </span>
+        <span className="text-ink-muted text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 bg-surface">
+          {definitions.map((def) => (
+            <DefinitionRow key={def.id} def={def} docId={docId} onSaved={onSaved} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Tab: Nội dung hợp đồng ───────────────────────────────────────────────────
 function TabClauses({
   clauses,
@@ -892,6 +1460,13 @@ function TabClauses({
   hasEdited,
   reReading,
   onReRead,
+  definitions,
+  onDefinitionSaved,
+  crossRefs,
+  orphanRefs,
+  onResolveRefs,
+  resolvingRefs,
+  onNavigateDoc,
 }: {
   clauses: ClauseOut[];
   loading: boolean;
@@ -903,6 +1478,13 @@ function TabClauses({
   hasEdited: boolean;
   reReading: boolean;
   onReRead: () => void;
+  definitions: DefinitionOut[];
+  onDefinitionSaved: (updated: DefinitionOut) => void;
+  crossRefs: CrossRefOut[];
+  orphanRefs: CrossRefOut[];
+  onResolveRefs: () => void;
+  resolvingRefs: boolean;
+  onNavigateDoc: (docId: number) => void;
 }) {
   if (loading) {
     return (
@@ -928,10 +1510,48 @@ function TabClauses({
       />
     );
   }
+  const isHierarchical = clauses.some((c) => c.parent_id != null);
+  if (isHierarchical) {
+    const roots = buildClauseTree(clauses);
+    return (
+      <div>
+        {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
+        <OrphanRefPanel
+          orphanRefs={orphanRefs}
+          clauses={clauses}
+          onResolve={onResolveRefs}
+          resolving={resolvingRefs}
+        />
+        <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
+        <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
+        <Card>
+          {roots.map((root) => (
+            <ClauseTreeItem
+              key={root.id}
+              node={root}
+              depth={0}
+              docId={docId}
+              onSaved={onClauseSaved}
+              crossRefs={crossRefs}
+              onNavigateDoc={onNavigateDoc}
+            />
+          ))}
+        </Card>
+      </div>
+    );
+  }
+
   const defaultOpen = clauses.length <= 8;
   return (
     <div>
       {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
+      <OrphanRefPanel
+        orphanRefs={orphanRefs}
+        clauses={clauses}
+        onResolve={onResolveRefs}
+        resolving={resolvingRefs}
+      />
+      <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
       <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
       <Card>
         {clauses.map((c) => (
@@ -941,9 +1561,71 @@ function TabClauses({
             defaultOpen={defaultOpen}
             docId={docId}
             onSaved={onClauseSaved}
+            crossRefs={crossRefs}
+            onNavigateDoc={onNavigateDoc}
           />
         ))}
       </Card>
+    </div>
+  );
+}
+
+// ── Tab: Bên ký kết ───────────────────────────────────────────────────────────
+function PartyCard({ party, isSelf }: { party: PartyOut; isSelf: boolean }) {
+  const fields: { label: string; value: string | null | undefined }[] = [
+    { label: 'Địa chỉ', value: party.address },
+    { label: 'Liên hệ', value: party.contact },
+    { label: 'Người đại diện', value: party.representative },
+    { label: 'Mã số thuế', value: party.tax_code },
+  ];
+  const presentFields = fields.filter((f) => f.value);
+  return (
+    <Card className={isSelf ? 'border-primary-border bg-primary-soft' : ''}>
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <span className="text-sm font-semibold text-ink">{party.name}</span>
+        {party.role_label && <Badge kind="neutral">{party.role_label}</Badge>}
+        {isSelf && <Badge kind="extracted">Bên mình</Badge>}
+      </div>
+      {presentFields.length > 0 && (
+        <dl className="grid grid-cols-1 nav:grid-cols-2 gap-x-6 gap-y-2">
+          {presentFields.map(({ label, value }) => (
+            <div key={label}>
+              <dt className="text-2xs text-ink-muted uppercase font-medium">{label}</dt>
+              <dd className="text-xs text-ink mt-0.5">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {party.aliases && party.aliases.length > 0 && (
+        <div className="mt-2">
+          <span className="text-2xs text-ink-muted uppercase font-medium">Viết tắt / bí danh</span>
+          <p className="text-xs text-ink mt-0.5">{party.aliases.join(', ')}</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TabParties({ parties }: { parties?: PartyOut[] }) {
+  if (!parties || parties.length === 0) {
+    return (
+      <EmptyState
+        icon="🤝"
+        title="Chưa có dữ liệu bên ký kết"
+        description="Bên ký kết sẽ xuất hiện sau khi tài liệu được bóc tách."
+      />
+    );
+  }
+  const selfParties = parties.filter((p) => p.is_self);
+  const counterparties = parties.filter((p) => !p.is_self);
+  return (
+    <div className="space-y-4">
+      {selfParties.map((p, i) => (
+        <PartyCard key={p.id ?? `self-${i}`} party={p} isSelf />
+      ))}
+      {counterparties.map((p, i) => (
+        <PartyCard key={p.id ?? `cp-${i}`} party={p} isSelf={false} />
+      ))}
     </div>
   );
 }
@@ -952,6 +1634,7 @@ function TabClauses({
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
   const docId = Number(id);
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [doc, setDoc] = useState<DocumentDetailOut | null>(null);
@@ -972,6 +1655,11 @@ export default function DocumentDetail() {
   const [clausesLoaded, setClausesLoaded] = useState(false);
   const [clausesTotal, setClausesTotal] = useState(0);
   const [clausesError, setClausesError] = useState(false);
+  const [definitions, setDefinitions] = useState<DefinitionOut[]>([]);
+  const [definitionsLoaded, setDefinitionsLoaded] = useState(false);
+  const [crossRefs, setCrossRefs] = useState<CrossRefOut[]>([]);
+  const [crossRefsLoaded, setCrossRefsLoaded] = useState(false);
+  const [resolvingRefs, setResolvingRefs] = useState(false);
   const [fulfillTarget, setFulfillTarget] = useState<ObligationOut | null>(null);
   const [fulfilling, setFulfilling] = useState(false);
   const [reReading, setReReading] = useState(false);
@@ -1014,15 +1702,70 @@ export default function DocumentDetail() {
     }
   }, [docId, clausesLoaded]);
 
+  const loadDefinitions = useCallback(async () => {
+    if (!docId || definitionsLoaded) return;
+    try {
+      const res = await apiFetch<DefinitionListOut>(`/documents/${docId}/definitions`);
+      setDefinitions(res.definitions);
+      setDefinitionsLoaded(true);
+    } catch (err: unknown) {
+      const status = (err as ApiError)?.status;
+      if (status !== 404) console.warn('Failed to load definitions', err);
+    }
+  }, [docId, definitionsLoaded]);
+
+  const loadCrossRefs = useCallback(async () => {
+    if (!docId || crossRefsLoaded) return;
+    try {
+      const res = await apiFetch<CrossRefListOut>(`/documents/${docId}/cross-refs`);
+      setCrossRefs(res.refs);
+      setCrossRefsLoaded(true);
+    } catch { /* graceful — no cross-refs = empty */ }
+  }, [docId, crossRefsLoaded]);
+
+  const resolveRefs = useCallback(async () => {
+    if (!docId) return;
+    setResolvingRefs(true);
+    try {
+      await apiFetch<CrossRefResolveOut>(`/documents/${docId}/cross-refs/resolve`, { method: 'POST' });
+      const res = await apiFetch<CrossRefListOut>(`/documents/${docId}/cross-refs`);
+      setCrossRefs(res.refs);
+    } catch (err) {
+      showToast((err as ApiError).message || 'Phân giải lại thất bại', 'error');
+    } finally {
+      setResolvingRefs(false);
+    }
+  }, [docId]);
+
   useEffect(() => {
     load();
   }, [load]);
 
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (doc?.status === 'processing') {
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await apiFetch<DocumentDetailOut>(`/documents/${docId}`);
+          setDoc(res);
+          if (res.status !== 'processing') {
+            if (pollRef.current) clearInterval(pollRef.current);
+          }
+        } catch { /* ignore poll errors */ }
+      }, 3000);
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [doc?.status, docId]);
+
   useEffect(() => {
     if (activeTab === 'clauses') {
       loadClauses();
+      loadDefinitions();
+      loadCrossRefs();
     }
-  }, [activeTab, loadClauses]);
+  }, [activeTab, loadClauses, loadDefinitions, loadCrossRefs]);
 
   const startEdit = (term: TermOut) => {
     setEditingTermId(term.id);
@@ -1138,6 +1881,14 @@ export default function DocumentDetail() {
     (updated: ClauseOut) => {
       setClauses((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       showToast('Đã sửa điều khoản ✓ — D-07 ghi nhận.');
+    },
+    []
+  );
+
+  const saveDefinition = useCallback(
+    (updated: DefinitionOut) => {
+      setDefinitions((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      showToast('Đã sửa định nghĩa ✓ — D-07 ghi nhận.');
     },
     []
   );
@@ -1268,6 +2019,11 @@ export default function DocumentDetail() {
       label: 'Nội dung hợp đồng',
       count: doc?.clause_count ?? 0,
     },
+    {
+      key: 'parties',
+      label: 'Bên ký kết',
+      count: doc?.parties?.length ?? 0,
+    },
   ];
 
   if (loading && !doc) {
@@ -1293,7 +2049,16 @@ export default function DocumentDetail() {
           <div className="mb-6">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <h1 className="text-xl font-bold text-ink leading-tight">{derivedTitle}</h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl font-bold text-ink leading-tight">
+                    {doc.title || derivedTitle}
+                  </h1>
+                  {doc.contract_number && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-medium bg-surface-alt text-ink-muted border border-border">
+                      #{doc.contract_number}
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-ink-muted mt-1">
                   Tệp gốc: {doc.file_name}
                   {doc.created_at && (
@@ -1304,6 +2069,8 @@ export default function DocumentDetail() {
                   <Badge kind={STATUS_BADGE[doc.status] || 'neutral'}>
                     {STATUS_LABEL[doc.status] || doc.status}
                   </Badge>
+                  <LifecycleBadge status={doc.lifecycle_status} />
+                  <SignatureBadge hasSig={doc.has_signature} pages={doc.signature_pages} />
                   {doc.doc_type && (
                     <span className="text-xs text-ink-muted">
                       {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}
@@ -1323,6 +2090,11 @@ export default function DocumentDetail() {
               )}
             </div>
           </div>
+
+          {/* Extraction progress bar */}
+          {(doc.status === 'processing' || doc.processing_stage === 'failed') && (
+            <ExtractionProgress stage={doc.processing_stage} progress={doc.processing_progress} />
+          )}
 
           {/* Unconfirmed warning banner */}
           {doc.terms.length > 0 && !doc.confirmed_by_user_at && (
@@ -1421,7 +2193,18 @@ export default function DocumentDetail() {
               hasEdited={hasEditedClauses}
               reReading={reReading}
               onReRead={triggerReRead}
+              definitions={definitions}
+              onDefinitionSaved={saveDefinition}
+              crossRefs={crossRefs}
+              orphanRefs={crossRefs.filter((r) => r.is_orphan)}
+              onResolveRefs={resolveRefs}
+              resolvingRefs={resolvingRefs}
+              onNavigateDoc={(targetDocId) => navigate(`/documents/${targetDocId}`)}
             />
+          )}
+
+          {activeTab === 'parties' && (
+            <TabParties parties={doc.parties} />
           )}
 
           {/* Footer: D-02 confirm gate */}

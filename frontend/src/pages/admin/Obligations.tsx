@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, Card, Badge, Toast, EmptyState } from '../../components';
+import { Button, Card, Badge, Toast, EmptyState, Modal, Input } from '../../components';
 import { apiFetch } from '../../lib/api';
 import type { ObligationListOut, ObligationOut, ObligationPatchOut, ObligationStatus } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
@@ -72,6 +72,10 @@ function statusBadgeKind(status: ObligationStatus): BadgeKind {
       return 'neutral';
     case 'waiting_trigger':
       return 'needs_review';
+    case 'overdue':
+      return 'overdue';
+    case 'awaiting_confirmation':
+      return 'needs_review';
     default:
       return 'neutral';
   }
@@ -98,6 +102,68 @@ function statusLabel(status: ObligationStatus): string {
   }
 }
 
+function FulfillModal({
+  ob,
+  open,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  ob: ObligationOut | null;
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (fulfilledAt: string, fulfilledBy: string) => void;
+  submitting: boolean;
+}) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [actor, setActor] = useState('');
+  useEffect(() => {
+    if (open) {
+      setDate(new Date().toISOString().slice(0, 10));
+      setActor('');
+    }
+  }, [open]);
+  if (!ob) return null;
+  return (
+    <Modal
+      open={open}
+      title="Đánh dấu hoàn thành"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Hủy
+          </Button>
+          <Button onClick={() => onSubmit(date, actor)} loading={submitting} disabled={!date}>
+            Xác nhận hoàn thành
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-ink-muted">{ob.description}</p>
+        <div>
+          <label className="block text-xs font-medium text-ink-muted uppercase mb-1">
+            Ngày thực hiện *
+          </label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink-muted uppercase mb-1">
+            Người thực hiện (tùy chọn)
+          </label>
+          <Input value={actor} onChange={setActor} placeholder="Tên hoặc email người thực hiện" />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function Obligations() {
   const [data, setData] = useState<ObligationListOut | null>(null);
   const [loading, setLoading] = useState(false);
@@ -106,6 +172,7 @@ export default function Obligations() {
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<DirectionTab>('nghĩa_vụ');
   const [collapsedSeries, setCollapsedSeries] = useState<Set<string>>(new Set());
+  const [fulfillTarget, setFulfillTarget] = useState<ObligationOut | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -175,12 +242,12 @@ export default function Obligations() {
     });
   };
 
-  const markStatus = async (id: number, newStatus: ObligationStatus) => {
+  const markStatus = async (id: number, newStatus: ObligationStatus, extra?: { fulfilled_at: string; fulfilled_by: string }) => {
     setUpdatingId(id);
     try {
       const patchRes = await apiFetch<ObligationPatchOut>(`/obligations/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, ...extra }),
       });
       setData((prev) =>
         prev
@@ -206,6 +273,15 @@ export default function Obligations() {
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const handleFulfill = async (fulfilledAt: string, fulfilledBy: string) => {
+    if (!fulfillTarget) return;
+    await markStatus(fulfillTarget.id, 'done', {
+      fulfilled_at: `${fulfilledAt}T00:00:00`,
+      fulfilled_by: fulfilledBy,
+    });
+    setFulfillTarget(null);
   };
 
   const isUpdating = (id: number) => updatingId === id;
@@ -269,7 +345,7 @@ export default function Obligations() {
             </Badge>
           ) : ob.status === 'pending' ? (
             <>
-              <Button size="sm" onClick={() => markStatus(ob.id, 'done')} loading={isUpdating(ob.id)}>
+              <Button size="sm" onClick={() => setFulfillTarget(ob)} loading={isUpdating(ob.id)}>
                 Hoàn thành
               </Button>
               <Button size="sm" variant="ghost" onClick={() => markStatus(ob.id, 'in_progress')} disabled={isUpdating(ob.id)}>
@@ -281,7 +357,7 @@ export default function Obligations() {
             </>
           ) : ob.status === 'in_progress' ? (
             <>
-              <Button size="sm" onClick={() => markStatus(ob.id, 'done')} loading={isUpdating(ob.id)}>
+              <Button size="sm" onClick={() => setFulfillTarget(ob)} loading={isUpdating(ob.id)}>
                 Hoàn thành
               </Button>
               <Button size="sm" variant="ghost" onClick={() => markStatus(ob.id, 'cancelled')} disabled={isUpdating(ob.id)}>
@@ -289,7 +365,7 @@ export default function Obligations() {
               </Button>
             </>
           ) : ob.status === 'waiting_trigger' ? (
-            <Button size="sm" onClick={() => markStatus(ob.id, 'done')} loading={isUpdating(ob.id)}>
+            <Button size="sm" onClick={() => setFulfillTarget(ob)} loading={isUpdating(ob.id)}>
               Đánh dấu sự kiện đã xảy ra
             </Button>
           ) : (
@@ -423,6 +499,14 @@ export default function Obligations() {
           description="Khế sẽ nhắc bạn khi có hạn mới."
         />
       )}
+
+      <FulfillModal
+        ob={fulfillTarget}
+        open={fulfillTarget !== null}
+        onClose={() => setFulfillTarget(null)}
+        onSubmit={handleFulfill}
+        submitting={fulfillTarget !== null && isUpdating(fulfillTarget.id)}
+      />
 
       {/* Toast */}
       {toastMsg && (

@@ -36,6 +36,16 @@ export interface DocumentListItem {
   direction_null_count?: number;
   may_have_unextracted_obligations?: boolean | null;
   duplicate?: boolean;
+  processing_stage?: string | null;
+  processing_progress?: number | null;
+  title?: string | null;
+  contract_number?: string | null;
+  // #371 R8 — lifecycle status (optional until backend tenant_025 lands)
+  contract_term?: string | null;
+  lifecycle_status?: string | null;
+  // #368 R5b — signature detection (optional until backend tenant_028 lands)
+  has_signature?: boolean | null;
+  signature_pages?: number[] | null;
 }
 
 export interface DocumentListOut {
@@ -43,6 +53,19 @@ export interface DocumentListOut {
   page: number;
   page_size: number;
   total: number;
+}
+
+// #364 R2 — extended party details (all new fields optional until backend migration lands)
+export interface PartyOut {
+  id?: number;
+  name: string;
+  role_label: string | null;
+  address?: string | null;
+  contact?: string | null;
+  representative?: string | null;
+  tax_code?: string | null;
+  is_self?: boolean;
+  aliases?: string[] | null;
 }
 
 export interface DocumentDetailOut {
@@ -57,7 +80,17 @@ export interface DocumentDetailOut {
   clause_count: number;
   confirmed_by_user_at: string | null;   // #238 — null = not yet user-confirmed
   failure_reason: string | null;
-  parties?: { name: string; role_label: string | null }[];
+  parties?: PartyOut[];
+  processing_stage?: string | null;
+  processing_progress?: number | null;
+  title?: string | null;
+  contract_number?: string | null;
+  // #371 R8 — lifecycle status (optional until backend tenant_025 lands)
+  contract_term?: string | null;
+  lifecycle_status?: string | null;
+  // #368 R5b — signature detection (optional until backend tenant_028 lands)
+  has_signature?: boolean | null;
+  signature_pages?: number[] | null;
 }
 
 // #238 — POST /documents/{id}/confirm (no body; self-party auto-derived from legal_name)
@@ -108,6 +141,10 @@ export interface ClauseOut {
   edited_by_user?: string | null;
   edited_at?: string | null;
   original_content?: string | null;
+  // #365 R3 — clause hierarchy (optional until backend migration tenant_023 lands)
+  parent_id?: number | null;
+  level?: number | null;
+  clause_path?: string | null;
 }
 
 export interface ClauseListOut {
@@ -130,6 +167,35 @@ export interface ClausePatchOut {
   original_content: string | null;
 }
 
+// #372 — GET /documents/{id}/definitions + PATCH /documents/{id}/definitions/{id}
+export interface DefinitionOut {
+  id: number;
+  term: string;
+  definition: string;
+  source_clause_num: string | null;
+  source_clause_id: number | null;
+  edited_by_user: string | null;
+  edited_at: string | null;
+  original_definition: string | null;
+  original_term: string | null;
+}
+
+export interface DefinitionListOut {
+  document_id: number;
+  definition_count: number;
+  definitions: DefinitionOut[];
+}
+
+export interface DefinitionPatchOut {
+  id: number;
+  term: string;
+  definition: string;
+  edited_by_user: string | null;
+  edited_at: string | null;
+  original_definition: string | null;
+  original_term: string | null;
+}
+
 // Backend #326 — POST /documents/{id}/reread
 export interface ReReadDiff {
   action: 'add' | 'update' | 'remove';
@@ -148,4 +214,32 @@ export interface ReReadOut {
   document_id: number;
   clauses_checked: number;
   diffs: ReReadDiff[];
+}
+
+// #373 R10 — GET /documents/{id}/cross-refs
+export interface CrossRefOut {
+  id: number;
+  source_clause_id: number;
+  ref_text: string;
+  ref_type: string;              // "clause" | "sub_clause" | "appendix" | "document"
+  target_clause_id: number | null;
+  target_clause_path: string | null;
+  target_doc_id: number | null;
+  is_orphan: boolean;
+}
+
+export interface CrossRefListOut {
+  document_id: number;
+  total_refs: number;
+  resolved: number;
+  orphans: number;
+  refs: CrossRefOut[];
+}
+
+// POST /documents/{id}/cross-refs/resolve
+export interface CrossRefResolveOut {
+  document_id: number;
+  total_refs: number;
+  resolved: number;
+  orphans: number;
 }

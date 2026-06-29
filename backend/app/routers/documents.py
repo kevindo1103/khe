@@ -33,7 +33,7 @@ from app.core.config import settings
 from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
 from app.models.master import Tenant, TenantProfile, TenantUser
-from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
+from app.models.tenant import Clause, ClauseCrossRef, Definition, Document, Event, Obligation, Party, Term
 from app.schemas.documents import (
     BulkUploadOut,
     ClauseListOut,
@@ -41,6 +41,15 @@ from app.schemas.documents import (
     ClausePatchIn,
     ClausePatchOut,
     ConfirmDocumentOut,
+    CrossRefListOut,
+    CrossRefOut,
+    CrossRefResolveOut,
+    DefinitionListOut,
+    DefinitionOut,
+    DefinitionPatchIn,
+    DefinitionPatchOut,
+    DocumentPatchIn,
+    DocumentPatchOut,
     EventListOut,
     EventOut,
     ReDeriveClauseIn,
@@ -53,6 +62,9 @@ from app.schemas.documents import (
     DocumentDetailOut,
     DocumentListItem,
     DocumentListOut,
+    PartyOut,
+    PartyPatchIn,
+    PartyPatchOut,
     SelfPartyIn,
     SelfPartyOut,
     TermOut,
@@ -423,6 +435,15 @@ def list_documents(
         .subquery()
     )
 
+    definition_subq = (
+        db.query(
+            Definition.document_id.label("doc_id"),
+            func.count(Definition.id).label("definition_count"),
+        )
+        .group_by(Definition.document_id)
+        .subquery()
+    )
+
     # Direction rollup (#279): active obligations only (status NOT IN done/cancelled).
     # standing obligations (due_date NULL) count in direction tallies but not next_due_date.
     _ACTIVE = Obligation.status.notin_(("done", "cancelled"))
@@ -458,11 +479,13 @@ def list_documents(
             dir_subq.c.quyen_loi_count,
             dir_subq.c.direction_null_count,
             dir_subq.c.next_due_date,
+            definition_subq.c.definition_count,
         )
         .outerjoin(term_subq, term_subq.c.doc_id == Document.id)
         .outerjoin(obligation_subq, obligation_subq.c.doc_id == Document.id)
         .outerjoin(clause_subq, clause_subq.c.doc_id == Document.id)
         .outerjoin(dir_subq, dir_subq.c.doc_id == Document.id)
+        .outerjoin(definition_subq, definition_subq.c.doc_id == Document.id)
         .filter(Document.tenant_id == user.tenant_id)
     )
 
@@ -521,7 +544,7 @@ def list_documents(
             primary_party_map[p.document_id] = p.name
 
     items: list[DocumentListItem] = []
-    for doc, term_count, has_needs_review, obligation_count, clause_count, nghia_vu, quyen_loi, dir_null, next_due in rows:
+    for doc, term_count, has_needs_review, obligation_count, clause_count, nghia_vu, quyen_loi, dir_null, next_due, def_count in rows:
         items.append(
             DocumentListItem(
                 id=doc.id,
@@ -540,6 +563,17 @@ def list_documents(
                 quyen_loi_count=quyen_loi or 0,
                 direction_null_count=dir_null or 0,
                 may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
+                processing_stage=doc.processing_stage,
+                processing_progress=doc.processing_progress,
+                title=doc.title,
+                contract_number=doc.contract_number,
+                signing_date=doc.signing_date,
+                commencement_date=doc.commencement_date,
+                contract_term=doc.contract_term,
+                lifecycle_status=doc.lifecycle_status,
+                definition_count=def_count or 0,
+                has_signature=doc.has_signature,
+                signature_pages=doc.signature_pages,
             )
         )
 
@@ -592,6 +626,12 @@ def get_document(
         .count()
     )
 
+    definition_count = (
+        db.query(Definition)
+        .filter(Definition.document_id == doc_id, Definition.tenant_id == user.tenant_id)
+        .count()
+    )
+
     # When the doc failed extraction, surface the reason from the latest
     # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
     failure_reason: str | None = None
@@ -615,12 +655,260 @@ def get_document(
         terms=[TermOut.model_validate(t) for t in terms],
         obligations=[ObligationOut.model_validate(o) for o in obligations],
         clause_count=clause_count,
-        parties=[{"name": p.name, "role_label": p.role_label} for p in parties],
+        parties=[PartyOut.model_validate(p) for p in parties],
         failure_reason=failure_reason,
         provider=provider,
         model=model,
         confirmed_by_user_at=doc.confirmed_by_user_at,
+        processing_stage=doc.processing_stage,
+        processing_progress=doc.processing_progress,
+        title=doc.title,
+        contract_number=doc.contract_number,
+        signing_date=doc.signing_date,
+        commencement_date=doc.commencement_date,
+        contract_term=doc.contract_term,
+        lifecycle_status=doc.lifecycle_status,
+        definition_count=definition_count,
+        has_signature=doc.has_signature,
+        signature_pages=doc.signature_pages,
     )
+
+
+# ── Document-level PATCH (#363, D-07) ──
+
+@docs_router.patch("/{doc_id}", response_model=DocumentPatchOut)
+def patch_document(
+    doc_id: int,
+    payload: DocumentPatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit document-level title and/or contract_number (D-07: user edit → Event).
+
+    FE calls this when the user overrides the extracted heading. Logs a
+    document_field_edited Event per field changed for audit compliance.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    edits = {}
+    if "title" in payload.model_fields_set:
+        edits["title"] = (doc.title, payload.title)
+        doc.title = payload.title
+    if "contract_number" in payload.model_fields_set:
+        edits["contract_number"] = (doc.contract_number, payload.contract_number)
+        doc.contract_number = payload.contract_number
+    if "lifecycle_status" in payload.model_fields_set:
+        allowed = (None, "settled", "suspended")
+        if payload.lifecycle_status not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="lifecycle_status can only be set to 'settled', 'suspended', or null",
+            )
+        edits["lifecycle_status"] = (doc.lifecycle_status, payload.lifecycle_status)
+        doc.lifecycle_status = payload.lifecycle_status
+
+    if not edits:
+        return DocumentPatchOut.model_validate(doc)
+
+    for field, (old_val, new_val) in edits.items():
+        _log_event(
+            db,
+            user.tenant_id,
+            event_type="document_field_edited",
+            entity_type="document",
+            entity_id=doc_id,
+            actor=user.username,
+            payload={"field": field, "old_value": old_val, "new_value": new_val},
+        )
+
+    db.commit()
+    db.refresh(doc)
+    return DocumentPatchOut.model_validate(doc)
+
+
+# ── Definitions glossary (#372, R9) ──
+
+@docs_router.get("/{doc_id}/definitions", response_model=DefinitionListOut)
+def list_definitions(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return all definitions extracted from a document's Định nghĩa section."""
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    defs = (
+        db.query(Definition)
+        .filter(Definition.document_id == doc_id, Definition.tenant_id == user.tenant_id)
+        .order_by(Definition.id)
+        .all()
+    )
+    return DefinitionListOut(
+        document_id=doc_id,
+        definition_count=len(defs),
+        definitions=[DefinitionOut.model_validate(d) for d in defs],
+    )
+
+
+@docs_router.patch("/{doc_id}/definitions/{def_id}", response_model=DefinitionPatchOut)
+def patch_definition(
+    doc_id: int,
+    def_id: int,
+    payload: DefinitionPatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit a definition's term and/or text (D-07: user edit → Event, snapshot original)."""
+    defn = (
+        db.query(Definition)
+        .filter(
+            Definition.id == def_id,
+            Definition.document_id == doc_id,
+            Definition.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if defn is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Definition not found")
+
+    if not payload.model_fields_set:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No fields to update")
+
+    event_payload: dict = {}
+
+    if "definition" in payload.model_fields_set and payload.definition is not None:
+        old_def = defn.definition
+        if defn.original_definition is None:
+            defn.original_definition = old_def
+        defn.definition = payload.definition
+        event_payload["old_definition"] = old_def
+        event_payload["new_definition"] = payload.definition
+
+    if "term" in payload.model_fields_set and payload.term is not None:
+        old_term = defn.term
+        if defn.original_term is None:
+            defn.original_term = old_term
+        defn.term = payload.term
+        event_payload["old_term"] = old_term
+        event_payload["new_term"] = payload.term
+
+    defn.edited_by_user = user.username
+    defn.edited_at = datetime.utcnow()
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="definition_edited",
+        entity_type="definition",
+        entity_id=def_id,
+        actor=user.username,
+        payload=event_payload,
+    )
+    db.commit()
+    db.refresh(defn)
+    return DefinitionPatchOut.model_validate(defn)
+
+
+@docs_router.delete("/{doc_id}/definitions/{def_id}", status_code=204)
+def delete_definition(
+    doc_id: int,
+    def_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a definition (admin cleanup). Logs an Event before removal."""
+    defn = (
+        db.query(Definition)
+        .filter(
+            Definition.id == def_id,
+            Definition.document_id == doc_id,
+            Definition.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if defn is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Definition not found")
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="definition_deleted",
+        entity_type="definition",
+        entity_id=def_id,
+        actor=user.username,
+        payload={"term": defn.term},
+    )
+    db.delete(defn)
+    db.commit()
+
+
+# ── Cross-reference resolution (#373, R10) ──
+
+@docs_router.get("/{doc_id}/cross-refs", response_model=CrossRefListOut)
+def list_cross_refs(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all cross-references detected in a document's clauses."""
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    refs = (
+        db.query(ClauseCrossRef)
+        .filter(
+            ClauseCrossRef.document_id == doc_id,
+            ClauseCrossRef.tenant_id == user.tenant_id,
+        )
+        .order_by(ClauseCrossRef.id)
+        .all()
+    )
+    orphan_count = sum(1 for r in refs if r.is_orphan)
+    return CrossRefListOut(
+        document_id=doc_id,
+        total_refs=len(refs),
+        resolved=len(refs) - orphan_count,
+        orphans=orphan_count,
+        refs=[CrossRefOut.model_validate(r) for r in refs],
+    )
+
+
+@docs_router.post("/{doc_id}/cross-refs/resolve", response_model=CrossRefResolveOut)
+def resolve_cross_refs_endpoint(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Trigger manual re-resolution of cross-references for a document (idempotent)."""
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    from app.services.cross_ref import resolve_cross_refs
+    stats = resolve_cross_refs(db, user.tenant_id, doc_id)
+    db.commit()
+    return CrossRefResolveOut(document_id=doc_id, **stats)
 
 
 # ── File download (documents) ──
@@ -843,6 +1131,72 @@ def confirm_self_party(
     )
 
     return {"ok": True, "updated": updated}
+
+
+@docs_router.patch("/{doc_id}/parties/{party_id}", response_model=PartyPatchOut)
+def patch_party(
+    doc_id: int,
+    party_id: int,
+    payload: PartyPatchIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit party detail fields (D-07: every edit → Event ledger). #364
+
+    Allows correcting name, address, contact, representative, tax_code,
+    role_label, is_self. Tenant isolation: only parties belonging to the
+    calling tenant's doc are accessible.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    party = (
+        db.query(Party)
+        .filter(
+            Party.id == party_id,
+            Party.document_id == doc_id,
+            Party.tenant_id == user.tenant_id,
+        )
+        .first()
+    )
+    if party is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Party not found")
+
+    editable = ("name", "role_label", "address", "contact", "representative", "tax_code", "is_self", "aliases")
+    changed = False
+    for field in editable:
+        if field not in payload.model_fields_set:
+            continue
+        new_val = getattr(payload, field)
+        old_val = getattr(party, field, None)
+        if field == "aliases":
+            new_val = json.dumps(new_val) if new_val is not None else None
+            old_display = old_val
+        else:
+            old_display = old_val
+        setattr(party, field, new_val)
+        changed = True
+        _log_event(
+            db,
+            user.tenant_id,
+            event_type="party_field_edited",
+            entity_type="party",
+            entity_id=party_id,
+            actor=user.username,
+            payload={"field": field, "old_value": old_display, "new_value": new_val, "doc_id": doc_id},
+        )
+
+    if not changed:
+        return PartyPatchOut.model_validate(party)
+
+    db.commit()
+    db.refresh(party)
+    return PartyPatchOut.model_validate(party)
 
 
 @docs_router.post("/{doc_id}/confirm", response_model=ConfirmDocumentOut)
