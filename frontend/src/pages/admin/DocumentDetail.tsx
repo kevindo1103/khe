@@ -461,7 +461,9 @@ function OrphanRefPanel({
             {orphanRefs.map((ref) => {
               const srcClause = clauseMap.get(ref.source_clause_id);
               const srcLabel = srcClause
-                ? (srcClause.title || (srcClause.clause_num ? `Điều ${srcClause.clause_num}` : `#${srcClause.id}`))
+                ? (srcClause.clause_num && srcClause.title
+                    ? `${srcClause.clause_num}. ${srcClause.title}`
+                    : srcClause.title || srcClause.clause_num || `#${srcClause.id}`)
                 : `#${ref.source_clause_id}`;
               return (
                 <div key={ref.id} className="flex items-center gap-2 flex-wrap text-xs">
@@ -565,9 +567,9 @@ function ClauseItem({
   const [saveError, setSaveError] = useState<string>('');
   const [showOriginal, setShowOriginal] = useState(false);
 
-  const title =
-    clause.title ||
-    (clause.clause_num ? `Điều ${clause.clause_num}` : `Điều khoản #${clause.id}`);
+  const title = clause.clause_num && clause.title
+    ? `${clause.clause_num}. ${clause.title}`
+    : clause.title || clause.clause_num || `Điều khoản #${clause.id}`;
 
   const startEdit = () => {
     setDraft(clause.content);
@@ -1173,7 +1175,9 @@ function ClauseTreeItem({
 
   const isStub = node.content === '(tổng hợp từ mục con)';
   const hasChildren = node.children.length > 0;
-  const title = node.title || node.clause_num || `Điều khoản #${node.id}`;
+  const title = node.clause_num && node.title
+    ? `${node.clause_num}. ${node.title}`
+    : node.title || node.clause_num || `Điều khoản #${node.id}`;
 
   const startEdit = () => { setDraft(node.content); setEditing(true); setExpanded(true); };
   const cancelEdit = () => { setEditing(false); setDraft(''); };
