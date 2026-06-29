@@ -6,6 +6,16 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
+def _parse_json_list(v: Any) -> Any:
+    """Deserialize a JSON TEXT column to a Python list. Returns None on corrupt data."""
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return None
+    return v
+
+
 # ── Parties ──
 
 
@@ -123,7 +133,12 @@ class DocumentListItem(BaseModel):
     lifecycle_status: str | None = None
     # R9 (#372): definitions count
     definition_count: int = 0
+    # R5 (#368): signature detection — null for pre-migration docs
+    has_signature: bool | None = None
+    signature_pages: list[int] | None = None
     model_config = ConfigDict(from_attributes=True)
+
+    _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
 
 
 class DocumentListOut(BaseModel):
@@ -169,7 +184,12 @@ class DocumentDetailOut(BaseModel):
     lifecycle_status: str | None = None
     # R9 (#372): definitions count
     definition_count: int = 0
+    # R5 (#368): signature detection — null for pre-migration docs
+    has_signature: bool | None = None
+    signature_pages: list[int] | None = None
     model_config = ConfigDict(from_attributes=True)
+
+    _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
 
 
 # ── Document-level PATCH (#363 D-07 + #371 R8) ──

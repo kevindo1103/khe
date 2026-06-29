@@ -56,6 +56,9 @@ class Document(TenantBase):
     # ── tenant_025: contract term + lifecycle status (#371) ──
     contract_term = Column(String, nullable=True)          # raw duration e.g. "12 tháng" / "vô thời hạn"
     lifecycle_status = Column(String, nullable=True)       # active|expiring|expired|settled|suspended
+    # ── tenant_028: signature detection (#368, R5) ──
+    has_signature = Column(Boolean, nullable=True)         # True if doc has physical/digital signature
+    signature_pages = Column(Text, nullable=True)          # JSON list e.g. "[1, 3]"
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
