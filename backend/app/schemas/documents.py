@@ -123,7 +123,20 @@ class DocumentListItem(BaseModel):
     lifecycle_status: str | None = None
     # R9 (#372): definitions count
     definition_count: int = 0
+    # R5 (#368): signature detection — null for pre-migration docs
+    has_signature: bool | None = None
+    signature_pages: list[int] | None = None
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("signature_pages", mode="before")
+    @classmethod
+    def _parse_signature_pages(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
 
 
 class DocumentListOut(BaseModel):
@@ -169,7 +182,20 @@ class DocumentDetailOut(BaseModel):
     lifecycle_status: str | None = None
     # R9 (#372): definitions count
     definition_count: int = 0
+    # R5 (#368): signature detection — null for pre-migration docs
+    has_signature: bool | None = None
+    signature_pages: list[int] | None = None
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("signature_pages", mode="before")
+    @classmethod
+    def _parse_signature_pages(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (ValueError, TypeError):
+                return None
+        return v
 
 
 # ── Document-level PATCH (#363 D-07 + #371 R8) ──

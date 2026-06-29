@@ -572,6 +572,8 @@ def list_documents(
                 contract_term=doc.contract_term,
                 lifecycle_status=doc.lifecycle_status,
                 definition_count=def_count or 0,
+                has_signature=doc.has_signature,
+                signature_pages=doc.signature_pages,
             )
         )
 
@@ -667,6 +669,8 @@ def get_document(
         contract_term=doc.contract_term,
         lifecycle_status=doc.lifecycle_status,
         definition_count=definition_count,
+        has_signature=doc.has_signature,
+        signature_pages=doc.signature_pages,
     )
 
 

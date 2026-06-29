@@ -347,6 +347,9 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         doc.lifecycle_status = derive_lifecycle_status(
             _het_han_val, doc.contract_term, doc.lifecycle_status,
         )
+        # R5 (#368): signature detection persistence.
+        doc.has_signature = result.has_signature
+        doc.signature_pages = json.dumps(result.signature_pages) if result.signature_pages else None
         # Cost tracking (#255): persist provider + token usage + cost on the doc
         # (denormalised for the pilot cost report) in the same transaction.
         doc.extraction_provider = result.provider or None
