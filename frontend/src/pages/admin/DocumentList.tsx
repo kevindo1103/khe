@@ -237,6 +237,11 @@ function DocCard({ doc, onClick }: { doc: DocumentListItem; onClick: () => void 
             <span className="shrink-0 text-warning font-bold text-xs" title="Tệp trùng — kiểm tra">!</span>
           )}
           <LifecycleBadge status={doc.lifecycle_status} />
+          {doc.has_signature != null && (
+            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>
+              {doc.has_signature ? 'Đã ký' : 'Chưa ký'}
+            </span>
+          )}
         </div>
         <div className="shrink-0">
           <StatusPill doc={doc} docId={doc.id} />
@@ -592,6 +597,11 @@ export default function DocumentList() {
                       </span>
                     )}
                     <LifecycleBadge status={doc.lifecycle_status} />
+          {doc.has_signature != null && (
+            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>
+              {doc.has_signature ? 'Đã ký' : 'Chưa ký'}
+            </span>
+          )}
                   </div>
                   {/* Filename — always shown as secondary context */}
                   <div className="text-2xs text-ink-muted mt-0.5 truncate max-w-xs">

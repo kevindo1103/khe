@@ -43,6 +43,9 @@ export interface DocumentListItem {
   // #371 R8 — lifecycle status (optional until backend tenant_025 lands)
   contract_term?: string | null;
   lifecycle_status?: string | null;
+  // #368 R5b — signature detection (optional until backend tenant_028 lands)
+  has_signature?: boolean | null;
+  signature_pages?: number[] | null;
 }
 
 export interface DocumentListOut {
@@ -85,6 +88,9 @@ export interface DocumentDetailOut {
   // #371 R8 — lifecycle status (optional until backend tenant_025 lands)
   contract_term?: string | null;
   lifecycle_status?: string | null;
+  // #368 R5b — signature detection (optional until backend tenant_028 lands)
+  has_signature?: boolean | null;
+  signature_pages?: number[] | null;
 }
 
 // #238 — POST /documents/{id}/confirm (no body; self-party auto-derived from legal_name)
