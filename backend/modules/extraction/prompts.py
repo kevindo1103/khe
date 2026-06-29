@@ -186,13 +186,27 @@ không có nhãn điều khoản → ref = null. Nhưng KHÔNG để null chỉ 
 # Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
 # array of the response schema — no extra API call.
 _CLAUSES_SPEC = """\
-Ngoài ra, bóc TẤT CẢ điều/khoản/mục có đánh số thành danh sách "clauses":
+Ngoài ra, bóc TẤT CẢ điều/khoản/mục CHÍNH THỨC thành danh sách "clauses":
 - Mỗi phần tử gồm: num (số hiệu, vd "Điều 1", "Khoản 2.3", "Mục IV"), title (tiêu đề
   nếu có), content (TOÀN VĂN nội dung điều khoản, nguyên gốc),
   level (cấp bậc phân cấp: 1=Điều/Chương, 2=Khoản/Mục con, 3=Điểm/tiểu mục; null nếu không rõ),
   clause_path (đường dẫn số hiệu: "2" cho Điều 2, "2.1" cho Khoản 2.1, "2.1.1" cho Điểm 2.1.1;
   null nếu không đánh số theo cấp).
-- Bao gồm MỌI Điều / Khoản / Mục xuất hiện trong tài liệu, theo đúng thứ tự.
+
+⚠️ PHÂN BIỆT PREAMBLE vs ĐIỀU KHOẢN CHÍNH THỨC:
+  Nhiều HĐ Việt Nam có phần MỞ ĐẦU (preamble/recitals) đánh số "1.", "2.", "3." TRƯỚC
+  khi bắt đầu điều khoản chính thức "ĐIỀU 1", "ĐIỀU 2"... Các đoạn mở đầu này thường là:
+  - Giới thiệu các bên ("Bên A là...", "Bên B là...")
+  - Xác nhận ("Bên A đã cung cấp đầy đủ thông tin...")
+  - Đồng ý chung ("Các Bên đồng ý ký kết...")
+  → KHÔNG đưa các đoạn preamble/recitals vào "clauses". Chỉ bóc điều khoản có nhãn
+    CHÍNH THỨC: "Điều X", "ĐIỀU X", "Article X", "Chương X", "Mục X", "Phần X",
+    "Phụ lục X". Đoạn chỉ đánh số thường "1.", "2." mà KHÔNG có từ khóa "Điều/Chương/Mục"
+    VÀ nằm TRƯỚC điều khoản chính thức đầu tiên → là preamble, BỎ QUA.
+  Ví dụ sai: num="Điều 1" content="Bên A là Chủ đầu tư..." (đó là preamble, KHÔNG phải Điều 1)
+  Ví dụ đúng: num="Điều 1" title="ĐỊNH NGHĨA VÀ DIỄN GIẢI" content="1.1 Trong Thỏa thuận này..."
+
+- Bao gồm MỌI Điều / Khoản / Mục CHÍNH THỨC trong tài liệu, theo đúng thứ tự.
 - PHÂN CẤP: nếu "Khoản 2.3" nằm trong "Điều 2", ghi clause_path="2.3", level=2.
   Nếu parent node không ghi rõ (vd chỉ có "2.1" mà không có "Điều 2" riêng) → vẫn ghi
   clause_path="2.1" — Backend sẽ tổng hợp parent node.
