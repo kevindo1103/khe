@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState, LifecycleBadge } from '../../components';
 import type { ToastKind } from '../../components/Toast';
@@ -483,6 +486,62 @@ function OrphanRefPanel({
   );
 }
 
+// ── #368 R5: Clause content renderer — markdown tables + plain text fallback ──
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeSanitize];
+const MD_TABLE_SEP = /\|[\s-:]+\|/;
+
+const MD_COMPONENTS = {
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <table className="w-full border-collapse text-sm my-3 border border-border">{children}</table>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th className="text-left p-2 font-semibold bg-surface-alt text-ink border-b border-border">{children}</th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td className="p-2 text-ink border-b border-border">{children}</td>
+  ),
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="whitespace-pre-wrap mb-2">{children}</p>
+  ),
+};
+
+function ClauseContent({
+  content,
+  crossRefs,
+  onNavigateDoc,
+}: {
+  content: string;
+  crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
+}) {
+  const hasTable = content.includes('|') && MD_TABLE_SEP.test(content);
+  if (hasTable) {
+    return (
+      <div className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          rehypePlugins={REHYPE_PLUGINS}
+          components={MD_COMPONENTS}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+  const clauseRefs = crossRefs ?? [];
+  if (clauseRefs.length > 0) {
+    return (
+      <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+        {renderClauseContent(content, clauseRefs, onNavigateDoc)}
+      </p>
+    );
+  }
+  return (
+    <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">{content}</p>
+  );
+}
+
 // ── Clause accordion item (Phase 2 — inline edit, D-07) ─────────────────────
 function ClauseItem({
   clause,
@@ -588,9 +647,7 @@ function ClauseItem({
             </div>
           ) : (
             <div className="flex flex-col gap-1">
-              <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
-                {renderClauseContent(displayContent, clauseRefs, onNavigateDoc)}
-              </p>
+              <ClauseContent content={displayContent} crossRefs={clauseRefs} onNavigateDoc={onNavigateDoc} />
               <div className="flex items-center gap-3 pt-1 flex-wrap">
                 {clause.original_content && (
                   <button
@@ -1191,9 +1248,7 @@ function ClauseTreeItem({
               </div>
             ) : (
               <div className="flex flex-col gap-1">
-                <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
-                  {renderClauseContent(displayContent, nodeRefs, onNavigateDoc)}
-                </p>
+                <ClauseContent content={displayContent} crossRefs={nodeRefs} onNavigateDoc={onNavigateDoc} />
                 <div className="flex items-center gap-3 pt-1 flex-wrap">
                   {node.original_content && (
                     <button
