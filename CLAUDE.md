@@ -1,6 +1,6 @@
 # Khế — Claude Code Context
 
-*Last updated: 2026-06-27 (v0.9 — fold cycle 5: DEC-048 EPIC #300 production promote) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.8 reference*
+*Last updated: 2026-06-29 (v0.10 — fold cycle 6: DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production PR #402) — Upstream PRODUCT_STRATEGY v0.3 + MVP BRD v0.9 reference*
 
 > **Tên mã tạm:** Khế *(placeholder per R-7 — sẽ rename khi launch)*
 > Vibe Document OS cho SME Vietnam — chat-first, distributed via law firm / tax agent kênh.
@@ -9,7 +9,7 @@
 
 ## Project context
 
-**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (v0.3 — Why/Personas/JTBD/Positioning + §5b Chat Architecture + §7.1 Billing) · `docs/MVP_BRD_Khe_v0.1.md` (v0.8) · `docs/SRS_v0.1.md` (v0.5) · `docs/GLOSSARY_v0.1.md` (v0.6) · `docs/PROJECT_PLAN_v0.1.md` (v0.5) · `docs/USER_MANUAL_PILOT_v0.1.md` (pilot onboarding)
+**References:** `docs/PRODUCT_STRATEGY_Khe_v0.2.md` (v0.3) · `docs/MVP_BRD_Khe_v0.1.md` (v0.9) · `docs/SRS_v0.1.md` (v0.6) · `docs/GLOSSARY_v0.1.md` (v0.7) · `docs/PROJECT_PLAN_v0.1.md` (v0.6) · `docs/USER_MANUAL_PILOT_v0.1.md` (pilot onboarding)
 
 **Doc cascade:** PRODUCT_STRATEGY → BRD → SRS → Glossary → PROJECT_PLAN → CLAUDE.md → Mockup. PRODUCT_STRATEGY thắng về *tại sao / cho ai / job gì*; BRD thắng về *hệ thống phải làm gì*.
 
@@ -212,7 +212,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 - **Auth:** `bcrypt` **direct** (KHÔNG `passlib[bcrypt]` — xem bug pattern) + `python-jose` cho JWT signing. **Session: HttpOnly cookie `khe_session`** (Bearer fully retired Backend PR #46/#91). `GET /auth/me` for session check; `credentials: 'include'` on all FE fetches.
 - **Frontend Admin:** React + Vite + Tailwind CSS, React Router v6 *(Sprint 1+ provision)*
 - **PWA Chat:** Same React + Vite stack, mobile-first PWA *(Sprint 1+ provision)*
-- **Vision extraction (DEC-002 + DEC-026/029):** `VisionExtractionProvider` Protocol, 1-call vision (no separate OCR). **2-tier schema** (DEC-026 addendum): `ContractExtractionLLM` (7 BASE fields, Claude grammar-compatible) + `ContractExtractionLLMFull` (Gemini-only: 12 universal + 30 type-specific + clauses[] + parties[] + payment_schedule[]). Providers: Gemini 2.5 Flash (primary, ~59đ/doc) + Claude Haiku 4.5 (fallback, ~560đ/doc) + Claude Sonnet 4.6 (complex, ~1693đ/doc). Backend dùng `get_extraction_provider()` factory (KHE_AI scope).
+- **Vision extraction (DEC-002 + DEC-026/029/050):** `VisionExtractionProvider` Protocol, 1-call vision (no separate OCR). **2-tier schema** (DEC-026 + DEC-050 v3): `ContractExtractionLLM` (7 BASE fields, Claude grammar-compatible — unchanged) + `ContractExtractionLLMFull` (Gemini-only: **15 universal CANONICAL** + 30 type-specific + clauses[] với level/path + parties[] với address/representative/tax_code + payment_schedule[] + **defined_terms[] R9 + cross_references[] R10 + has_signature/signature_pages R5b**). 4 providers: Gemini 2.5 Flash (primary, ~59đ/doc) + Claude Haiku 4.5 (fallback ~560đ) + Claude Sonnet 4.6 (complex ~1693đ) + **`hybrid_ocr`** (DEC-049 KHE_AI PR #341 — 2-pass scan_detect → Document AI/pdftotext → Gemini text-mode; opt-in only). Backend dùng `get_extraction_provider()` factory (KHE_AI scope). VPS dep: `poppler-utils` cho hybrid path.
 - **Chat (DEC-026):** Gemini Flash function-calling, 3 tools (`search_terms`/`search_obligations`/`search_clauses`) per BRD FR-CQ-02. D-08 hard fallback exact string at caller. PII-safe routing log (D-12).
 - **Reminders (DEC-006 + DEC-025):** Telegram bot via `python-telegram-bot` (env vars `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` — dev fallback). **Per-tenant routing:** prod đọc `reminder_send` consent's `channel_target_ref` per tenant. APScheduler daily 08:00 ICT sweep (Backend PR #66). Email fallback Sprint 2. *(Zalo ZNS deprecated for MVP — blocker OA registration.)*
 - **Infra:** VPS Ubuntu, systemd + nginx, GitHub Actions CI/CD
@@ -250,7 +250,7 @@ branch `claude/edit-git-docs-Khe01`. Mục đích: giữ docs nhất quán, khô
 
 ### Secrets (GitHub repository secrets)
 
-`JWT_SECRET`, `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `CORS_ORIGINS` (staging=`https://staging.khe.iceflow.cloud`, prod=`https://khe.iceflow.cloud` — ngăn browser reject credentialed requests khi `allow_credentials=True`). Two environments: `staging` + `production`.
+`JWT_SECRET`, `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `CORS_ORIGINS` (staging=`https://staging.khe.iceflow.cloud`, prod=`https://khe.iceflow.cloud` — ngăn browser reject credentialed requests khi `allow_credentials=True`), **`SUPERADMIN_USERS`** (cycle 6 — env-var allowlist cho `require_superadmin` admin extraction metrics endpoints PR #350, PM Option B no DB migration), **`GOOGLE_APPLICATION_CREDENTIALS`** (DEC-049 hybrid_ocr Document AI gate). Two environments: `staging` + `production`.
 
 ### Alembic
 
@@ -341,9 +341,12 @@ Pattern (mirror Bingxue):
   - `documents` table — file metadata + `doc_type` (legacy enum 4) + `doc_type_group` (DEC-029 enum 11)
   - `terms` table — extracted fields (12 universal + ~30 type-specific via NamedExtractedField — DEC-029)
   - `obligations` table — derived deadlines. **Schema rewrite #122 Option B (DEC-027/030):** `obligation_type` = category enum 8; `recurrence` = cadence; `direction` + `obligor`; `source_doc_chain` + `resolution_method`. **DEC-048 expansion (cycle 5, migration `tenant_017`):** +`fulfilled_at` (cascade anchor G1) +`fulfilled_by` +`evidence_doc_ids` JSON +`source_clause_num` (Kevin Option B 0a) +`derived_from` (`original`/`user_edit`/`ai_re_derived`) +`source` (`ai_extracted`/`user_manual`/`ai_re_derived` — P1 merge protected). Status enum extended: `pending` · `done` · `cancelled` · `awaiting_confirmation` (cascade-past D-02) · `waiting_trigger` (FR-OB-13).
-  - `clauses` table (DEC-026, migration `tenant_003_clauses`) — text nguyên gốc Document; Gemini-only populated. **DEC-048 §13 expansion (migration `tenant_018`):** +`original_content` (immutable snapshot first edit, D-07) +`edited_by_user` +`edited_at`.
-  - `documents` table — +`is_evidence` BOOL DEC-048 (skip extraction P2 + `contains_personal_data` conservative true)
-  - `parties` table (DEC-030) — +`role_label` extracted verbatim
+  - `clauses` table (DEC-026, migration `tenant_003`) — text nguyên gốc Document; Gemini-only populated. **DEC-048 §13 expansion (`tenant_018`):** +`original_content`/`edited_by_user`/`edited_at`. **DEC-050 R3 hierarchy (`tenant_023`):** +`parent_id` self-FK +`level` +`clause_path` (regex-synthesized post-extraction).
+  - `documents` table — +`is_evidence` BOOL DEC-048. **DEC-050 cluster:** +`title`/`contract_number` (`tenant_021`) · +`signing_date`/`commencement_date` (`tenant_025`) · +`contract_duration`/`lifecycle_status` (`tenant_026`) · +`has_signature`/`signature_pages` (`tenant_028`). **Cycle 6 admin/polling:** +`extraction_model`/`extraction_latency_ms`/`extraction_warnings` (`tenant_019`) · +`processing_stage`/`processing_progress` (`tenant_020`).
+  - `parties` table (DEC-030) — +`role_label` extracted verbatim. **DEC-050 R2 (`tenant_022`):** +`address`/`representative`/`tax_code`/`is_self` BOOL/`aliases` JSON.
+  - `document_relationships` table — `relationship_type` enum **3-value** (DEC-050 R4 `tenant_024`): `amends` / `references_framework` / **`annex`** (excluded from `resolve_chain`).
+  - `definitions` table (DEC-050 R9 NEW, `tenant_026`/`tenant_027`) — glossary entries từ "Định nghĩa" section. CRUD endpoints + D-07 `original_term` snapshot.
+  - Cross-refs (DEC-050 R10 PR #392) — VN legal ref detection service `cross_ref.py`. Exact storage shape (JSON on clauses or dedicated table) verify per PR diff.
   - `parties` table — normalized partner entities
   - `events` table — append-only ledger (reuse SpurX pattern)
   - `branches` table — physical locations (if multi-branch SME)
@@ -396,6 +399,8 @@ compliance(nd13): add purpose-of-processing log
 ```
 
 ---
+
+*v0.10 — Cycle 6 fold (DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production PR #402 sha pending). §Multi-Tenant DB cluster update: documents +10 cols (title/contract_number tenant_021, signing_date/commencement_date tenant_025, contract_duration/lifecycle_status tenant_026, has_signature/signature_pages tenant_028, extraction metrics tenant_019, processing progress tenant_020). parties +5 cols (R2 tenant_022). clauses hierarchy +3 cols (R3 tenant_023). document_relationships enum +annex (R4 tenant_024). NEW definitions table (R9 tenant_027). Cross-refs service (R10 PR #392). §Stack vision extraction: schema v3 (15 canonical + R9 defined_terms + R10 cross_references + R5b signature flags). 4th provider `hybrid_ocr` (DEC-049 opt-in). §Deploy secrets +SUPERADMIN_USERS (admin metrics gate) + GOOGLE_APPLICATION_CREDENTIALS (hybrid_ocr Document AI). Cascade: PRODUCT_STRATEGY v0.3 → BRD v0.9 → SRS v0.6 → Glossary v0.7 → PROJECT_PLAN v0.6 → CLAUDE.md v0.10.*
 
 *v0.9 — Cycle 5 fold (DEC-048 EPIC #300 production promote `ce48bbd`). +D-14 fulfillment capture (fulfilled_at + fulfilled_by mandatory, evidence_doc_ids link to is_evidence docs, purpose=obligation_fulfillment no consent gate). +D-15 cascade chain anchor (fulfilled_at G1 fix NOT date.today(), backfill → awaiting_confirmation D-02, P1 source-aware merge guard). §Multi-Tenant DB obligations expansion (+6 cols incl. fulfilled_at/by/evidence/source_clause_num/derived_from/source; status enum +awaiting_confirmation +waiting_trigger; migration tenant_017). +clauses tenant_018 edit cols (original_content immutable + edited_by_user + edited_at). +documents is_evidence. +Bug pattern "Derive delete path-2 mất audit fulfilled obligations" (PR #311). References block bumped: BRD v0.8, SRS v0.5, Glossary v0.6, PROJECT_PLAN v0.5 (pending), +USER_MANUAL_PILOT_v0.1.md. Cascade: PRODUCT_STRATEGY v0.3 → BRD v0.8 → SRS v0.5 → Glossary v0.6 → PROJECT_PLAN v0.5 → CLAUDE.md v0.9.*
 
