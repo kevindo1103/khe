@@ -217,6 +217,13 @@ Ngoài ra, bóc TẤT CẢ điều/khoản/mục CHÍNH THỨC thành danh sách
       ❌ Sai: gộp 5.1, 5.2 vào content của Điều 5 → mất hierarchy, mất khả năng cross-ref.
       ✅ Đúng: mỗi 5.1, 5.2 là clause RIÊNG level=2 với clause_path tương ứng.
 
+      ⚠️ NUM FORMAT TH-A: level=1 dùng "Điều X" (viết hoa đầu), level=2 dùng "X.Y":
+        ✅ Đúng: num="Điều 1", clause_path="1"   (level=1)
+        ✅ Đúng: num="1.1", clause_path="1.1"     (level=2)
+        ❌ Sai:  num="1", clause_path="1.1"        (num/path mâu thuẫn)
+        ❌ Sai:  num="ĐIỀU 1"                      (ALL CAPS — dùng "Điều 1")
+        ❌ Sai:  num="1", clause_path="1"           (bare number cho Điều — phải "Điều 1")
+
   TRƯỜNG HỢP B — HĐ KHÔNG dùng từ "Điều" (chỉ đánh số 1., 1.1, 2., ...):
     Nếu toàn bộ tài liệu KHÔNG có nhãn "Điều"/"ĐIỀU"/"Article"/"Chương"/"Mục"/"Phần" nào,
     thì các mục đánh số "1.", "2.", "1.1", "1.2" chính LÀ điều khoản → bóc TẤT CẢ.

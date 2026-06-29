@@ -29,7 +29,7 @@ import os
 import time
 
 from ..prompts import SYSTEM_GUARDRAIL, build_text_instruction
-from ..scan_detect import extract_embedded_text, is_scanned_pdf
+from ..scan_detect import extract_embedded_text, is_garbled_vietnamese, is_scanned_pdf
 from ..schemas import ContractExtractionLLMFull, ExtractionResult, TokenUsage
 from .base import cost_vnd, empty_result, to_result
 
@@ -92,7 +92,11 @@ class HybridOCRProvider:
 
         if not scanned:
             ocr_text = extract_embedded_text(image_bytes)
-            if not ocr_text:
+            if ocr_text and is_garbled_vietnamese(ocr_text):
+                ocr_warnings.append("pdftotext garbled Vietnamese — fallback to DocAI OCR")
+                ocr_text = None
+                scanned = True
+            elif not ocr_text:
                 scanned = True
 
         if scanned:
@@ -105,7 +109,7 @@ class HybridOCRProvider:
                     provider=self.name,
                     model=self.model,
                     latency_ms=latency_ms,
-                    warning=f"Document AI OCR failed: {type(exc).__name__}: {exc}",
+                    warning=" | ".join([*ocr_warnings, f"Document AI OCR failed: {type(exc).__name__}: {exc}"]),
                 )
 
         if not ocr_text or not ocr_text.strip():
