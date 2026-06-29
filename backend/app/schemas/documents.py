@@ -6,6 +6,16 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
+def _parse_json_list(v: Any) -> Any:
+    """Deserialize a JSON TEXT column to a Python list. Returns None on corrupt data."""
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return None
+    return v
+
+
 # ── Parties ──
 
 
@@ -128,15 +138,7 @@ class DocumentListItem(BaseModel):
     signature_pages: list[int] | None = None
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator("signature_pages", mode="before")
-    @classmethod
-    def _parse_signature_pages(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except (ValueError, TypeError):
-                return None
-        return v
+    _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
 
 
 class DocumentListOut(BaseModel):
@@ -187,15 +189,7 @@ class DocumentDetailOut(BaseModel):
     signature_pages: list[int] | None = None
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator("signature_pages", mode="before")
-    @classmethod
-    def _parse_signature_pages(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except (ValueError, TypeError):
-                return None
-        return v
+    _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
 
 
 # ── Document-level PATCH (#363 D-07 + #371 R8) ──
