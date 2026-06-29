@@ -4,5 +4,6 @@ pydantic>=2.0
 # Provider SDKs (imported lazily; only needed to actually call a provider):
 anthropic>=0.50.0
 google-genai>=1.0.0
-# DEC-049: pypdf for splitting large PDFs into chunks (DocAI sync API max 15 pages).
+# DEC-049: hybrid_ocr Document AI + pypdf for splitting large PDFs (DocAI sync API max 15 pages).
+google-cloud-documentai>=2.20.0
 pypdf>=4.0.0

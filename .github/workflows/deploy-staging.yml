@@ -53,6 +53,9 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           GOOGLE_SA_JSON_B64: ${{ secrets.GOOGLE_SA_JSON_B64 }}
+          DOCAI_PROJECT_ID: ${{ secrets.DOCAI_PROJECT_ID }}
+          DOCAI_LOCATION: ${{ secrets.DOCAI_LOCATION }}
+          DOCAI_PROCESSOR_ID: ${{ secrets.DOCAI_PROCESSOR_ID }}
         run: |
           if [ -z "$VPS_HOST" ]; then
             echo "⚠️  VPS_HOST secret not set — skipping VPS deploy (set secret to enable)"
@@ -99,6 +102,8 @@ jobs:
               "https://staging.khe.iceflow.cloud" \
               "/opt/khe/data-staging"
             [ -n "$GOOGLE_CREDS_LINE" ] && printf '%s\n' "$GOOGLE_CREDS_LINE"
+            [ -n "$DOCAI_PROJECT_ID" ] && printf 'DOCAI_PROJECT_ID=%s\nDOCAI_LOCATION=%s\nDOCAI_PROCESSOR_ID=%s\n' \
+              "$DOCAI_PROJECT_ID" "$DOCAI_LOCATION" "$DOCAI_PROCESSOR_ID"
           } | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
               "cat > /opt/khe/backend-staging/.env && chmod 600 /opt/khe/backend-staging/.env"
 
