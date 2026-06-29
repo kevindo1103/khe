@@ -186,16 +186,49 @@ không có nhãn điều khoản → ref = null. Nhưng KHÔNG để null chỉ 
 # Clause list spec (DEC-026): extracted in the SAME vision call, as the `clauses`
 # array of the response schema — no extra API call.
 _CLAUSES_SPEC = """\
-Ngoài ra, bóc TẤT CẢ điều/khoản/mục có đánh số thành danh sách "clauses":
+Ngoài ra, bóc TẤT CẢ điều/khoản/mục CHÍNH THỨC thành danh sách "clauses":
 - Mỗi phần tử gồm: num (số hiệu, vd "Điều 1", "Khoản 2.3", "Mục IV"), title (tiêu đề
   nếu có), content (TOÀN VĂN nội dung điều khoản, nguyên gốc),
   level (cấp bậc phân cấp: 1=Điều/Chương, 2=Khoản/Mục con, 3=Điểm/tiểu mục; null nếu không rõ),
   clause_path (đường dẫn số hiệu: "2" cho Điều 2, "2.1" cho Khoản 2.1, "2.1.1" cho Điểm 2.1.1;
   null nếu không đánh số theo cấp).
-- Bao gồm MỌI Điều / Khoản / Mục xuất hiện trong tài liệu, theo đúng thứ tự.
-- PHÂN CẤP: nếu "Khoản 2.3" nằm trong "Điều 2", ghi clause_path="2.3", level=2.
+
+⚠️ QUY TẮC 1 — PHÂN BIỆT PREAMBLE vs ĐIỀU KHOẢN:
+
+  TRƯỜNG HỢP A — HĐ CÓ từ khóa "Điều"/"ĐIỀU"/"Article"/"Chương"/"Mục"/"Phần":
+    Nếu tài liệu có BẤT KỲ điều khoản nào dùng nhãn "Điều X"/"ĐIỀU X"/"Article X"/
+    "Chương X"/"Mục X"/"Phần X", thì các đoạn đánh số thường "1.", "2.", "3." nằm TRƯỚC điều khoản
+    chính thức đầu tiên là PREAMBLE (phần mở đầu) — BỎ QUA, KHÔNG đưa vào clauses.
+    Dấu hiệu preamble: giới thiệu các bên ("Bên A là..."), xác nhận ("Bên A đã cung
+    cấp..."), đồng ý chung ("Các Bên đồng ý ký kết...").
+    Ví dụ sai: num="Điều 1" content="Bên A là Chủ đầu tư..." (đó là preamble)
+    Ví dụ đúng: num="Điều 1" title="ĐỊNH NGHĨA VÀ DIỄN GIẢI" content="1.1 Trong..."
+
+  TRƯỜNG HỢP B — HĐ KHÔNG dùng từ "Điều" (chỉ đánh số 1., 1.1, 2., ...):
+    Nếu toàn bộ tài liệu KHÔNG có nhãn "Điều"/"ĐIỀU"/"Article"/"Chương"/"Mục"/"Phần" nào,
+    thì các mục đánh số "1.", "2.", "1.1", "1.2" chính LÀ điều khoản → bóc TẤT CẢ.
+    PHÂN CẤP theo numbering pattern:
+      "6" hoặc "6." → level=1, clause_path="6", num="6"
+      "6.1" → level=2, clause_path="6.1", num="6.1" (con của "6")
+      items a., b., c. bên trong 6.1 → gộp vào content (QUY TẮC 2)
+    Ví dụ: mục "6. XỬ LÝ CHẬM THANH TOÁN" có 6.1, 6.2, 6.3:
+      → num="6", title="XỬ LÝ CHẬM THANH TOÁN...", level=1, clause_path="6"
+      → num="6.1", level=2, clause_path="6.1" (con của "6")
+
+⚠️ QUY TẮC 2 — LETTERED ITEMS (a, b, c, ...) KHÔNG PHẢI ĐIỀU:
+  Các mục đánh ký tự a), b), c), ..., k), l), m), n) bên trong một Điều/Khoản là
+  SUB-ITEMS (liệt kê con), KHÔNG PHẢI Điều riêng biệt.
+  → KHÔNG tạo clause riêng với num="Điều k" hay num="Điều l". Đó là lỗi.
+  → Gộp nội dung a), b), c)... vào content của clause CHA (Điều/Khoản chứa chúng).
+  Ví dụ: Điều 1, Khoản 1.1 có items a) đến n) → tất cả a-n nằm trong content của
+  clause num="Khoản 1.1" (hoặc "1.1"), KHÔNG tạo 14 clauses riêng.
+
+⚠️ QUY TẮC 3 — KHÔNG FLAT:
+  Clauses PHẢI có hierarchy đúng — KHÔNG để tất cả ở cùng level=1.
   Nếu parent node không ghi rõ (vd chỉ có "2.1" mà không có "Điều 2" riêng) → vẫn ghi
   clause_path="2.1" — Backend sẽ tổng hợp parent node.
+
+- Bao gồm MỌI điều khoản CHÍNH THỨC trong tài liệu, theo đúng thứ tự.
 - Nếu điều khoản không có tiêu đề, đặt title = null.
 - GIỮ NGUYÊN tiếng Việt — TUYỆT ĐỐI không dịch, không tóm tắt, không diễn giải (D-06).
 - Nếu tài liệu không có điều khoản đánh số, để clauses = [].
