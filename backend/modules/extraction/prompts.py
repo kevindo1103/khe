@@ -193,20 +193,23 @@ Ngoài ra, bóc TẤT CẢ điều/khoản/mục CHÍNH THỨC thành danh sách
   clause_path (đường dẫn số hiệu: "2" cho Điều 2, "2.1" cho Khoản 2.1, "2.1.1" cho Điểm 2.1.1;
   null nếu không đánh số theo cấp).
 
-⚠️ PHÂN BIỆT PREAMBLE vs ĐIỀU KHOẢN CHÍNH THỨC:
-  Nhiều HĐ Việt Nam có phần MỞ ĐẦU (preamble/recitals) đánh số "1.", "2.", "3." TRƯỚC
-  khi bắt đầu điều khoản chính thức "ĐIỀU 1", "ĐIỀU 2"... Các đoạn mở đầu này thường là:
-  - Giới thiệu các bên ("Bên A là...", "Bên B là...")
-  - Xác nhận ("Bên A đã cung cấp đầy đủ thông tin...")
-  - Đồng ý chung ("Các Bên đồng ý ký kết...")
-  → KHÔNG đưa các đoạn preamble/recitals vào "clauses". Chỉ bóc điều khoản có nhãn
-    CHÍNH THỨC: "Điều X", "ĐIỀU X", "Article X", "Chương X", "Mục X", "Phần X",
-    "Phụ lục X". Đoạn chỉ đánh số thường "1.", "2." mà KHÔNG có từ khóa "Điều/Chương/Mục"
-    VÀ nằm TRƯỚC điều khoản chính thức đầu tiên → là preamble, BỎ QUA.
-  Ví dụ sai: num="Điều 1" content="Bên A là Chủ đầu tư..." (đó là preamble, KHÔNG phải Điều 1)
-  Ví dụ đúng: num="Điều 1" title="ĐỊNH NGHĨA VÀ DIỄN GIẢI" content="1.1 Trong Thỏa thuận này..."
+⚠️ PHÂN BIỆT PREAMBLE vs ĐIỀU KHOẢN — 2 trường hợp:
 
-- Bao gồm MỌI Điều / Khoản / Mục CHÍNH THỨC trong tài liệu, theo đúng thứ tự.
+  TRƯỜNG HỢP 1 — HĐ CÓ từ khóa "Điều"/"ĐIỀU"/"Article"/"Chương":
+    Nếu tài liệu có BẤT KỲ điều khoản nào dùng nhãn "Điều X"/"ĐIỀU X"/"Article X"/
+    "Chương X", thì các đoạn đánh số thường "1.", "2.", "3." nằm TRƯỚC điều khoản
+    chính thức đầu tiên là PREAMBLE (phần mở đầu) — BỎ QUA, KHÔNG đưa vào clauses.
+    Dấu hiệu preamble: giới thiệu các bên ("Bên A là..."), xác nhận ("Bên A đã cung
+    cấp..."), đồng ý chung ("Các Bên đồng ý ký kết...").
+    Ví dụ sai: num="Điều 1" content="Bên A là Chủ đầu tư..." (đó là preamble)
+    Ví dụ đúng: num="Điều 1" title="ĐỊNH NGHĨA VÀ DIỄN GIẢI" content="1.1 Trong..."
+
+  TRƯỜNG HỢP 2 — HĐ KHÔNG dùng từ "Điều" (chỉ đánh số 1., 1.1, 2., ...):
+    Nếu toàn bộ tài liệu KHÔNG có nhãn "Điều"/"ĐIỀU"/"Article" nào, thì các mục
+    đánh số "1.", "2.", "1.1", "1.2" chính LÀ điều khoản → bóc TẤT CẢ vào clauses.
+    num="1" cho mục cấp 1, clause_path="1.1" cho mục con, v.v.
+
+- Bao gồm MỌI điều khoản CHÍNH THỨC trong tài liệu, theo đúng thứ tự.
 - PHÂN CẤP: nếu "Khoản 2.3" nằm trong "Điều 2", ghi clause_path="2.3", level=2.
   Nếu parent node không ghi rõ (vd chỉ có "2.1" mà không có "Điều 2" riêng) → vẫn ghi
   clause_path="2.1" — Backend sẽ tổng hợp parent node.
