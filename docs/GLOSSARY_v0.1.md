@@ -8,8 +8,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.6 |
-| Trạng thái | Fold cycle 5 — DEC-048 EPIC #300 production promote (ce48bbd) |
+| Phiên bản | v0.7 |
+| Trạng thái | Fold cycle 6 — DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production (PR #402) |
 | Owner | KHE_Docs |
 
 ---
@@ -22,6 +22,7 @@
 | v0.2 | 2026-06-18 | KHE_Docs | Fold DOCS_INBOX 13/14: add §G Strategy framework terms — Persona, JTBD, Golden Circle (Why-How-What), Dunford Positioning Thesis, B2B2B channel motion vs PLG, Obligation OS, Vertical wedge (DEC-018), Plan B contingency. |
 | v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Add §H Backend M0 vocab — CANONICAL_FIELDS (7), DocType enum. Add §I Document relationships — amends vs references_framework, last_writer_wins, source_doc_chain. Update §C Extraction — `get_extraction_provider`, `ExtractionUnavailable`, `is_error` vs `needs_review`. Add §J Tenant quota — FR-TN-01..03, doc_quota nullable, calendar reset, hard block 429. |
 | v0.4 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §A `Clause` entity — text nguyên gốc từ Document, distinct from Term/Field (structured). Per-tenant `clauses` table (SRS §5.9). Powers `search_clauses` tool (BRD FR-CQ-02). Rename old `Template / Clause` row → `Template (GĐ2)` to avoid name collision. |
+| v0.7 | 2026-06-29 | KHE_Docs | **Cycle 6 fold — DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production.** §A NEW Definition entity (R9), CrossReference entity (R10), Lifecycle Status enum (R8). §A Document/Party/Clause entities expanded. §C +hybrid_ocr provider (DEC-049). §N NEW DEC-050 vocab section: title/contract_number, lifecycle_status state machine, clause_path hierarchy, party.is_self + aliases, annex relationship, Definition + CrossReference, signature flags, admin extraction metrics, processing pipeline stages. |
 | v0.6 | 2026-06-27 | KHE_Docs | **Cycle 5 fold — DEC-048 EPIC #300 production.** §A Obligation rewrite expanded (fulfilled_at G1 anchor, awaiting_confirmation, source_clause_num, derived_from, source P1). §A NEW ClauseEditEvent (§13 addendum) + Evidence Document. §M NEW Fulfillment + Cascade Chain section (DEC-048 vocab: fulfillment capture, propagate_obligation_done, cascade-past, awaiting_confirmation, anchor=fulfilled_at G1, P1 merge rule, derive delete path-2 guard, waiting_trigger + _detect_anchor_field, obligation_fulfillment purpose enum, evidence_attached). |
 | v0.5 | 2026-06-20 | KHE_Docs | **Cycle 4 fold.** §A: Obligation entity rewritten (8 categories + 5 cadences + direction + obligor + status enum correction). NEW Quyền lợi sub-concept. Party +role_label + self-party. §C augmented: 2-tier extraction schema (Claude lean / Gemini full), PaymentScheduleItem, PartyItem, NamedExtractedField, DOC_TYPE_GROUPS enum 11, BASE/V2_UNIVERSAL/TYPE_SPECIFIC field tiers. §K NEW Direction model (DEC-030) — direction, obligor, legal_name, tenant_profile, self-party match. §L NEW Chat tool surface evolved (value_contains, party_filter, doc_type_filter, due_from/to, truncation_hint, today's-date injection, _is_negative_answer, NĐ 13 compliance debt). §B Tenant +tenant_profile separate model row. |
 
@@ -79,6 +80,54 @@ Snapshot event khi SME sửa clause. Fields: `clause_id`, `clause_num`, `origina
 
 ### Evidence Document (DEC-048)
 Document upload với `is_evidence=true` — biên bản nghiệm thu, hóa đơn thanh toán, biên nhận đính kèm khi SME ghi nhận hoàn thành nghĩa vụ. **Server-side skip `provider.extract()`** (P2 rule). `contains_personal_data` default `true` (conservative). DEC-039 firm gate: firm portal chỉ thấy metadata (file_name + created_at), không thấy binary. Link với obligation qua `Obligation.evidence_doc_ids[]`.
+
+### Document (DEC-050 R1/R6/R8 expansion)
+Trên top of DEC-026 (clauses) + DEC-048 (is_evidence), DEC-050 thêm dense business fields lên `documents` table (denormalized cho fast UI rendering):
+- `title` + `contract_number` (R1) — bóc từ `tieu_de_hd`/`so_hop_dong`, user-editable D-07
+- `signing_date` + `commencement_date` (R6) — bóc từ `ngay_ky`/`ngay_khai_truong`, ISO-normalized
+- `contract_duration` + `lifecycle_status` (R8 — xem entry riêng)
+- `has_signature` + `signature_pages` (R5b)
+- `extraction_model`/`latency_ms`/`warnings` (admin metrics, cycle 6)
+- `processing_stage`/`progress` (extraction polling, cycle 6)
+
+### Definition (DEC-050 R9 — NEW entity)
+Glossary entry từ section "Định nghĩa" của Document. Per-tenant `definitions` table (`tenant_027` migration). Fields: `id`, `document_id`, `clause_id` NULLABLE, `term`, `definition`, `original_term` (D-07 first-edit snapshot — pattern mirror `clauses.original_content`). CRUD endpoints: `GET/PATCH/DELETE /documents/{id}/definitions[/{def_id}]`. Event log mỗi edit/delete với old/new per field. Rollup `definition_count` trên `DocumentListItem` + `DocumentDetailOut`.
+
+### CrossReference (DEC-050 R10 — NEW entity)
+Tham chiếu nội bộ trong Document (`"Điều 5"`, `"Khoản 2 Điều 5"`, `"Phụ lục A"`, etc.). Service `app/services/cross_ref.py` (PR #392) detect VN legal patterns post-extraction. Resolve intra-doc clause refs + appendix-via-annex (qua `document_relationships`). Orphan flagged khi target không tồn tại. Field shape: `source_clause`, `target_ref` (raw), `target_type` (`clause` / `sub_clause` / `appendix`), `resolved`, `target_clause_id` (NULL khi orphan). Endpoints: `GET /documents/{id}/cross-refs`, `POST /documents/{id}/cross-refs/resolve` (re-run resolver). FE inline clickable rendering + `OrphanRefPanel` (PR #395).
+
+### Lifecycle Status (DEC-050 R8 enum)
+`documents.lifecycle_status` 5-state machine:
+- **`active`** — đang hiệu lực (within term, not expired)
+- **`expiring`** — sắp hết hạn (≤30 ngày tới `expiry_date`)
+- **`expired`** — đã quá hạn
+- **`settled`** — hoàn thành / kết thúc (manual override)
+- **`suspended`** — tạm dừng (manual override)
+
+Backend `lifecycle.py::derive_lifecycle_status()` compute 3 đầu auto từ `expiry_date` + `contract_term`. Last 2 = user manual flip qua UI. FE badge per `mockup_document_detail_v3.jsx` (5 colors).
+
+### Annex relationship type (DEC-050 R4 extends DEC-019)
+Third value trong `document_relationships.relationship_type` enum (migration `tenant_024` PR #385). Distinct from `amends`:
+- `amends` requires keyword (sửa đổi / bổ sung / thay thế) — triggers `resolve_chain` overwrite
+- `annex` = phụ lục độc lập đính kèm (alphanumeric capture với negative lookahead) — KHÔNG overwrite, excluded từ chain resolve filter
+
+### Hybrid OCR provider (DEC-049, KHE_AI PR #341)
+4th provider trong extraction `_REGISTRY`: `hybrid_ocr`. 2-pass: (1) `scan_detect.is_scanned_pdf()` heuristic (pdftotext < 50 chars/page → scanned); (2) Document AI OCR cho scanned (gated `GOOGLE_APPLICATION_CREDENTIALS`) hoặc `extract_embedded_text()` cho digital → Gemini Flash text-mode (`build_text_instruction()` prompt variant) → `ContractExtractionLLMFull`. System deps VPS: `poppler-utils`. Currently opt-in only (`prefer="hybrid_ocr"`); auto-route default chờ Kevin ratify.
+
+### `clause_path` (DEC-050 R3)
+Dot-separated hierarchy path trên `clauses.clause_path` (vd `"2.1.3"` = Điều 2, Khoản 1, Mục 3). Synthesized post-extraction bởi `clause_hierarchy.py` regex service (NOT LLM). Cho phép navigate tree, render indent UI, deep-link clause.
+
+### Party aliases + `is_self` (DEC-050 R2)
+`parties.aliases` JSON array — tên gọi khác / viết tắt (vd `["CTCP TTCR", "Tran Thai", "Trần Thái"]`). `is_self` BOOL — flipped `true` sau DEC-030 `legal_name` auto-match success. Cho phép chat tool `party_filter` match qua alias + render UI rõ "bên nào là bạn".
+
+### Signature flags (DEC-050 R5b)
+`documents.has_signature` BOOL NULLABLE + `signature_pages` JSON list[int]. NULL = pre-migration docs (UI hide badge). FE `SignatureBadge`: green "Đã ký (trang X, Y)" / yellow "Chưa ký" (PR #401).
+
+### Admin extraction metrics (cycle 6, Backend PR #350)
+Super-admin observability surface. Schema cols on `documents` (`tenant_019`): `extraction_model`, `extraction_latency_ms`, `extraction_warnings`. Endpoints `GET /admin/extraction-metrics` + `summary`. Gated `require_superadmin` (`SUPERADMIN_USERS` env-var allowlist, PM Option B no DB migration).
+
+### Processing pipeline stages (cycle 6, Backend PR #374)
+`documents.processing_stage` enum + `processing_progress` integer (`tenant_020`). 4 checkpoints: `ocr` 30% → `llm` 60% → `saving` 90% → `done` 100%. `_mark_failed()` reset → 0 + stage `failed`. FE polls `DocumentListItem`/`DetailOut` cho progress UX.
 
 ### Template (GĐ2)
 Mẫu HĐ do firm thẩm định, có version. *Định nghĩa sẵn nhưng chưa kích hoạt ở MVP — mở GĐ2 (lawyer-in-loop drafting).*
@@ -439,5 +488,7 @@ KHE_Compliance §A.1 closed-set purpose enum value (PM #307 approve). Storage-on
 Logged khi upload với `is_evidence=true`. Payload: `{document_id, contains_personal_data, purpose=obligation_fulfillment}`. DEC-039 §G.2: firm portal visibility metadata-only cho evidence docs (hard condition, blocks firm portal go-live).
 
 ---
+
+*Hết v0.7 — cycle 6 DEC-049 hybrid OCR + DEC-050 R1-R10 fold. Bước kế tiếp: thêm UI terms khi Frontend session spawn, CONTRACT_LOGIC_Khe.md role conventions khi lawyer partner kickoff Sprint 6.*
 
 *Hết v0.6 — cycle 5 DEC-048 fold. Bước kế tiếp: thêm UI terms khi Frontend session spawn, CONTRACT_LOGIC_Khe.md role conventions khi lawyer partner kickoff.*
