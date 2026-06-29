@@ -204,6 +204,19 @@ Ngoài ra, bóc TẤT CẢ điều/khoản/mục CHÍNH THỨC thành danh sách
     Ví dụ sai: num="Điều 1" content="Bên A là Chủ đầu tư..." (đó là preamble)
     Ví dụ đúng: num="Điều 1" title="ĐỊNH NGHĨA VÀ DIỄN GIẢI" content="1.1 Trong..."
 
+    ⚠️ PHÂN CẤP TH-A — sub-clauses (Khoản) PHẢI tách riêng, KHÔNG gộp vào content:
+      Heading "Điều 5. MỤC ĐÍCH KÝ QUỸ":
+      → num="Điều 5", title="MỤC ĐÍCH KÝ QUỸ", level=1, clause_path="5"
+
+      Sub "5.1. Tiền Ký quỹ sẽ được Bên A giữ lại..."
+      → num="5.1", title=null, level=2, clause_path="5.1"
+
+      Sub "5.2. Bên B cam kết..."
+      → num="5.2", title=null, level=2, clause_path="5.2"
+
+      ❌ Sai: gộp 5.1, 5.2 vào content của Điều 5 → mất hierarchy, mất khả năng cross-ref.
+      ✅ Đúng: mỗi 5.1, 5.2 là clause RIÊNG level=2 với clause_path tương ứng.
+
   TRƯỜNG HỢP B — HĐ KHÔNG dùng từ "Điều" (chỉ đánh số 1., 1.1, 2., ...):
     Nếu toàn bộ tài liệu KHÔNG có nhãn "Điều"/"ĐIỀU"/"Article"/"Chương"/"Mục"/"Phần" nào,
     thì các mục đánh số "1.", "2.", "1.1", "1.2" chính LÀ điều khoản → bóc TẤT CẢ.
