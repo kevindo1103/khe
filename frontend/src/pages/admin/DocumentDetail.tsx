@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button, Card, Badge, Input, ConfidenceMeter, Toast, Modal, EmptyState, LifecycleBadge } from '../../components';
 import type { ToastKind } from '../../components/Toast';
 import { apiFetch } from '../../lib/api';
@@ -18,6 +18,9 @@ import type {
   DefinitionOut,
   DefinitionListOut,
   DefinitionPatchOut,
+  CrossRefOut,
+  CrossRefListOut,
+  CrossRefResolveOut,
 } from '../../types/documents';
 import type { ObligationOut, ObligationPatchOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
@@ -352,17 +355,149 @@ function CompletenessBanner({ doc }: { doc: DocumentDetailOut }) {
   return null;
 }
 
+// ── #373 R10: Cross-ref inline rendering ─────────────────────────────────────
+
+function renderClauseContent(
+  content: string,
+  clauseRefs: CrossRefOut[],
+  onNavigateDoc?: (docId: number) => void,
+): React.ReactNode {
+  if (clauseRefs.length === 0) return content;
+
+  type Segment = { text: string; ref?: CrossRefOut };
+  const segments: Segment[] = [];
+  let remaining = content;
+
+  const sortedRefs = [...clauseRefs].sort((a, b) => {
+    const posA = content.indexOf(a.ref_text);
+    const posB = content.indexOf(b.ref_text);
+    return (posA === -1 ? Infinity : posA) - (posB === -1 ? Infinity : posB);
+  });
+
+  for (const ref of sortedRefs) {
+    const idx = remaining.indexOf(ref.ref_text);
+    if (idx === -1) continue;
+    if (idx > 0) segments.push({ text: remaining.slice(0, idx) });
+    segments.push({ text: ref.ref_text, ref });
+    remaining = remaining.slice(idx + ref.ref_text.length);
+  }
+  if (remaining) segments.push({ text: remaining });
+
+  return (
+    <>
+      {segments.map((seg, i) => {
+        if (!seg.ref) return <span key={i}>{seg.text}</span>;
+        if (seg.ref.is_orphan) {
+          return (
+            <span
+              key={i}
+              className="text-danger font-medium underline decoration-wavy cursor-default"
+              title={`Tham chiếu không tìm thấy: ${seg.ref.ref_text}`}
+            >
+              {seg.text}
+              <span className="text-xs ml-0.5" aria-hidden="true">⚠</span>
+            </span>
+          );
+        }
+        if (seg.ref.ref_type === 'appendix' && seg.ref.target_doc_id != null) {
+          return (
+            <button
+              key={i}
+              type="button"
+              className="text-primary font-medium underline cursor-pointer hover:text-primary-hover"
+              onClick={() => onNavigateDoc?.(seg.ref!.target_doc_id!)}
+              title={`Mở phụ lục (tài liệu #${seg.ref.target_doc_id})`}
+            >
+              {seg.text}
+            </button>
+          );
+        }
+        return (
+          <button
+            key={i}
+            type="button"
+            className="text-primary font-medium underline cursor-pointer hover:text-primary-hover"
+            onClick={() => {
+              const el = document.getElementById(`clause-${seg.ref!.target_clause_id}`);
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+          >
+            {seg.text}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+// ── #373 R10: Orphan reference warning panel ──────────────────────────────────
+function OrphanRefPanel({
+  orphanRefs,
+  clauses,
+  onResolve,
+  resolving,
+}: {
+  orphanRefs: CrossRefOut[];
+  clauses: ClauseOut[];
+  onResolve: () => void;
+  resolving: boolean;
+}) {
+  if (orphanRefs.length === 0) return null;
+  const clauseMap = new Map(clauses.map((c) => [c.id, c]));
+  return (
+    <div className="mb-4 rounded-lg bg-danger-soft border border-danger/30 p-4">
+      <div className="flex items-start gap-3">
+        <span className="text-danger text-lg shrink-0" aria-hidden="true">⚠</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-ink mb-2">
+            {orphanRefs.length} tham chiếu không tìm thấy
+          </div>
+          <div className="space-y-1">
+            {orphanRefs.map((ref) => {
+              const srcClause = clauseMap.get(ref.source_clause_id);
+              const srcLabel = srcClause
+                ? (srcClause.title || (srcClause.clause_num ? `Điều ${srcClause.clause_num}` : `#${srcClause.id}`))
+                : `#${ref.source_clause_id}`;
+              return (
+                <div key={ref.id} className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-danger font-medium">{ref.ref_text}</span>
+                  <span className="text-ink-muted">trong {srcLabel}</span>
+                  <span className="text-ink-subtle">— có thể phụ lục chưa được tải lên hoặc không tồn tại</span>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="mt-3 text-2xs text-danger hover:underline disabled:opacity-50"
+            onClick={onResolve}
+            disabled={resolving}
+          >
+            {resolving ? 'Đang phân giải lại…' : 'Thử phân giải lại →'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Clause accordion item (Phase 2 — inline edit, D-07) ─────────────────────
 function ClauseItem({
   clause,
   defaultOpen,
   docId,
   onSaved,
+  crossRefs,
+  onNavigateDoc,
 }: {
   clause: ClauseOut;
   defaultOpen: boolean;
   docId: number;
   onSaved: (updated: ClauseOut) => void;
+  crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -407,9 +542,10 @@ function ClauseItem({
 
   const displayContent =
     showOriginal && clause.original_content ? clause.original_content : clause.content;
+  const clauseRefs = (crossRefs ?? []).filter((r) => r.source_clause_id === clause.id);
 
   return (
-    <div className="border-b border-border last:border-0">
+    <div id={`clause-${clause.id}`} className="border-b border-border last:border-0">
       <button
         className="w-full flex items-center justify-between py-3 text-left gap-2 hover:bg-surface-hover transition-colors"
         onClick={() => !editing && setOpen((v) => !v)}
@@ -453,7 +589,7 @@ function ClauseItem({
           ) : (
             <div className="flex flex-col gap-1">
               <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
-                {displayContent}
+                {renderClauseContent(displayContent, clauseRefs, onNavigateDoc)}
               </p>
               <div className="flex items-center gap-3 pt-1 flex-wrap">
                 {clause.original_content && (
@@ -961,11 +1097,15 @@ function ClauseTreeItem({
   depth,
   docId,
   onSaved,
+  crossRefs,
+  onNavigateDoc,
 }: {
   node: ClauseNode;
   depth: number;
   docId: number;
   onSaved: (updated: ClauseOut) => void;
+  crossRefs?: CrossRefOut[];
+  onNavigateDoc?: (docId: number) => void;
 }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [editing, setEditing] = useState(false);
@@ -1001,9 +1141,10 @@ function ClauseTreeItem({
   };
 
   const displayContent = showOriginal && node.original_content ? node.original_content : node.content;
+  const nodeRefs = (crossRefs ?? []).filter((r) => r.source_clause_id === node.id);
 
   return (
-    <div className={depth > 0 ? 'border-l border-border ml-3' : ''}>
+    <div id={`clause-${node.id}`} className={depth > 0 ? 'border-l border-border ml-3' : ''}>
       <div style={{ paddingLeft: depth * 24 }}>
         <button
           className="w-full flex items-center justify-between py-2 px-1 text-left gap-2 hover:bg-surface-alt transition-colors"
@@ -1050,7 +1191,9 @@ function ClauseTreeItem({
               </div>
             ) : (
               <div className="flex flex-col gap-1">
-                <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">{displayContent}</p>
+                <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+                  {renderClauseContent(displayContent, nodeRefs, onNavigateDoc)}
+                </p>
                 <div className="flex items-center gap-3 pt-1 flex-wrap">
                   {node.original_content && (
                     <button
@@ -1086,6 +1229,8 @@ function ClauseTreeItem({
                 depth={depth + 1}
                 docId={docId}
                 onSaved={onSaved}
+                crossRefs={crossRefs}
+                onNavigateDoc={onNavigateDoc}
               />
             ))}
           </div>
@@ -1244,6 +1389,11 @@ function TabClauses({
   onReRead,
   definitions,
   onDefinitionSaved,
+  crossRefs,
+  orphanRefs,
+  onResolveRefs,
+  resolvingRefs,
+  onNavigateDoc,
 }: {
   clauses: ClauseOut[];
   loading: boolean;
@@ -1257,6 +1407,11 @@ function TabClauses({
   onReRead: () => void;
   definitions: DefinitionOut[];
   onDefinitionSaved: (updated: DefinitionOut) => void;
+  crossRefs: CrossRefOut[];
+  orphanRefs: CrossRefOut[];
+  onResolveRefs: () => void;
+  resolvingRefs: boolean;
+  onNavigateDoc: (docId: number) => void;
 }) {
   if (loading) {
     return (
@@ -1288,6 +1443,12 @@ function TabClauses({
     return (
       <div>
         {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
+        <OrphanRefPanel
+          orphanRefs={orphanRefs}
+          clauses={clauses}
+          onResolve={onResolveRefs}
+          resolving={resolvingRefs}
+        />
         <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
         <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
         <Card>
@@ -1298,6 +1459,8 @@ function TabClauses({
               depth={0}
               docId={docId}
               onSaved={onClauseSaved}
+              crossRefs={crossRefs}
+              onNavigateDoc={onNavigateDoc}
             />
           ))}
         </Card>
@@ -1309,6 +1472,12 @@ function TabClauses({
   return (
     <div>
       {hasEdited && <ReReadBanner onReRead={onReRead} reReading={reReading} />}
+      <OrphanRefPanel
+        orphanRefs={orphanRefs}
+        clauses={clauses}
+        onResolve={onResolveRefs}
+        resolving={resolvingRefs}
+      />
       <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
       <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
       <Card>
@@ -1319,6 +1488,8 @@ function TabClauses({
             defaultOpen={defaultOpen}
             docId={docId}
             onSaved={onClauseSaved}
+            crossRefs={crossRefs}
+            onNavigateDoc={onNavigateDoc}
           />
         ))}
       </Card>
@@ -1390,6 +1561,7 @@ function TabParties({ parties }: { parties?: PartyOut[] }) {
 export default function DocumentDetail() {
   const { id } = useParams<{ id: string }>();
   const docId = Number(id);
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [doc, setDoc] = useState<DocumentDetailOut | null>(null);
@@ -1412,6 +1584,9 @@ export default function DocumentDetail() {
   const [clausesError, setClausesError] = useState(false);
   const [definitions, setDefinitions] = useState<DefinitionOut[]>([]);
   const [definitionsLoaded, setDefinitionsLoaded] = useState(false);
+  const [crossRefs, setCrossRefs] = useState<CrossRefOut[]>([]);
+  const [crossRefsLoaded, setCrossRefsLoaded] = useState(false);
+  const [resolvingRefs, setResolvingRefs] = useState(false);
   const [fulfillTarget, setFulfillTarget] = useState<ObligationOut | null>(null);
   const [fulfilling, setFulfilling] = useState(false);
   const [reReading, setReReading] = useState(false);
@@ -1466,6 +1641,29 @@ export default function DocumentDetail() {
     }
   }, [docId, definitionsLoaded]);
 
+  const loadCrossRefs = useCallback(async () => {
+    if (!docId || crossRefsLoaded) return;
+    try {
+      const res = await apiFetch<CrossRefListOut>(`/documents/${docId}/cross-refs`);
+      setCrossRefs(res.refs);
+      setCrossRefsLoaded(true);
+    } catch { /* graceful — no cross-refs = empty */ }
+  }, [docId, crossRefsLoaded]);
+
+  const resolveRefs = useCallback(async () => {
+    if (!docId) return;
+    setResolvingRefs(true);
+    try {
+      await apiFetch<CrossRefResolveOut>(`/documents/${docId}/cross-refs/resolve`, { method: 'POST' });
+      const res = await apiFetch<CrossRefListOut>(`/documents/${docId}/cross-refs`);
+      setCrossRefs(res.refs);
+    } catch (err) {
+      showToast((err as ApiError).message || 'Phân giải lại thất bại', 'error');
+    } finally {
+      setResolvingRefs(false);
+    }
+  }, [docId]);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -1492,8 +1690,9 @@ export default function DocumentDetail() {
     if (activeTab === 'clauses') {
       loadClauses();
       loadDefinitions();
+      loadCrossRefs();
     }
-  }, [activeTab, loadClauses, loadDefinitions]);
+  }, [activeTab, loadClauses, loadDefinitions, loadCrossRefs]);
 
   const startEdit = (term: TermOut) => {
     setEditingTermId(term.id);
@@ -1922,6 +2121,11 @@ export default function DocumentDetail() {
               onReRead={triggerReRead}
               definitions={definitions}
               onDefinitionSaved={saveDefinition}
+              crossRefs={crossRefs}
+              orphanRefs={crossRefs.filter((r) => r.is_orphan)}
+              onResolveRefs={resolveRefs}
+              resolvingRefs={resolvingRefs}
+              onNavigateDoc={(targetDocId) => navigate(`/documents/${targetDocId}`)}
             />
           )}
 
