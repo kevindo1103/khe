@@ -262,6 +262,8 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 title=clause_item.title,
                 content=clause_item.content,
                 page_num=None,
+                level=clause_item.level,
+                clause_path=clause_item.clause_path,
             )
             db.add(c)
             new_clauses.append(c)

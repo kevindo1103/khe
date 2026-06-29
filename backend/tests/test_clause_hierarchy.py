@@ -53,10 +53,22 @@ def _make_mock_result(clauses_data=None):
     result.fields = {}
     result.obligation_schedule = []
     result.parties = []
+    result.defined_terms = []
+    result.cross_references = []
+    result.has_signature = False
+    result.signature_pages = []
 
     clause_items = []
-    for num, title, content in (clauses_data or []):
+    for item in (clauses_data or []):
         ci = MagicMock()
+        if len(item) == 3:
+            num, title, content = item
+            ci.level = None
+            ci.clause_path = None
+        else:
+            num, title, content, level, clause_path = item
+            ci.level = level
+            ci.clause_path = clause_path
         ci.num = num
         ci.title = title
         ci.content = content
@@ -317,6 +329,21 @@ def test_extraction_synthesizes_missing_parent(test_tenant, tmp_path):
     assert "3" in by_path, "Stub parent '3' should be synthesized"
     assert by_path["3"]["content"] == "(tổng hợp từ mục con)"
     assert by_path["3.2"]["parent_id"] == by_path["3"]["id"]
+
+
+def test_extraction_prefers_llm_hierarchy(test_tenant, tmp_path):
+    """LLM-provided level/clause_path are preserved, not overwritten by regex."""
+    clauses_data = [
+        ("Điều 5", "Thanh toán", "Nội dung điều 5", 1, "5"),
+        ("Khoản 5.1", "Chi tiết", "Nội dung 5.1", 2, "5.1"),
+    ]
+    result = _make_mock_result(clauses_data)
+    clauses, _ = _run_mock_extraction(test_tenant, tmp_path, result)
+
+    by_path = {c["clause_path"]: c for c in clauses if c["clause_path"]}
+    assert by_path["5"]["level"] == 1
+    assert by_path["5.1"]["level"] == 2
+    assert by_path["5.1"]["parent_id"] == by_path["5"]["id"]
 
 
 def test_extraction_flat_clauses_null_hierarchy(test_tenant, tmp_path):

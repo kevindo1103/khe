@@ -74,12 +74,16 @@ def build_clause_hierarchy(clauses: list, db) -> None:
         return
 
     # Step 1: parse paths for all existing clauses.
+    # LLM may have already set clause_path/level — prefer those over regex inference.
     for clause in clauses:
-        path = _parse_path(clause.clause_num)
-        if path is not None:
-            clause.clause_path = path
-            clause.level = _level_from_path(path)
-        # else: leave clause_path/level as None (unrecognised numbering)
+        if clause.clause_path is not None:
+            if clause.level is None:
+                clause.level = _level_from_path(clause.clause_path)
+        else:
+            path = _parse_path(clause.clause_num)
+            if path is not None:
+                clause.clause_path = path
+                clause.level = _level_from_path(path)
 
     # Step 2: build a path→clause lookup (existing rows only, first-wins on collision).
     path_map: dict[str, Clause] = {}
