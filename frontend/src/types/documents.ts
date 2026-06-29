@@ -209,3 +209,31 @@ export interface ReReadOut {
   clauses_checked: number;
   diffs: ReReadDiff[];
 }
+
+// #373 R10 — GET /documents/{id}/cross-refs
+export interface CrossRefOut {
+  id: number;
+  source_clause_id: number;
+  ref_text: string;
+  ref_type: string;              // "clause" | "sub_clause" | "appendix" | "document"
+  target_clause_id: number | null;
+  target_clause_path: string | null;
+  target_doc_id: number | null;
+  is_orphan: boolean;
+}
+
+export interface CrossRefListOut {
+  document_id: number;
+  total_refs: number;
+  resolved: number;
+  orphans: number;
+  refs: CrossRefOut[];
+}
+
+// POST /documents/{id}/cross-refs/resolve
+export interface CrossRefResolveOut {
+  document_id: number;
+  total_refs: number;
+  resolved: number;
+  orphans: number;
+}
