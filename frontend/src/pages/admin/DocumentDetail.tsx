@@ -105,6 +105,24 @@ function DirectionBadge({ direction }: { direction: ObligationOut['direction'] }
   );
 }
 
+// ── #368 R5b: Signature presence badge ───────────────────────────────────────
+function SignatureBadge({ hasSig, pages }: { hasSig?: boolean | null; pages?: number[] | null }) {
+  if (hasSig == null) return null;
+  if (hasSig) {
+    const pageText = pages && pages.length > 0 ? `trang ${pages.join(', ')}` : '';
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-soft text-success">
+        Đã ký{pageText && <span className="text-2xs opacity-75"> ({pageText})</span>}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning-soft text-warning">
+      Chưa ký
+    </span>
+  );
+}
+
 // ── Due date display ─────────────────────────────────────────────────────────
 function ObligationDue({ ob }: { ob: ObligationOut }) {
   if (ob.status === 'waiting_trigger') {
@@ -2052,6 +2070,7 @@ export default function DocumentDetail() {
                     {STATUS_LABEL[doc.status] || doc.status}
                   </Badge>
                   <LifecycleBadge status={doc.lifecycle_status} />
+                  <SignatureBadge hasSig={doc.has_signature} pages={doc.signature_pages} />
                   {doc.doc_type && (
                     <span className="text-xs text-ink-muted">
                       {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}
