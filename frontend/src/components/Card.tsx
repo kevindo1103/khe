@@ -6,11 +6,15 @@ interface CardProps {
   footer?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  testId?: string;
 }
 
-export function Card({ title, subtitle, footer, children, className = '' }: CardProps) {
+export function Card({ title, subtitle, footer, children, className = '', testId }: CardProps) {
   return (
-    <div className={`bg-surface border border-border rounded-lg shadow-sm overflow-hidden ${className}`}>
+    <div
+      data-testid={testId}
+      className={`bg-surface border border-border rounded-lg shadow-sm overflow-hidden ${className}`}
+    >
       {(title || subtitle) && (
         <div className="px-5 py-4 border-b border-border">
           {title && <div className="text-lg font-semibold text-ink">{title}</div>}

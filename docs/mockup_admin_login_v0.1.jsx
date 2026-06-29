@@ -8,7 +8,7 @@
  *           avoid the "schema-vs-body shape drift" bug pattern (CLAUDE.md).
  */
 import React, { useState } from "react";
-import { tokens as t, Button, Input, Card } from "./mockup_design_system_v0.1.jsx";
+import { tokens as t, Button, Input, Card } from "./mockup_design_system_v0.2.jsx";
 
 export default function AdminLogin() {
   const [form, setForm] = useState({ tenant_id: "", username: "", password: "" });

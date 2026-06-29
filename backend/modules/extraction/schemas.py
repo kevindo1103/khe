@@ -48,10 +48,15 @@ BASE_CANONICAL_FIELDS: tuple[str, ...] = (
 )
 V2_UNIVERSAL_FIELDS: tuple[str, ...] = (
     "doc_type_group",         # enum DOC_TYPE_GROUPS — classified first
+    "tieu_de_hd",             # R1: contract title (heading from doc body, not filename)
+    "so_hop_dong",            # R1: contract number (pattern "số XX/YY/ZZZZ")
     "ngay_ky",                # signing date (≠ effective date — common gap)
+    "ngay_khai_truong",       # R6: commencement/opening date (≠ effective date)
     "tien_dat_coc",           # deposit / guarantee amount
     "thoi_han_bao_hanh",      # warranty period
     "thoi_han_thong_bao",     # notice period before termination
+    "tieu_de_hd",             # R1 (#363): contract title from doc body heading
+    "so_hop_dong",            # R1 (#363): contract number e.g. "XX/2025/HDMB"
 )
 # Full universal set (12) — what the terms layer + Gemini Full schema bind to.
 CANONICAL_FIELDS: tuple[str, ...] = (*BASE_CANONICAL_FIELDS, *V2_UNIVERSAL_FIELDS)
@@ -164,15 +169,46 @@ class ExtractedField(BaseModel):
         return _clamp_confidence(v)
 
 
-class NamedExtractedField(ExtractedField):
+class AnchoredField(ExtractedField):
+    """An ExtractedField that also records WHERE on the source document the value was
+    read — the trust anchor for Stage 3 ref-navigation (FR-EX-05, #230).
+
+    Gemini-only: these slots live on the Full schema, NOT the lean Claude base, to stay
+    within Claude's structured-output grammar budget ("Schema is too complex"). The
+    merged Backend contract (#217) persists `page_num`/`ref`/`bbox` via getattr, so a
+    plain ExtractedField (Claude fallback) degrades gracefully to NULL anchors → the FE
+    shows plain text instead of a dead ref-link.
+
+    READ-ONLY provenance (D-06): page/ref describe where the value sits; they never
+    generate or alter legal content. Both are null when the model can't place the value
+    (D-08 — no fabricated locations)."""
+
+    page_num: Optional[int] = Field(
+        default=None,
+        description="Số trang (BẮT ĐẦU TỪ 1) nơi giá trị xuất hiện. null nếu không xác định được (D-08).",
+    )
+    ref: Optional[str] = Field(
+        default=None,
+        description='Nhãn điều/khoản/mục nơi giá trị xuất hiện, vd "Điều 8", "Khoản 2.3". null nếu không có.',
+    )
+    # `bbox` ([x0,y0,x1,y1] normalized 0..1) DEFERRED (#230): a list[float] on every field
+    # expands Gemini's grammar state budget (the "too many states" failure mode). Populate
+    # only after the page_num/ref grammar impact is measured on a live run. The Backend
+    # column already exists (#217) → adding it later is forward-compatible, no migration.
+
+
+class NamedExtractedField(AnchoredField):
     """An ExtractedField that names its own canonical key (DEC-029).
 
     Type-specific fields are emitted as ONE list of these instead of ~27 fixed object
     properties — a single array is far cheaper in Gemini's grammar state budget than
     dozens of optional bounded objects. `key` must be one of ALL_TYPE_SPECIFIC_FIELDS;
-    unknown keys are dropped on mapping (no fabricated field names)."""
+    unknown keys are dropped on mapping (no fabricated field names).
+
+    Carries source anchors (page_num/ref) like every Gemini-path field (#230)."""
 
     key: str = Field(description="Canonical key của trường, vd 'luong_co_ban'.")
+
 
 
 class TokenUsage(BaseModel):
@@ -185,7 +221,7 @@ class TokenUsage(BaseModel):
 
 
 class ClauseItem(BaseModel):
-    """One numbered clause/article lifted verbatim from the document (DEC-026).
+    """One numbered clause/article lifted verbatim from the document (DEC-026 + R3 #365).
 
     Feeds the `clauses` table (Backend #99) so chat function-calling has full clause
     text. READ-ONLY like every other extracted value (D-06): `content` is the clause
@@ -201,6 +237,14 @@ class ClauseItem(BaseModel):
     )
     content: str = Field(
         description="Toàn văn điều khoản, giữ nguyên tiếng Việt — KHÔNG dịch/tóm tắt."
+    )
+    level: Optional[int] = Field(
+        default=None,
+        description="Cấp bậc phân cấp: 1=Điều/Chương, 2=Khoản/Mục, 3=Điểm/tiểu mục. null nếu không xác định.",
+    )
+    clause_path: Optional[str] = Field(
+        default=None,
+        description='Đường dẫn phân cấp số hiệu, vd "2", "2.1", "2.1.1". null nếu không đánh số theo cấp.',
     )
 
 
@@ -295,10 +339,20 @@ class ObligationScheduleItem(BaseModel):
         default=None,
         description='Số ngày trễ sau sự kiện nếu nêu rõ (vd 30 cho "30 ngày sau nghiệm thu"). null nếu không có.',
     )
+    source_clause_num: Optional[str] = Field(
+        default=None,
+        description='Số hiệu điều/khoản SINH ra nghĩa vụ này, vd "Điều 5", "Khoản 3.2". '
+        "Lấy đúng từ nhãn [..] của điều khoản chứa nghĩa vụ. null nếu không xác định được.",
+    )
+    derived_from: str = Field(
+        default="original",
+        description='Nguồn gốc: "original" (từ PDF gốc) hoặc "user_edit" (từ nội dung user đã sửa). '
+        "Mặc định original — chỉ đặt user_edit khi re-derive từ edited_content.",
+    )
 
 
 class PartyItem(BaseModel):
-    """A contracting party with its role label (DEC-030 draft).
+    """A contracting party with its role label and details (DEC-030 + R2 #364).
 
     READ-ONLY (D-06): `role_label` is the term used IN the document — "Owner",
     "Operator", "Bên A", "Bên cho thuê", "NSDLĐ"… Which party is the SME ("self") is
@@ -311,6 +365,55 @@ class PartyItem(BaseModel):
     role_label: Optional[str] = Field(
         default=None,
         description='Vai trò trong HĐ, vd "Owner", "Operator", "Bên A", "Bên cho thuê", "NSDLĐ". null nếu không có.',
+    )
+    address: Optional[str] = Field(
+        default=None,
+        description="Địa chỉ bên ký kết, nguyên văn từ tài liệu. null nếu không có.",
+    )
+    representative: Optional[str] = Field(
+        default=None,
+        description='Người đại diện (vd "Ông Nguyễn Văn A — Giám đốc"). null nếu không có.',
+    )
+    tax_code: Optional[str] = Field(
+        default=None,
+        description="Mã số thuế (MST) bên ký kết. null nếu không có.",
+    )
+
+
+class DefinedTermItem(BaseModel):
+    """A defined term from the contract's definitions section (R9 #372).
+
+    READ-ONLY (D-06): both term and definition are verbatim from the document.
+    NOT party aliases (those go in PartyItem) — these are legal/technical terms
+    like "Năm Tài chính", "Khách sạn", "Thương hiệu"."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    term: str = Field(description='Thuật ngữ được định nghĩa, vd "Năm Tài chính", "Khách sạn".')
+    definition: str = Field(description="Nội dung định nghĩa, nguyên văn từ tài liệu.")
+    source_clause: Optional[str] = Field(
+        default=None,
+        description='Điều/mục chứa định nghĩa, vd "Phụ lục A", "Điều 1". null nếu không rõ.',
+    )
+
+
+class CrossReferenceItem(BaseModel):
+    """A cross-reference between clauses/appendices detected in the document (R10 #373).
+
+    READ-ONLY (D-06): captures reference patterns like "theo Điều 5",
+    "quy định tại Phụ lục E". Backend resolves to actual clause/doc targets."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    source_clause: str = Field(
+        description='Điều/khoản CHỨA tham chiếu, vd "Điều 3", "Khoản 2.1".',
+    )
+    target_ref: str = Field(
+        description='Đích tham chiếu nguyên văn, vd "Điều 5", "Phụ lục E", "Khoản 8.2".',
+    )
+    context: Optional[str] = Field(
+        default=None,
+        description='Ngữ cảnh ngắn quanh tham chiếu, vd "theo quy định tại Điều 5". null nếu không cần.',
     )
 
 
@@ -373,12 +476,26 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
     (not ~27 object properties) to stay within Gemini's grammar state budget.
     `to_result()` reads the extras via getattr, so both tiers map cleanly."""
 
+    # Source anchors (#230): on the Gemini Full path EVERY universal field is an
+    # AnchoredField (page_num/ref). The base 7 are re-declared here to upgrade their
+    # type from the lean base (ExtractedField) — Claude's base stays anchor-free.
+    doi_tac: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_hieu_luc: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_het_han: AnchoredField = Field(default_factory=AnchoredField)
+    gia_tri_hd: AnchoredField = Field(default_factory=AnchoredField)
+    thoi_han_hd: AnchoredField = Field(default_factory=AnchoredField)
+    dieu_khoan_gia_han: AnchoredField = Field(default_factory=AnchoredField)
+    dieu_khoan_thanh_toan: AnchoredField = Field(default_factory=AnchoredField)
+
     # v2 universal (DEC-029) — Gemini-only (Claude base omits them to stay valid)
-    doc_type_group: ExtractedField = Field(default_factory=ExtractedField)
-    ngay_ky: ExtractedField = Field(default_factory=ExtractedField)
-    tien_dat_coc: ExtractedField = Field(default_factory=ExtractedField)
-    thoi_han_bao_hanh: ExtractedField = Field(default_factory=ExtractedField)
-    thoi_han_thong_bao: ExtractedField = Field(default_factory=ExtractedField)
+    doc_type_group: AnchoredField = Field(default_factory=AnchoredField)
+    tieu_de_hd: AnchoredField = Field(default_factory=AnchoredField)
+    so_hop_dong: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_ky: AnchoredField = Field(default_factory=AnchoredField)
+    ngay_khai_truong: AnchoredField = Field(default_factory=AnchoredField)
+    tien_dat_coc: AnchoredField = Field(default_factory=AnchoredField)
+    thoi_han_bao_hanh: AnchoredField = Field(default_factory=AnchoredField)
+    thoi_han_thong_bao: AnchoredField = Field(default_factory=AnchoredField)
 
     type_specific: list[NamedExtractedField] = Field(
         default_factory=list,
@@ -397,15 +514,34 @@ class ContractExtractionLLMFull(ContractExtractionLLM):
         default_factory=list,
         description="Các bên ký kết kèm vai trò (DEC-030) — để Backend xác định 'bên mình' và chia nghĩa vụ/quyền lợi.",
     )
+    defined_terms: list[DefinedTermItem] = Field(
+        default_factory=list,
+        description="Cặp thuật ngữ/định nghĩa từ phần Định nghĩa (R9). Rỗng nếu không có section định nghĩa.",
+    )
+    cross_references: list[CrossReferenceItem] = Field(
+        default_factory=list,
+        description="Tham chiếu chéo giữa điều/khoản/phụ lục (R10). Rỗng nếu không phát hiện tham chiếu.",
+    )
+    has_signature: bool = Field(
+        default=False,
+        description="True nếu phát hiện chữ ký/con dấu trên tài liệu (R5).",
+    )
+    signature_pages: list[int] = Field(
+        default_factory=list,
+        description="Danh sách số trang có chữ ký/con dấu (bắt đầu từ 1). Rỗng nếu không có (R5).",
+    )
 
     def as_field_map(self) -> dict[str, ExtractedField]:
+        # Universal fields are AnchoredField on this path → page_num/ref pass through
+        # unchanged (pydantic keeps the subclass instance; ExtractionResult persists it).
         fields = {name: getattr(self, name) for name in CANONICAL_FIELDS}
         # Fold type-specific entries in by key; drop unknown keys (no fabricated fields).
         valid = set(ALL_TYPE_SPECIFIC_FIELDS)
         for nf in self.type_specific:
             if nf.key in valid:
-                fields[nf.key] = ExtractedField(
-                    value=nf.value, confidence=nf.confidence, needs_review=nf.needs_review
+                fields[nf.key] = AnchoredField(
+                    value=nf.value, confidence=nf.confidence, needs_review=nf.needs_review,
+                    page_num=nf.page_num, ref=nf.ref,
                 )
         return fields
 
@@ -433,6 +569,10 @@ class ExtractionResult(BaseModel):
     # 'self', then splits obligations into nghĩa vụ (self) vs quyền lợi (đối tác).
     # Gemini-only; Claude fallback leaves [] (use flat `fields["doi_tac"]`).
     parties: list[PartyItem] = Field(default_factory=list)
+    defined_terms: list[DefinedTermItem] = Field(default_factory=list)
+    cross_references: list[CrossReferenceItem] = Field(default_factory=list)
+    has_signature: bool = False
+    signature_pages: list[int] = Field(default_factory=list)
 
     provider: str = ""             # e.g. "gemini_flash"
     model: str = ""                # e.g. "gemini-2.5-flash"

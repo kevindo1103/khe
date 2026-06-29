@@ -10,7 +10,7 @@ class RelationshipOut(BaseModel):
     from_doc_id: int
     to_doc_id: int | None = None
     unresolved_ref: str | None = None
-    relationship_type: Literal["amends", "references_framework"]
+    relationship_type: Literal["amends", "references_framework", "annex"]
     status: Literal["pending", "confirmed"]
     confirmed_by_sme: bool
     confidence: float | None = None

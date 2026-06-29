@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from app.models.tenant import Event
 
 # Closed purpose enum — do not extend without compliance review (§A.1)
-VALID_PURPOSES = {"vision_extraction", "reminder_send", "firm_partner_access"}
+# obligation_fulfillment: NĐ 13 audit log for evidence attachment (#302, DEC-048 P4). No consent gate.
+VALID_PURPOSES = {"vision_extraction", "reminder_send", "firm_partner_access", "obligation_fulfillment"}
 
 
 def _generate_consent_reference() -> str:

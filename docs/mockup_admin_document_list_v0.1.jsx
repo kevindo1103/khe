@@ -8,7 +8,7 @@
  * `documents` table per Sprint 0 #23.
  */
 import React, { useState } from "react";
-import { tokens as t, Button, Card, Table, Badge, Input, EmptyState } from "./mockup_design_system_v0.1.jsx";
+import { tokens as t, Button, Card, Table, Badge, Input, EmptyState } from "./mockup_design_system_v0.2.jsx";
 
 const ALL = [
   { id: 1, ten: "HĐ thuê mặt bằng Q7", loai: "Thuê mặt bằng", doi_tac: "Cty TNHH Hải Đăng", han: "30/09/2026", status: "extracted" },

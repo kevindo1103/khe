@@ -10,7 +10,7 @@ Covers PR #66 review fixes:
 import asyncio
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -89,8 +89,14 @@ def db():
         d.close()
 
 
-def _make_obligation(db, due_date: str | None, status="pending", remind_before_days=30):
-    doc = Document(tenant_id="reminder-tenant", file_name="reminder.pdf", file_path="x/y.pdf", status="extracted")
+def _make_obligation(db, due_date: str | None, status="pending", remind_before_days=30, confirmed=True):
+    # #250: reminders only fire for user-CONFIRMED docs, so the default fixture
+    # represents a confirmed doc. Pass confirmed=False to model an unreviewed doc.
+    doc = Document(
+        tenant_id="reminder-tenant", file_name="reminder.pdf", file_path="x/y.pdf",
+        status="extracted",
+        confirmed_by_user_at=datetime.utcnow() if confirmed else None,
+    )
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -169,6 +175,23 @@ class TestReminderEngine:
         due_ids = {o.id for o in due}
         assert ob_in.id in due_ids
         assert ob_out.id not in due_ids
+
+    def test_unconfirmed_docs_do_not_fire_reminders(self, db):
+        """#250 (D-02): obligations from an unconfirmed doc are excluded from the
+        reminder window — and never flipped to overdue — until the user confirms."""
+        today = date.today()
+        ob_confirmed = _make_obligation(db, (today + timedelta(days=5)).isoformat(), confirmed=True)
+        ob_unconfirmed = _make_obligation(db, (today + timedelta(days=5)).isoformat(), confirmed=False)
+
+        due_ids = {o.id for o in compute_due_window(db, "reminder-tenant", reference_date=today)}
+        assert ob_confirmed.id in due_ids
+        assert ob_unconfirmed.id not in due_ids   # unreviewed → no reminder
+
+        # And an unconfirmed past-due obligation is NOT flipped to overdue.
+        ob_past_unconfirmed = _make_obligation(db, (today - timedelta(days=1)).isoformat(), confirmed=False)
+        _flip_overdue_status(db, "reminder-tenant", reference_date=today)
+        db.refresh(ob_past_unconfirmed)
+        assert ob_past_unconfirmed.status == "pending"   # untouched until confirmed
 
     def test_flip_overdue_status(self, db):
         today = date.today()
@@ -257,6 +280,207 @@ class TestReminderEngine:
         for call in mock_send.call_args_list:
             chat_id = call.kwargs.get("chat_id") or (call.args[4] if len(call.args) >= 5 else None)
             assert chat_id == "tenant-rem-chat"
+
+
+# ── Retry tick (#183) ──
+
+class TestRetryTick:
+    @pytest.fixture(autouse=True)
+    def _clean_reminder_events(self, db):
+        """Clear reminder_* events before each test so the shared module DB
+        doesn't leak failed obligations between tests (candidate contamination)."""
+        from app.models.tenant import Event
+
+        db.query(Event).filter(
+            Event.event_type.in_(["reminder_failed", "reminder_sent", "reminder_dead"])
+        ).delete(synchronize_session=False)
+        db.commit()
+        yield
+
+    def _seed_failed(self, db, days_ago_first_failure=0, n_failures=1):
+        """Make a due obligation + n reminder_failed events dated N days ago."""
+        from datetime import datetime, timedelta as _td
+
+        from app.models.tenant import Event
+
+        today = date.today()
+        ob = _make_obligation(db, (today + timedelta(days=5)).isoformat(), remind_before_days=30)
+        base = datetime.utcnow() - _td(days=days_ago_first_failure)
+        for i in range(n_failures):
+            ev = Event(
+                tenant_id="reminder-tenant",
+                entity_type="obligation",
+                entity_id=ob.id,
+                event_type="reminder_failed",
+                actor="system",
+                purpose="reminder_send",
+                channel="telegram",
+                channel_target_ref="tenant-rem-chat",
+            )
+            db.add(ev)
+            db.commit()
+            db.refresh(ev)
+            # Force created_at to the simulated time (server default is "now").
+            ev.created_at = base + _td(minutes=i)
+            db.commit()
+        return ob
+
+    def test_retry_success_clears_failure(self, db):
+        from datetime import datetime
+
+        from app.models.tenant import Event
+        from app.services.reminders import retry_failed_reminders_for_tenant
+
+        ob = self._seed_failed(db, days_ago_first_failure=0, n_failures=1)
+        # Far enough past the 1-min backoff.
+        ref = datetime.utcnow() + timedelta(minutes=5)
+
+        with patch("app.services.reminders.send_obligation_reminder", new_callable=AsyncMock, return_value=True) as mock_send:
+            res = asyncio.run(retry_failed_reminders_for_tenant(db, "reminder-tenant", reference_time=ref))
+
+        assert mock_send.call_count == 1
+        assert res["sent"] == 1
+        assert _has_sent(db, ob.id)
+
+    def test_retry_respects_backoff(self, db):
+        from datetime import datetime
+
+        from app.services.reminders import retry_failed_reminders_for_tenant
+
+        self._seed_failed(db, days_ago_first_failure=0, n_failures=1)
+        # Only 30 seconds after the failure — inside the 1-min backoff window.
+        ref = datetime.utcnow() + timedelta(seconds=30)
+
+        with patch("app.services.reminders.send_obligation_reminder", new_callable=AsyncMock, return_value=True) as mock_send:
+            res = asyncio.run(retry_failed_reminders_for_tenant(db, "reminder-tenant", reference_time=ref))
+
+        assert mock_send.call_count == 0
+        assert res["skipped_backoff"] == 1
+
+    def test_retry_max_attempts_dead_letter(self, db):
+        from datetime import datetime
+
+        from app.services.reminders import retry_failed_reminders_for_tenant
+
+        ob = self._seed_failed(db, days_ago_first_failure=0, n_failures=5)
+        ref = datetime.utcnow() + timedelta(hours=10)
+
+        with patch("app.services.reminders.send_obligation_reminder", new_callable=AsyncMock, return_value=True) as mock_send, \
+             patch("app.services.reminders.send_admin_alert", new_callable=AsyncMock, return_value=True) as mock_alert:
+            res = asyncio.run(retry_failed_reminders_for_tenant(db, "reminder-tenant", reference_time=ref))
+
+        assert mock_send.call_count == 0  # no further send after max attempts
+        assert res["dead"] == 1
+        mock_alert.assert_awaited_once()
+        assert _has_dead(db, ob.id)
+
+    def test_retry_backfill_drops_stale(self, db):
+        from datetime import datetime
+
+        from app.services.reminders import retry_failed_reminders_for_tenant
+
+        ob = self._seed_failed(db, days_ago_first_failure=3, n_failures=1)
+        ref = datetime.utcnow() + timedelta(minutes=5)
+
+        with patch("app.services.reminders.send_obligation_reminder", new_callable=AsyncMock, return_value=True) as mock_send:
+            res = asyncio.run(retry_failed_reminders_for_tenant(db, "reminder-tenant", reference_time=ref))
+
+        assert mock_send.call_count == 0
+        assert res["dead"] == 1
+        assert _has_dead(db, ob.id)
+
+    def test_retry_skips_already_sent(self, db):
+        from datetime import datetime
+
+        from app.services.reminders import _log_reminder_sent, retry_failed_reminders_for_tenant
+
+        ob = self._seed_failed(db, days_ago_first_failure=0, n_failures=1)
+        # Already delivered → idempotency: must not re-send.
+        _log_reminder_sent(db, "reminder-tenant", ob.id, "telegram", "tenant-rem-chat")
+        ref = datetime.utcnow() + timedelta(minutes=5)
+
+        with patch("app.services.reminders.send_obligation_reminder", new_callable=AsyncMock, return_value=True) as mock_send:
+            res = asyncio.run(retry_failed_reminders_for_tenant(db, "reminder-tenant", reference_time=ref))
+
+        assert mock_send.call_count == 0
+        assert res["candidates"] == 0
+
+
+def _has_sent(db, obligation_id: int) -> bool:
+    from app.models.tenant import Event
+    return db.query(Event).filter(
+        Event.entity_id == obligation_id, Event.event_type == "reminder_sent"
+    ).first() is not None
+
+
+def _has_dead(db, obligation_id: int) -> bool:
+    from app.models.tenant import Event
+    return db.query(Event).filter(
+        Event.entity_id == obligation_id, Event.event_type == "reminder_dead"
+    ).first() is not None
+
+
+class TestCatchUpMissedRun:
+    """Startup catch-up for a missed daily reminder run (#183 criterion 6)."""
+
+    def test_no_catchup_before_fire_hour(self):
+        from datetime import datetime
+
+        from app.services import scheduler
+
+        # 07:00 ICT — today's 08:00 window hasn't opened; cron will fire normally.
+        ref = datetime(2026, 6, 23, 7, 0, tzinfo=scheduler._ICT)
+        with patch("app.services.scheduler.run_daily_reminder_job", new_callable=AsyncMock) as mock_run:
+            fired = asyncio.run(scheduler.catch_up_missed_daily_run(reference_time=ref))
+        assert fired is False
+        mock_run.assert_not_awaited()
+
+    def test_catchup_fires_when_missed(self, monkeypatch):
+        from datetime import datetime
+
+        from app.services import scheduler
+
+        # 09:00 ICT, no reminder_batch event today → catch-up fires the job.
+        ref = datetime(2026, 6, 23, 9, 0, tzinfo=scheduler._ICT)
+
+        class _FakeTenant:
+            id = "reminder-tenant"
+
+        class _MasterDB:
+            def query(self, *_a, **_k):
+                class _Q:
+                    def all(self_inner):
+                        return [_FakeTenant()]
+                return _Q()
+
+            def close(self):
+                pass
+
+        class _TenantDB:
+            def query(self, *_a, **_k):
+                class _Q:
+                    def filter(self_inner, *a, **k):
+                        return self_inner
+
+                    def order_by(self_inner, *a, **k):
+                        return self_inner
+
+                    def first(self_inner):
+                        return None  # no reminder_batch today
+
+                return _Q()
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(scheduler, "MasterSessionLocal", lambda: _MasterDB())
+        monkeypatch.setattr(scheduler, "get_tenant_session", lambda tid: _TenantDB())
+
+        with patch("app.services.scheduler.run_daily_reminder_job", new_callable=AsyncMock) as mock_run:
+            fired = asyncio.run(scheduler.catch_up_missed_daily_run(reference_time=ref))
+
+        assert fired is True
+        mock_run.assert_awaited_once()
 
 
 # ── Endpoint ──

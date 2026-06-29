@@ -18,6 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.tenant import ChatQueryLog, Clause, Document, Obligation, Term
+from app.services import chat_session
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,43 @@ def _is_negative_answer(answer: str) -> bool:
     if not answer or not answer.strip():
         return True
     return bool(_NOT_FOUND_PATTERNS.search(answer))
+
+
+# Entity-query fallback (#263). On a router miss (0 structured rows) for a query
+# that names a proper noun / party, try a broad clause-text search before D-08.
+# Deliberately IGNORES the sentence-initial capital (orthography, not a proper
+# noun) so it doesn't fire on every question ("Có cái gì..." → no entity).
+_FALLBACK_PREFIX = "Tìm gần đúng: "
+_ALLCAPS_RE = re.compile(r"\b[A-ZĐ]{3,}\b")                       # ALASKA, FLC (skip 2-char "HĐ")
+_QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]+)[\"'“”‘’]")
+_CAP_WORD_RE = re.compile(r"^[A-ZĐ][A-Za-zÀ-ỹĐđ]{2,}$", re.UNICODE)
+
+
+def _entity_terms(question: str) -> list[str]:
+    """Proper-noun / party candidates to search clauses for (#263 fallback).
+
+    Quoted phrases + ALL-CAPS tokens + capitalized words that are NOT the first
+    token (a mid-sentence capital signals a name, not orthography). Returns [] for
+    a plain question → no fallback (don't clause-spam every router miss).
+    """
+    if not question:
+        return []
+    terms: list[str] = []
+    terms += [m.strip() for m in _QUOTED_RE.findall(question)]
+    terms += _ALLCAPS_RE.findall(question)
+    tokens = question.split()
+    for tok in tokens[1:]:
+        clean = tok.strip(".,?!:;\"'()[]")
+        if _CAP_WORD_RE.match(clean):
+            terms.append(clean)
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in terms:
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
 
 # ---------------------------------------------------------------------------
 # LIKE wildcard escaping
@@ -179,6 +217,56 @@ _TOOLS = [
                     },
                 },
                 "required": ["query", "doc_hint"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "aggregate_obligations",
+            "description": (
+                "ĐẾM / TỔNG QUAN nghĩa vụ — dùng khi user hỏi 'có mấy', 'bao nhiêu', "
+                "'tổng quan', 'tình hình nghĩa vụ', 'nghĩa vụ của tôi'. Trả số liệu nhóm "
+                "(KHÔNG liệt kê chi tiết từng dòng — dùng search_obligations cho chi tiết). "
+                "KHÔNG cộng tổng số tiền."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "group_by": {
+                        "type": "string",
+                        "description": (
+                            "Trục nhóm: direction (Bạn cần / Đối tác cần) | status (trạng thái) | "
+                            "obligation_type (loại) | series (đợt thanh toán). "
+                            "Mặc định 'direction' cho câu tổng quan."
+                        ),
+                    },
+                    "status": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Lọc trạng thái: pending | done | cancelled | waiting_trigger | "
+                            "overdue (quá hạn — dẫn xuất từ due_date, không phải status lưu trữ). "
+                            "Null = mọi trạng thái."
+                        ),
+                    },
+                    "direction": {
+                        "type": ["string", "null"],
+                        "description": "Lọc hướng: nghĩa_vụ | quyền_lợi. Null = cả hai.",
+                    },
+                    "obligation_type": {
+                        "type": ["string", "null"],
+                        "description": "Lọc loại: payment | delivery | handover | expiration | renewal | review | warranty | other. Null = tất cả.",
+                    },
+                    "due_within_days": {
+                        "type": ["integer", "null"],
+                        "description": "Chỉ đếm nghĩa vụ tới hạn trong N ngày tới. Null = không giới hạn thời gian.",
+                    },
+                    "series_id": {
+                        "type": ["string", "null"],
+                        "description": "Đếm trong 1 chuỗi đợt (series). Null = không lọc theo series.",
+                    },
+                },
+                "required": ["group_by", "status", "direction", "obligation_type", "due_within_days", "series_id"],
             },
         },
     },
@@ -461,19 +549,224 @@ def _tool_search_obligations(
     rows = query.order_by(Obligation.due_date.asc()).all()
     results = []
     for ob, doc in rows:
-        if not ob.due_date:
+        # waiting_trigger items intentionally have due_date=None — include them.
+        # Skip only non-event items with no date (malformed data).
+        if not ob.due_date and ob.status != "waiting_trigger":
             continue
-        results.append(
-            {
-                "type": "obligation",
-                "document_id": doc.id,
-                "file_name": doc.file_name,
-                "field_name": "due_date",
-                "value": ob.due_date,
-                "status": ob.status,
-            }
-        )
+        results.append(_obligation_row(ob, doc))
     return results
+
+
+def _obligation_row(ob, doc) -> dict:
+    """One obligation result dict — shared by retrieval + aggregate drill-down sources."""
+    return {
+        "type": "obligation",
+        "document_id": doc.id,
+        "obligation_id": ob.id,
+        "file_name": doc.file_name,
+        "field_name": "due_date",
+        "value": ob.due_date or ob.trigger_condition or "chờ sự kiện",
+        "status": ob.status,
+        "description": ob.description,
+        "direction": ob.direction,
+        "obligor": ob.obligor,
+        "obligation_type": ob.obligation_type,
+        "amount_raw": ob.amount_raw,
+        "milestone_series_id": ob.milestone_series_id,
+        "milestone_index": ob.milestone_index,
+        "milestone_total": ob.milestone_total,
+        "trigger_condition": ob.trigger_condition,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Aggregate (#199, FR-CQ) — count/group obligations, never D-08 on zero,
+# never sum amount_raw (D-06).
+# ---------------------------------------------------------------------------
+
+_DUE_SOON_DAYS = 30
+_CLOSED_STATUSES = frozenset({"done", "cancelled"})
+
+# group_by=direction labels (mockup Stage 6 wording).
+_DIRECTION_LABELS = {
+    "nghĩa_vụ": "Bạn cần",
+    "quyền_lợi": "Đối tác cần làm cho bạn",
+    "null": "Cần xác nhận",
+}
+
+
+def _urgency_bucket(due_date: str | None, status: str | None, today_str: str, soon_cutoff: str) -> str:
+    """Derive FE urgency from (due_date, status). 'overdue' is NOT a stored status
+    (DEC-027) — it is past-due AND still active. Returns one of:
+    overdue | due_soon | waiting_trigger | scheduled | closed."""
+    if status == "waiting_trigger":
+        return "waiting_trigger"
+    if status in _CLOSED_STATUSES:
+        return "closed"
+    if not due_date:
+        return "scheduled"
+    if due_date < today_str:
+        return "overdue"
+    if due_date <= soon_cutoff:
+        return "due_soon"
+    return "scheduled"
+
+
+def _tool_aggregate_obligations(
+    db: Session,
+    tenant_id: str,
+    group_by: str,
+    status: str | None = None,
+    direction: str | None = None,
+    obligation_type: str | None = None,
+    due_within_days: int | None = None,
+    series_id: str | None = None,
+    active_only: bool = False,
+) -> dict:
+    """Count/group obligations for an aggregate answer.
+
+    Returns {"summary", "source", "rows"} where rows are obligation dicts for
+    FE drill-down. A count of 0 is a VALID answer (caller keeps found=true) — this
+    path never emits D-08. Money is never summed (D-06): count + series only.
+    """
+    today = date.today()
+    today_str = today.isoformat()
+    soon_cutoff = (today + timedelta(days=_DUE_SOON_DAYS)).isoformat()
+
+    q = (
+        db.query(Obligation, Document)
+        .join(Document, Document.id == Obligation.document_id)
+        .filter(Obligation.tenant_id == tenant_id)
+    )
+    if direction:
+        q = q.filter(Obligation.direction == direction)
+    if obligation_type:
+        q = q.filter(Obligation.obligation_type == obligation_type)
+    if series_id:
+        q = q.filter(Obligation.milestone_series_id == series_id)
+    if active_only:
+        # Dashboard overview semantics (#253 FE): count only obligations the user
+        # still has to act on — exclude terminal done/cancelled. 'overdue' is NOT
+        # terminal (still actionable, just late) so it stays in.
+        q = q.filter(~Obligation.status.in_(_CLOSED_STATUSES))
+
+    # 'overdue' is derived, not a column value — don't push it to the DB filter
+    # (would match 0 rows and silently look like no-match). Filter in Python below.
+    overdue_only = status == "overdue"
+    if status and not overdue_only:
+        q = q.filter(Obligation.status == status)
+
+    if due_within_days is not None:
+        try:
+            cutoff = (today + timedelta(days=int(due_within_days))).isoformat()
+            q = q.filter(Obligation.due_date >= today_str, Obligation.due_date <= cutoff)
+        except (ValueError, TypeError):
+            pass
+
+    pairs = q.order_by(Obligation.due_date.asc()).all()
+    # Mirror retrieval: drop malformed dateless non-event rows.
+    pairs = [(ob, doc) for ob, doc in pairs if ob.due_date or ob.status == "waiting_trigger"]
+    if overdue_only:
+        pairs = [
+            (ob, doc) for ob, doc in pairs
+            if _urgency_bucket(ob.due_date, ob.status, today_str, soon_cutoff) == "overdue"
+        ]
+
+    # ── group by the requested axis ──
+    groups: dict[str, dict] = {}
+    status_breakdown = {"waiting_trigger": 0, "overdue": 0, "due_soon": 0}
+    doc_ids: set[int] = set()
+    rows: list[dict] = []
+
+    for ob, doc in pairs:
+        rows.append(_obligation_row(ob, doc))
+        doc_ids.add(doc.id)
+
+        urgency = _urgency_bucket(ob.due_date, ob.status, today_str, soon_cutoff)
+        if urgency in status_breakdown:
+            status_breakdown[urgency] += 1
+
+        key, label = _group_key_label(ob, group_by)
+        g = groups.setdefault(key, {"key": key, "label": label, "count": 0, "_nearest_days": None, "_nearest_title": None})
+        g["count"] += 1
+
+        # nearest = soonest UPCOMING dated item in the group (days_left >= 0).
+        if ob.due_date and ob.due_date >= today_str:
+            days_left = (date.fromisoformat(ob.due_date) - today).days
+            if g["_nearest_days"] is None or days_left < g["_nearest_days"]:
+                g["_nearest_days"] = days_left
+                g["_nearest_title"] = ob.description
+
+    group_list = []
+    for g in groups.values():
+        item = {"key": g["key"], "label": g["label"], "count": g["count"]}
+        if g["_nearest_days"] is not None:
+            item["nearest"] = {"title": g["_nearest_title"], "days_left": g["_nearest_days"]}
+        group_list.append(item)
+    group_list.sort(key=lambda x: x["count"], reverse=True)
+
+    total = len(rows)
+    return {
+        "summary": {
+            "total": total,
+            "group_by": group_by,
+            "groups": group_list,
+            "status_breakdown": status_breakdown,
+        },
+        "source": {
+            "obligation_count": total,
+            "doc_count": len(doc_ids),
+            "label": f"{total} nghĩa vụ · {len(doc_ids)} hợp đồng",
+        },
+        "rows": rows,
+    }
+
+
+def _group_key_label(ob, group_by: str) -> tuple[str, str]:
+    """Return (key, label) for one obligation on the requested grouping axis."""
+    if group_by == "direction":
+        key = ob.direction or "null"
+        return key, _DIRECTION_LABELS.get(key, key)
+    if group_by == "series":
+        key = ob.milestone_series_id or "none"
+        label = ob.description or ("Đợt lẻ" if key == "none" else f"Chuỗi {key}")
+        return key, label
+    if group_by == "status":
+        key = ob.status or "pending"
+        return key, key
+    # obligation_type (default)
+    key = ob.obligation_type or "other"
+    return key, key
+
+
+def aggregate_obligations(
+    db: Session,
+    tenant_id: str,
+    group_by: str = "direction",
+    *,
+    status: str | None = None,
+    direction: str | None = None,
+    obligation_type: str | None = None,
+    due_within_days: int | None = None,
+    series_id: str | None = None,
+    active_only: bool = False,
+) -> dict:
+    """Public obligation-aggregate API (#199 chat path + the REST dashboard summary
+    endpoint share this). Returns {"summary", "source", "rows"}; count-only, no
+    money sum (D-06).
+
+    ``active_only`` (default False → chat path counts everything, unchanged) drops
+    terminal done/cancelled — the REST dashboard endpoint passes True so its total
+    + direction cards match the active-only list view (#253 FE).
+
+    The #250 confirmed-doc reminder gate does NOT apply here — this is a view, not
+    an outbound action.
+    """
+    return _tool_aggregate_obligations(
+        db, tenant_id, group_by,
+        status=status, direction=direction, obligation_type=obligation_type,
+        due_within_days=due_within_days, series_id=series_id, active_only=active_only,
+    )
 
 
 def _tool_search_clauses(db: Session, tenant_id: str, query_text: str, doc_hint: str | None) -> list[dict]:
@@ -556,6 +849,12 @@ def _build_router_system_prompt(today: date) -> str:
         "- 'giá trị HĐ với công ty Hán Thị Nga' → search_terms(field_name='gia_tri_hd', party_filter='Hán Thị Nga')\n"
         "- 'ngày hiệu lực HĐ với ALASKA' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA')\n"
         "- 'HĐ với ALASKA năm 2021' → search_terms(field_name='ngay_hieu_luc', party_filter='ALASKA', value_contains='2021')\n"
+        # #268 Q3: a value/field query about a party stays search_terms even when phrased
+        # plural ('các HĐ với X') — 'giá trị' is a FIELD, NOT a count → never aggregate_obligations.
+        "- 'giá trị các hợp đồng với Penfield' → search_terms(field_name='gia_tri_hd', party_filter='Penfield')\n"
+        "- 'các HĐ với ALASKA hết hạn khi nào' → search_terms(field_name='ngay_het_han', party_filter='ALASKA')\n"
+        "- LƯU Ý: 'giá trị/ngày/thời hạn ... của/với <công ty>' LUÔN là search_terms (field + party_filter), "
+        "DÙ câu hỏi dùng số nhiều 'các hợp đồng'. KHÔNG dùng aggregate_obligations cho câu hỏi về GIÁ TRỊ trường.\n"
         f"Hôm nay là {today_str}. "
         "Quy tắc chuyển cụm từ lịch tiếng Việt thành due_from/due_to ISO (YYYY-MM-DD):\n"
         "- 'tháng này' → due_from=ngày 1 tháng hiện tại, due_to=ngày cuối tháng hiện tại\n"
@@ -576,6 +875,13 @@ def _build_router_system_prompt(today: date) -> str:
         "- 'Tất cả HĐ thuê nhà?' → search_terms(field_name='ngay_het_han', doc_type_filter='bat_dong_san', doc_hint=null)\n"
         "- 'còn bao nhiêu đợt' / 'lịch thanh toán' → search_obligations(series_id=, obligation_type='payment')\n"
         "- 'chờ sự kiện gì' / 'waiting_trigger' → search_obligations(waiting_trigger=true)\n"
+        "PHÂN BIỆT đếm/tổng quan (aggregate_obligations) vs chi tiết (search_obligations):\n"
+        "- Câu hỏi ĐẾM/TỔNG QUAN ('có mấy', 'bao nhiêu', 'tổng quan', 'tình hình', 'nghĩa vụ của tôi') → aggregate_obligations.\n"
+        "- Câu hỏi CHI TIẾT ('cái nào', 'liệt kê', 'khi nào', deadline cụ thể) → search_obligations.\n"
+        "- 'Tôi có mấy nghĩa vụ?' / 'nghĩa vụ của tôi?' / 'tổng quan nghĩa vụ' → aggregate_obligations(group_by='direction')\n"
+        "- 'có mấy nghĩa vụ quá hạn?' / 'bao nhiêu cái quá hạn' → aggregate_obligations(group_by='status', status='overdue')\n"
+        "- 'còn mấy đợt thanh toán?' → aggregate_obligations(group_by='series', obligation_type='payment')\n"
+        "- 'bao nhiêu việc đang chờ sự kiện?' → aggregate_obligations(group_by='status', status='waiting_trigger')\n"
     )
 
 
@@ -773,17 +1079,183 @@ def _safe_log_chat_query(
         logger.warning("chat_query_log failed for tenant=%s", tenant_id, exc_info=True)
 
 
-async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
+def _persist_query_and_session(
+    db, tenant_id, question, tool_calls, found, result_count,
+    input_tokens=0, output_tokens=0, cost_vnd=0.0, llm_calls=0,
+    user_id=None, session_id=None, state=None,
+):
+    """One transaction: chat_query_log row + optional chat_sessions upsert (#201).
+
+    Combining both writes into a single commit avoids the SQLite same-thread
+    write-lock (CLAUDE.md bug pattern). Never raises — a persistence failure must
+    not break the chat response.
+    """
+    try:
+        db.add(ChatQueryLog(
+            tenant_id=tenant_id,
+            question=question,
+            tool_calls=json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
+            found=found,
+            result_count=result_count,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_vnd=cost_vnd,
+            llm_calls=llm_calls,
+        ))
+        if session_id and state is not None:
+            chat_session.upsert_session(db, tenant_id, user_id, session_id, state)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning("chat persist (log+session) failed for tenant=%s", tenant_id, exc_info=True)
+
+
+def _build_sources(results: list[dict]) -> list[dict]:
+    """Flatten tool results into FE provenance refs (drop internal truncation hints)."""
+    return [
+        {
+            "type": r["type"],
+            "document_id": r["document_id"],
+            "obligation_id": r.get("obligation_id"),
+            "file_name": r["file_name"],
+            "field_name": r["field_name"],
+            "value": r["value"],
+            "status": r.get("status"),
+            "clause_num": r.get("clause_num"),
+            "clause_title": r.get("clause_title"),
+            # Obligation-specific fields for FE direction labels + series context (#146).
+            "description": r.get("description"),
+            "direction": r.get("direction"),
+            "obligor": r.get("obligor"),
+            "obligation_type": r.get("obligation_type"),
+            "amount_raw": r.get("amount_raw"),
+            "milestone_series_id": r.get("milestone_series_id"),
+            "milestone_index": r.get("milestone_index"),
+            "milestone_total": r.get("milestone_total"),
+            "trigger_condition": r.get("trigger_condition"),
+        }
+        for r in results
+        if r["type"] != "truncation_hint"
+    ]
+
+
+# Zero-state answer phrasing keyed on the active filter (deterministic — no LLM,
+# so a legitimate "Bạn không có nghĩa vụ X" can never be mangled into D-08).
+def _aggregate_answer_text(summary: dict, status: str | None, tenant_empty: bool) -> str:
+    total = summary["total"]
+    if tenant_empty:
+        return "Bạn chưa có hợp đồng nào. Hãy tải hợp đồng lên để bắt đầu theo dõi nghĩa vụ."
+    if total == 0:
+        if status == "overdue":
+            return "Bạn không có nghĩa vụ nào quá hạn."
+        if status == "waiting_trigger":
+            return "Bạn không có nghĩa vụ nào đang chờ sự kiện."
+        return "Bạn không có nghĩa vụ nào phù hợp."
+    lines = [f"Bạn có {total} nghĩa vụ đang theo dõi:"]
+    for g in summary["groups"]:
+        line = f"• {g['label']}: {g['count']}"
+        near = g.get("nearest")
+        if near:
+            line += f" (gần nhất — {near['title']}, còn {near['days_left']} ngày)"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _build_aggregate_response(
+    db: Session,
+    tenant_id: str,
+    question: str,
+    agg_call: dict,
+    tool_calls: list[dict],
+    *,
+    total_in: int,
+    total_out: int,
+    llm_calls: int,
+    user_id: int | None,
+    session_id: str | None,
+) -> dict:
+    """Aggregate-intent answer (#199). found is ALWAYS true (even total=0 → not D-08).
+
+    Deterministic: no formatting LLM call, no D-08 negative-answer check — a zero
+    count is a real answer, and money is never summed (D-06).
+    """
+    from modules.extraction import cost_vnd as _cost_vnd, TokenUsage
+    _GEMINI_IN, _GEMINI_OUT = 0.30, 2.50
+
+    args = agg_call["args"]
+    status = args.get("status")
+    agg = _tool_aggregate_obligations(
+        db,
+        tenant_id,
+        args.get("group_by") or "direction",
+        status,
+        args.get("direction"),
+        args.get("obligation_type"),
+        args.get("due_within_days"),
+        args.get("series_id"),
+    )
+
+    # cold_start vs aggregate-zero: tenant_empty (0 documents) is a different FE
+    # render (onboarding nudge) than "you have data but 0 of this category".
+    tenant_empty = db.query(Document.id).filter(Document.tenant_id == tenant_id).first() is None
+
+    summary = agg["summary"]
+    answer = _aggregate_answer_text(summary, status, tenant_empty)
+    sources = _build_sources(agg["rows"])
+
+    # Working set (DEC-031 v2): seed from sources unless over the size cap.
+    context_label = None
+    state_to_persist = None
+    if session_id:
+        doc_ids, obl_ids, label = chat_session.compute_working_set(sources)
+        if not chat_session.over_cap(doc_ids, obl_ids):
+            state_to_persist = chat_session.build_state(doc_ids, obl_ids, label, "aggregate_obligations")
+            context_label = label
+
+    _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
+    _persist_query_and_session(
+        db, tenant_id, question, tool_calls, True, summary["total"],
+        input_tokens=total_in, output_tokens=total_out, cost_vnd=_cost, llm_calls=llm_calls,
+        user_id=user_id, session_id=session_id, state=state_to_persist,
+    )
+    return {
+        "answer": answer,
+        "sources": sources,
+        "found": True,
+        "context_label": context_label,
+        "session_id": session_id,
+        "intent": "aggregate",
+        "summary": summary,
+        "source": agg["source"],
+        "tenant_empty": tenant_empty,
+    }
+
+
+async def answer_question(
+    db: Session,
+    tenant_id: str,
+    question: str,
+    *,
+    user_id: int | None = None,
+    session_id: str | None = None,
+) -> dict:
     """Answer a chat query within a tenant scope.
 
-    Returns {"answer": str, "sources": list[dict], "found": bool}.
+    Returns {"answer", "sources", "found", "context_label", "session_id"}.
+    Session state (DEC-031 v2) is a soft prior: present only when ``session_id``
+    is supplied; never changes whether data is found (D-08), only ranking/scope.
     """
     from modules.extraction import cost_vnd as _cost_vnd, TokenUsage
     _GEMINI_IN, _GEMINI_OUT = 0.30, 2.50  # gemini-2.5-flash per-1M-token USD
 
     if not question or not question.strip():
         _safe_log_chat_query(db, tenant_id, question, [], False, 0)
-        return {"answer": _NOT_FOUND, "sources": [], "found": False}
+        return {"answer": _NOT_FOUND, "sources": [], "found": False,
+                "context_label": None, "session_id": session_id}
+
+    # Load prior working set (soft prior). None when cold / no session.
+    prior_state = chat_session.load_session_state(db, tenant_id, user_id, session_id) if session_id else None
+    prior_doc_ids = (prior_state or {}).get("active_doc_ids") or []
 
     # Step 1: let the LLM decide which tools to call.
     tool_calls, routing_usage = await _select_tools(db, tenant_id, question)
@@ -793,7 +1265,7 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
     total_out = routing_usage.get("out", 0)
     llm_calls = 1 if routing_usage else 0
 
-    # PII-safe routing log (NĐ 13/2023): log tool name + field_name + arg keys present,
+    # PII-safe routing log (NĐ 13/2023, D-12): log tool name + canonical arg names,
     # NOT raw arg values (party_filter/value_contains may contain personal names).
     logger.info(
         "chat_query routed: tenant=%s tools=%s",
@@ -802,11 +1274,23 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
             {
                 "name": c["name"],
                 "field_name": c["args"].get("field_name"),
+                "group_by": c["args"].get("group_by"),
                 "args_present": sorted(k for k, v in c["args"].items() if v is not None),
             }
             for c in tool_calls
         ],
     )
+
+    # #199 aggregate intent: if the router picked aggregate_obligations, answer
+    # with counts/groups. This branches BEFORE the D-08 empty check — a zero count
+    # is a valid answer ("Bạn không có nghĩa vụ X"), never "không tìm thấy".
+    agg_call = next((c for c in tool_calls if c["name"] == "aggregate_obligations"), None)
+    if agg_call is not None:
+        return _build_aggregate_response(
+            db, tenant_id, question, agg_call, tool_calls,
+            total_in=total_in, total_out=total_out, llm_calls=llm_calls,
+            user_id=user_id, session_id=session_id,
+        )
 
     # Step 2: execute tools.
     all_results: list[dict] = []
@@ -852,13 +1336,40 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
                 )
             )
 
+    # Fallback chain (#263): a router miss (0 structured rows) on an entity-named
+    # query → try a broad clause-text search before D-08. Real rows only + an honest
+    # "Tìm gần đúng" prefix (D-08: never fabricate, just disclose approximate). One
+    # DB query per candidate, no LLM. Disabled for non-entity queries.
+    used_fallback = False
+    if not all_results:
+        for term in _entity_terms(question):
+            fb = _tool_search_clauses(db, tenant_id, term, None)
+            if fb:
+                all_results = fb
+                used_fallback = True
+                break
+
     # D-08 hard rule: if no tool returned data, return the exact not-found string.
     if not all_results:
         _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
         _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0,
                              input_tokens=total_in, output_tokens=total_out,
                              cost_vnd=_cost, llm_calls=llm_calls)
-        return {"answer": _NOT_FOUND, "sources": [], "found": False}
+        return {"answer": _NOT_FOUND, "sources": [], "found": False,
+                "context_label": None, "session_id": session_id}
+
+    # Soft prior (DEC-031 v2): narrow to the working set only if it still matches;
+    # otherwise keep the full result set (never hide data → D-08 safe). Any
+    # explicit entity intent (doc_hint / party_filter / value_contains) overrides
+    # the prior — the user named a new target, so don't scope to the old set
+    # (#203 C2).
+    had_explicit_intent = any(
+        c["args"].get("doc_hint")
+        or c["args"].get("party_filter")
+        or c["args"].get("value_contains")
+        for c in tool_calls
+    )
+    all_results, _used_prior = chat_session.apply_soft_prior(all_results, prior_doc_ids, had_explicit_intent)
 
     # Step 3: format answer from results (D-06: only use provided data).
     answer, format_usage = await _format_answer(question, all_results)
@@ -874,26 +1385,39 @@ async def answer_question(db: Session, tenant_id: str, question: str) -> dict:
         _safe_log_chat_query(db, tenant_id, question, tool_calls, False, 0,
                              input_tokens=total_in, output_tokens=total_out,
                              cost_vnd=_cost, llm_calls=llm_calls)
-        return {"answer": _NOT_FOUND, "sources": [], "found": False}
+        return {"answer": _NOT_FOUND, "sources": [], "found": False,
+                "context_label": None, "session_id": session_id}
+
+    # #263: disclose an approximate (clause-text fallback) match — only after the
+    # answer passed the negative check, so we never prefix a not-found.
+    if used_fallback:
+        answer = _FALLBACK_PREFIX + answer
 
     # Step 4: build provenance sources (exclude internal truncation hints from the response).
-    sources = [
-        {
-            "type": r["type"],
-            "document_id": r["document_id"],
-            "file_name": r["file_name"],
-            "field_name": r["field_name"],
-            "value": r["value"],
-            "status": r.get("status"),
-            "clause_num": r.get("clause_num"),
-            "clause_title": r.get("clause_title"),
-        }
-        for r in all_results
-        if r["type"] != "truncation_hint"
-    ]
+    sources = _build_sources(all_results)
+
+    # Step 5: re-seed the working set (DEC-031 v2, #201). Pointer IDs only.
+    #   Over the size cap → don't persist a working set (context_label=null).
+    context_label = None
+    state_to_persist = None
+    if session_id:
+        doc_ids, obl_ids, label = chat_session.compute_working_set(sources)
+        if not chat_session.over_cap(doc_ids, obl_ids):
+            last_tool = tool_calls[0]["name"] if tool_calls else None
+            state_to_persist = chat_session.build_state(doc_ids, obl_ids, label, last_tool)
+            context_label = label
 
     _cost = _cost_vnd(TokenUsage(input_tokens=total_in, output_tokens=total_out), _GEMINI_IN, _GEMINI_OUT) if llm_calls else 0.0
-    _safe_log_chat_query(db, tenant_id, question, tool_calls, True, len(sources),
-                         input_tokens=total_in, output_tokens=total_out,
-                         cost_vnd=_cost, llm_calls=llm_calls)
-    return {"answer": answer, "sources": sources, "found": True}
+    # Single transaction: chat_query_log row + chat_sessions upsert (SQLite lock).
+    _persist_query_and_session(
+        db, tenant_id, question, tool_calls, True, len(sources),
+        input_tokens=total_in, output_tokens=total_out, cost_vnd=_cost, llm_calls=llm_calls,
+        user_id=user_id, session_id=session_id, state=state_to_persist,
+    )
+    return {
+        "answer": answer,
+        "sources": sources,
+        "found": True,
+        "context_label": context_label,
+        "session_id": session_id,
+    }

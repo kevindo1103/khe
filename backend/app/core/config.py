@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID: str | None = os.getenv("TELEGRAM_CHAT_ID")
 
+    # Per-tenant engine cache cap (#184). LRU-evicts cold tenants so cached
+    # SQLite engines don't hold file handles forever (insurance for #181).
+    TENANT_ENGINE_CACHE_SIZE: int = int(os.getenv("TENANT_ENGINE_CACHE_SIZE", "20"))
+
+    # Ingest upload size cap (#56). App-level inner ring — nginx (50MB) is the
+    # outer perimeter. Stream-write rejects with 413 on exceed; protects the
+    # worker from a 20×50MB bulk request loading 1GB into memory.
+    MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "50"))
+
     @property
     def MASTER_DB_URL(self) -> str:
         return f"sqlite:///{self.DATA_DIR / 'master.db'}"

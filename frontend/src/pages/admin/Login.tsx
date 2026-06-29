@@ -63,12 +63,14 @@ export default function Login() {
               onChange={setField('tenant_id')}
               placeholder="vd: sme-abc-restaurant"
               hint="Mã do firm/đại lý cấp khi onboard"
+              testId="login-tenant-id"
             />
             <Input
               label="Tên đăng nhập"
               value={form.username}
               onChange={setField('username')}
               placeholder="vd: linh.ketoan"
+              testId="login-username"
             />
             <Input
               label="Mật khẩu"
@@ -76,15 +78,19 @@ export default function Login() {
               value={form.password}
               onChange={setField('password')}
               placeholder="••••••••"
+              testId="login-password"
             />
 
             {error && (
-              <div className="text-2xs text-danger bg-danger-soft px-3 py-2 rounded-md">
+              <div
+                data-testid="login-error"
+                className="text-2xs text-danger bg-danger-soft px-3 py-2 rounded-md"
+              >
                 {error}
               </div>
             )}
 
-            <Button type="submit" size="lg" loading={isLoading} className="w-full">
+            <Button type="submit" size="lg" loading={isLoading} className="w-full" testId="login-submit">
               Đăng nhập
             </Button>
 

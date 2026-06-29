@@ -3,6 +3,8 @@ import { Button, Input } from '../../components';
 import { apiFetch } from '../../lib/api';
 import type { ChatMessage, ChatQueryOut, ChatSource } from '../../types/chat';
 import type { ApiError } from '../../lib/api';
+import { OBLIGATION_TYPE_LABELS, labelFor } from '../../lib/labels';
+import { useChatSession } from '../../hooks/useChatSession';
 
 const D08_MAIN = 'Không tìm thấy thông tin này trong hồ sơ của bạn.';
 const D08_SUB =
@@ -12,24 +14,44 @@ const SUGGESTION_CHIPS = [
   'Cái gì sắp hết hạn?',
   'Tìm HĐ với Hải Đăng',
   'HĐ thuê MB còn hạn bao lâu?',
+  'Còn mấy đợt thanh toán?',
+  'Việc gì đang chờ sự kiện?',
 ];
 
 function SourceChip({ source }: { source: ChatSource }) {
+  const isObligation = source.type === 'obligation';
   return (
-    <span className="inline-flex items-center gap-1 bg-primary-soft text-primary border border-primary/20 rounded-full px-2.5 py-0.5 text-2xs font-medium">
-      📄 {source.file_name}
-      {source.clause_num ? ` · ${source.clause_num}` : ''}
-    </span>
+    <div className="flex flex-wrap gap-1.5 items-center" data-testid={`chat-source-${source.document_id}`}>
+      <span className="inline-flex items-center gap-1 bg-primary-soft text-primary border border-primary/20 rounded-full px-2.5 py-0.5 text-2xs font-medium">
+        📄 {source.file_name}
+        {source.clause_num ? ` · ${source.clause_num}` : ''}
+      </span>
+      {isObligation && source.obligation_type && (
+        <span className="inline-flex items-center bg-ink-muted/10 text-ink-muted border border-border rounded-full px-2 py-0.5 text-2xs font-medium">
+          {labelFor(OBLIGATION_TYPE_LABELS, source.obligation_type)}
+        </span>
+      )}
+      {isObligation && source.milestone_total && source.milestone_total > 1 && source.milestone_index != null && (
+        <span className="inline-flex items-center bg-info-soft text-info border border-info/20 rounded-full px-2 py-0.5 text-2xs font-medium">
+          Đợt {source.milestone_index}/{source.milestone_total}
+        </span>
+      )}
+      {isObligation && source.status === 'waiting_trigger' && source.trigger_condition && (
+        <span className="inline-flex items-center bg-warning-soft text-warning border border-warning/20 rounded-full px-2 py-0.5 text-2xs font-medium">
+          ⏳ Chờ: {source.trigger_condition}
+        </span>
+      )}
+    </div>
   );
 }
 
 function ChatBubble({ message }: { message: ChatMessage }) {
-  const { role, text, source, notFound, isError, loading: isLoading } = message;
+  const { role, text, source, notFound, isError, loading: isLoading, truncationHint } = message;
 
   if (role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[78%] bg-primary text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm">
+        <div data-testid="chat-bubble-user" className="max-w-[78%] bg-primary text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm">
           {text}
         </div>
       </div>
@@ -38,9 +60,9 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   if (notFound) {
     return (
-      <div className="flex justify-start max-w-[88%]">
+      <div className="flex justify-start max-w-[88%]" data-testid="chat-bubble-notfound">
         <div className="bg-warning-soft border border-warning/30 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed">
-          <div className="text-warning font-semibold mb-1">{D08_MAIN}</div>
+          <div data-testid="chat-d08-text" className="text-warning font-semibold mb-1">{D08_MAIN}</div>
           <div className="text-warning/90 text-xs">{D08_SUB}</div>
         </div>
       </div>
@@ -50,7 +72,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   if (isLoading) {
     return (
       <div className="flex justify-start">
-        <div className="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-ink-muted italic shadow-sm">
+        <div data-testid="chat-loading" className="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-ink-muted italic shadow-sm">
           Đang tìm…
         </div>
       </div>
@@ -60,15 +82,25 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   return (
     <div className="flex flex-col gap-1.5 items-start max-w-[88%]">
       <div
+        data-testid="chat-bubble-bot"
         className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
           isError
             ? 'bg-danger-soft border border-danger/30 text-danger'
             : 'bg-surface border border-border text-ink'
         }`}
       >
+        {source?.direction === 'nghĩa_vụ' && (
+          <span className="font-semibold text-primary">Bạn cần </span>
+        )}
+        {source?.direction === 'quyền_lợi' && (
+          <span className="font-semibold text-primary">Đối tác cần </span>
+        )}
         {text}
       </div>
       {source && <SourceChip source={source} />}
+      {truncationHint && (
+        <div className="text-2xs text-ink-subtle italic">{truncationHint}</div>
+      )}
     </div>
   );
 }
@@ -77,7 +109,9 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [contextLabel, setContextLabel] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { getSessionId, resetSession } = useChatSession();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -94,16 +128,22 @@ export default function Chat() {
     try {
       const data = await apiFetch<ChatQueryOut>('/chat/query', {
         method: 'POST',
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, session_id: getSessionId() }),
       });
       const notFound = !data.found;
+      // truncation_hint is an over-cap signal, not a real source — keep it out
+      // of the SourceChip and surface its text separately under the answer.
+      const realSources = (data.sources || []).filter((s) => s.type !== 'truncation_hint');
+      const truncation = (data.sources || []).find((s) => s.type === 'truncation_hint');
       const botMsg: ChatMessage = {
         role: 'bot',
         text: data.answer || null,
-        source: data.sources?.[0] || null,
+        source: realSources[0] || null,
         notFound,
+        truncationHint: truncation?.value || null,
       };
       setMessages((m) => [...m, botMsg]);
+      setContextLabel(data.context_label);
     } catch (err) {
       const apiErr = err as ApiError;
       setMessages((m) => [
@@ -129,6 +169,13 @@ export default function Chat() {
   const handleChip = (chip: string) => {
     setInput(chip);
     sendMessage(chip);
+  };
+
+  const handleReset = async () => {
+    await resetSession();
+    setMessages([]);
+    setContextLabel(null);
+    setInput('');
   };
 
   const showEmpty = messages.length === 0 && !loading;
@@ -181,6 +228,32 @@ export default function Chat() {
 
       {/* Input */}
       <div className="border-t border-border bg-surface p-3 rounded-b-lg">
+        {/* Scope chip (working set) + reset — DEC-031 v2 */}
+        {messages.length > 0 && (
+          <div className="flex items-center justify-between gap-2 mb-2">
+            {contextLabel ? (
+              <span
+                data-testid="chat-scope-chip"
+                className="inline-flex items-center gap-1 bg-info-soft text-info border border-info/20 rounded-full px-2.5 py-0.5 text-2xs font-medium"
+              >
+                <span aria-hidden="true">📌</span>
+                {contextLabel}
+                <span aria-hidden="true">▾</span>
+              </span>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={handleReset}
+              aria-label="Hỏi mới — xóa ngữ cảnh trò chuyện"
+              data-testid="chat-reset"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-2xs font-medium text-ink-muted hover:text-ink border border-border rounded-full hover:bg-surface-alt transition-colors cursor-pointer flex-shrink-0"
+            >
+              <span aria-hidden="true">🔄</span> Hỏi mới
+            </button>
+          </div>
+        )}
         {messages.length > 0 && !showEmpty && (
           <div className="flex gap-2 overflow-x-auto pb-2 mb-1" style={{ scrollbarWidth: 'none' }}>
             {SUGGESTION_CHIPS.map((chip) => (
@@ -202,6 +275,7 @@ export default function Chat() {
               onChange={setInput}
               placeholder="Hỏi về hợp đồng của bạn…"
               className="mb-0"
+              testId="chat-input"
             />
           </div>
           <Button
@@ -209,6 +283,7 @@ export default function Chat() {
             size="sm"
             disabled={!input.trim() || loading}
             className="flex-shrink-0 h-11 w-11 px-0 rounded-full"
+            testId="chat-send"
           >
             ➤
           </Button>

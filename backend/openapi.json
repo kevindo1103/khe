@@ -1,0 +1,2964 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Khế API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/consent": {
+      "get": {
+        "tags": [
+          "consent"
+        ],
+        "summary": "Get Consents",
+        "description": "Return the latest status for each closed-purpose enum value.",
+        "operationId": "get_consents_consent_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "consent"
+        ],
+        "summary": "Post Consent",
+        "description": "Record a consent_logged Event.",
+        "operationId": "post_consent_consent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/consent/revoke": {
+      "post": {
+        "tags": [
+          "consent"
+        ],
+        "summary": "Post Revoke",
+        "description": "Record a consent_revoked Event (append-only).",
+        "operationId": "post_revoke_consent_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ingest/upload": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Upload Document",
+        "description": "Upload a single PDF. Consent gate FIRST; 403 if SME has not consented.",
+        "operationId": "upload_document_ingest_upload_post",
+        "parameters": [
+          {
+            "name": "doc_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doc Type"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_ingest_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ingest/bulk": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Upload Bulk",
+        "description": "Upload up to 20 PDFs in one batch.",
+        "operationId": "upload_bulk_ingest_bulk_post",
+        "parameters": [
+          {
+            "name": "doc_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doc Type"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_bulk_ingest_bulk_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkUploadOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "List Documents",
+        "description": "List documents for the tenant with pagination and filters.\n\nneeds_review=True filters to documents with at least one term flagged for review.\nneeds_review=False filters to documents with no terms flagged for review.",
+        "operationId": "list_documents_documents__get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "needs_review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Needs Review"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Document",
+        "description": "Get a single document with its terms.",
+        "operationId": "get_document_documents__doc_id__get",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/file": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Download File",
+        "description": "Download the original PDF.",
+        "operationId": "download_file_documents__doc_id__file_get",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/terms/{term_id}": {
+      "patch": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Patch Term",
+        "description": "Update a term's field_value, clear needs_review, log Event.",
+        "operationId": "patch_term_documents__doc_id__terms__term_id__patch",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "term_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Term Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TermPatchIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/confirm_self_party": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Confirm Self Party",
+        "description": "User selects which role_label is 'me' → re-derive direction for all obligations.\n\nD-02: this is a user-confirm action — direction is set from human choice, not auto.",
+        "operationId": "confirm_self_party_documents__doc_id__confirm_self_party_post",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfPartyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfPartyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/confirm": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Confirm Document",
+        "description": "User confirms they've reviewed this document (#238, D-02).\n\nSelf-party is auto-derived from the tenant's ``legal_name`` Setting (not a\nmanual pick, per PM ratify): direction is recomputed for the doc's\nobligations. The FIRST confirmed doc advances the journey NEEDS_REVIEW →\nCONFIRMED (#250/#249 — all-docs-confirmed was pilot-blocking friction), so\nthe FE sidebar nav unlocks.",
+        "operationId": "confirm_document_documents__doc_id__confirm_post",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmDocumentOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/remap-type": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Remap Document Type",
+        "description": "Correct a misclassified ``doc_type_group`` by re-mapping the type-specific\nfields from the already-extracted ``clauses[]`` — text-only, no vision call\n(#258). ~2-3đ vs ~177đ re-extract; no quota slot.\n\nAtomic: delete old type-specific Terms → insert new (source=\"remap\") → update\nthe doc_type_group Term → re-derive obligations → reset confirmed_by_user_at\n(back to NEEDS_REVIEW for re-confirm, D-02) → doc_type_corrected Event (D-07).",
+        "operationId": "remap_document_type_documents__doc_id__remap_type_post",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemapTypeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemapTypeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/re-extract": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Re Extract Document",
+        "description": "Re-trigger extraction on a document — admin only.\n\nUsed to unstick docs whose extraction crashed mid-flight (status='processing'\nafter a worker restart) or to pull in a schema upgrade (e.g. #162 added\n`obligation_schedule`). The extraction runner is idempotent: it replaces\nTerms / Clauses / Parties / schedule-derived Obligations for this doc in\na single transaction.\n\nCAUTION: chain-resolved Obligations (with non-null source_doc_chain) survive\nre-extraction; if the underlying terms changed materially, run obligation\nderivation afterwards — out of scope here.\n\nD-02: user-triggered action; audit Event logged.",
+        "operationId": "re_extract_document_documents__doc_id__re_extract_post",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/relationships": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "List Relationships",
+        "description": "List relationships for a document (as source or target).",
+        "operationId": "list_relationships_documents__doc_id__relationships_get",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}/relationships/{rel_id}": {
+      "patch": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Patch Relationship",
+        "description": "SME confirms a relationship. Only confirmation acts on data (D-02).",
+        "operationId": "patch_relationship_documents__doc_id__relationships__rel_id__patch",
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Doc Id"
+            }
+          },
+          {
+            "name": "rel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Rel Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipConfirmIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipConfirmOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/obligations/": {
+      "get": {
+        "tags": [
+          "obligations"
+        ],
+        "summary": "List Obligations",
+        "description": "List obligations for the tenant.\n\n- due_within=N filters to obligations whose due_date is within the next N days.\n- status filters by exact status string.",
+        "operationId": "list_obligations_obligations__get",
+        "parameters": [
+          {
+            "name": "due_within",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due Within"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/obligations/summary": {
+      "get": {
+        "tags": [
+          "obligations"
+        ],
+        "summary": "Obligations Summary",
+        "description": "Server-side obligation aggregate for the Dashboard (#199 follow-up).\n\nReuses the canonical aggregate (count + grouped labels + status_breakdown)\nthe chat path already uses, so the FE renders server `groups[].label`\n(e.g. \"Bạn cần\" / \"Đối tác cần làm cho bạn\") instead of deriving direction\ncounts client-side. Tenant-scoped; count-only (D-06, no money sum). total=0 is\na valid response, never an error.\n\n``active_only`` defaults True (#253) — the dashboard overview excludes terminal\ndone/cancelled so total + direction cards match the active-only list. Pass\n``active_only=false`` for the full historical count.",
+        "operationId": "obligations_summary_obligations_summary_get",
+        "parameters": [
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "direction",
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Direction"
+            }
+          },
+          {
+            "name": "obligation_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Obligation Type"
+            }
+          },
+          {
+            "name": "due_within_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due Within Days"
+            }
+          },
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationSummaryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/obligations/{obligation_id}": {
+      "patch": {
+        "tags": [
+          "obligations"
+        ],
+        "summary": "Patch Obligation",
+        "description": "Update an obligation's status. SME/status-machine edits only (D-02).",
+        "operationId": "patch_obligation_obligations__obligation_id__patch",
+        "parameters": [
+          {
+            "name": "obligation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Obligation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObligationPatchIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationPatchOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/obligations/{obligation_id}/snooze": {
+      "post": {
+        "tags": [
+          "obligations"
+        ],
+        "summary": "Snooze Obligation",
+        "description": "Snooze this obligation's reminder for 3 days (\"Nhắc lại sau 3 ngày\", #214).\n\nSuppresses only the reminder — the obligation itself (status, due_date) is\nuntouched and still visible (D-07). Auto-resumes once snoozed_until passes.",
+        "operationId": "snooze_obligation_obligations__obligation_id__snooze_post",
+        "parameters": [
+          {
+            "name": "obligation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Obligation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnoozeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reminders/test": {
+      "post": {
+        "tags": [
+          "reminders"
+        ],
+        "summary": "Test Reminders",
+        "description": "Dev trigger: run the reminder batch for the current tenant right now.\n\nReturns counts of attempted/sent/skipped reminders.",
+        "operationId": "test_reminders_reminders_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/query": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Query Chat",
+        "description": "Answer a natural-language question using only extracted tenant data.",
+        "operationId": "query_chat_chat_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatQueryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatQueryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/sessions/reset": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Reset Chat Session",
+        "description": "Reset the progressive chat state (\"🔄 Hỏi mới\") for a device/tab (#201).\n\nPOST + JSON body (not a DELETE query param) so the session_id UUID is not\nlogged in nginx access logs (#203 M1).",
+        "operationId": "reset_chat_session_chat_sessions_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionResetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/stats": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Chat Stats",
+        "description": "Aggregate tokenomics stats for the authenticated tenant (JWT-scoped).",
+        "operationId": "chat_stats_chat_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStatsOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenants/me": {
+      "get": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Get Tenant Me",
+        "description": "Tenant summary for the authenticated user, incl. journey state (#213).",
+        "operationId": "get_tenant_me_tenants_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantMeOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenants/me/journey": {
+      "patch": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Advance Journey",
+        "description": "Advance the onboarding journey_stage. Forward-only — backward = 409 (#213).",
+        "operationId": "advance_journey_tenants_me_journey_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JourneyAdvanceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JourneyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenants/me/legal_name": {
+      "get": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Get Legal Name",
+        "description": "Read current legal_name (null if not set yet).",
+        "operationId": "get_legal_name_tenants_me_legal_name_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalNameOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Update Legal Name",
+        "description": "SME declares legal entity name → upsert tenant_profiles.",
+        "operationId": "update_legal_name_tenants_me_legal_name_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalNameIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalNameOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/tenants/cost-summary": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Tenants Cost Summary",
+        "description": "Per-tenant extraction cost + gross-margin snapshot for pilot monitoring (#255).\n\nNULL cost columns (pre-migration / un-extracted tenants) sum as 0.",
+        "operationId": "tenants_cost_summary_admin_tenants_cost_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/scheduler": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Scheduler Metrics",
+        "description": "One-time benchmark endpoint (#185): report the latest scheduler tick\ntiming + active tenant count, to measure distance to the #181 scaling\nthresholds. Operational counts only (no PII/secrets), but gated to non-prod\nto avoid exposing tenant counts publicly. Returns 404 in production.",
+        "operationId": "scheduler_metrics_health_scheduler_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/extraction": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Extraction Config Diagnostic",
+        "description": "Non-prod diagnostic: report which extraction provider env vars the\nbackend process actually sees. Never returns the key VALUES — only whether\neach env-var name is present and non-empty. Safe to expose because the\nfactory's `ExtractionUnavailable` message already names these.\n\nReturns 404 in production.\n\nWired for #79: lets QC self-diagnose `status=failed` without VPS access.",
+        "operationId": "extraction_config_diagnostic_health_extraction_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_upload_bulk_ingest_bulk_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_bulk_ingest_bulk_post"
+      },
+      "Body_upload_document_ingest_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_document_ingest_upload_post"
+      },
+      "BulkUploadOut": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/UploadOut"
+            },
+            "type": "array",
+            "title": "Documents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "documents"
+        ],
+        "title": "BulkUploadOut"
+      },
+      "ChatQueryIn": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "ChatQueryIn"
+      },
+      "ChatQueryOut": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "sources": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "found": {
+            "type": "boolean",
+            "title": "Found"
+          },
+          "context_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Label"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "intent": {
+            "type": "string",
+            "title": "Intent",
+            "default": "retrieval"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "tenant_empty": {
+            "type": "boolean",
+            "title": "Tenant Empty",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "sources",
+          "found"
+        ],
+        "title": "ChatQueryOut"
+      },
+      "ChatSessionResetIn": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "ChatSessionResetIn"
+      },
+      "ChatStatsOut": {
+        "properties": {
+          "total_queries": {
+            "type": "integer",
+            "title": "Total Queries"
+          },
+          "total_cost_vnd": {
+            "type": "number",
+            "title": "Total Cost Vnd"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "total_llm_calls": {
+            "type": "integer",
+            "title": "Total Llm Calls"
+          },
+          "avg_tokens_per_query": {
+            "type": "number",
+            "title": "Avg Tokens Per Query"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_queries",
+          "total_cost_vnd",
+          "total_input_tokens",
+          "total_output_tokens",
+          "total_llm_calls",
+          "avg_tokens_per_query"
+        ],
+        "title": "ChatStatsOut"
+      },
+      "ConfirmDocumentOut": {
+        "properties": {
+          "doc_id": {
+            "type": "integer",
+            "title": "Doc Id"
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Confirmed At"
+          },
+          "directions_recomputed": {
+            "type": "integer",
+            "title": "Directions Recomputed"
+          },
+          "journey_advanced": {
+            "type": "boolean",
+            "title": "Journey Advanced"
+          },
+          "new_journey_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Journey Stage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "doc_id",
+          "confirmed_at",
+          "directions_recomputed",
+          "journey_advanced"
+        ],
+        "title": "ConfirmDocumentOut"
+      },
+      "DocumentDetailOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "doc_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "file_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Url"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/TermOut"
+            },
+            "type": "array",
+            "title": "Terms",
+            "default": []
+          },
+          "obligations": {
+            "items": {},
+            "type": "array",
+            "title": "Obligations",
+            "default": []
+          },
+          "clause_count": {
+            "type": "integer",
+            "title": "Clause Count",
+            "default": 0
+          },
+          "parties": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Parties",
+            "default": []
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "confirmed_by_user_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By User At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "file_name",
+          "status"
+        ],
+        "title": "DocumentDetailOut"
+      },
+      "DocumentListItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "doc_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "needs_review": {
+            "type": "boolean",
+            "title": "Needs Review",
+            "default": false
+          },
+          "term_count": {
+            "type": "integer",
+            "title": "Term Count",
+            "default": 0
+          },
+          "obligation_count": {
+            "type": "integer",
+            "title": "Obligation Count",
+            "default": 0
+          },
+          "clause_count": {
+            "type": "integer",
+            "title": "Clause Count",
+            "default": 0
+          },
+          "confirmed_by_user_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By User At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "primary_party": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Party"
+          },
+          "next_due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due Date"
+          },
+          "nghia_vu_count": {
+            "type": "integer",
+            "title": "Nghia Vu Count",
+            "default": 0
+          },
+          "quyen_loi_count": {
+            "type": "integer",
+            "title": "Quyen Loi Count",
+            "default": 0
+          },
+          "direction_null_count": {
+            "type": "integer",
+            "title": "Direction Null Count",
+            "default": 0
+          },
+          "may_have_unextracted_obligations": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "May Have Unextracted Obligations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "file_name",
+          "status"
+        ],
+        "title": "DocumentListItem"
+      },
+      "DocumentListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "DocumentListOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthOut"
+      },
+      "JourneyAdvanceIn": {
+        "properties": {
+          "journey_stage": {
+            "type": "string",
+            "title": "Journey Stage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "journey_stage"
+        ],
+        "title": "JourneyAdvanceIn"
+      },
+      "JourneyOut": {
+        "properties": {
+          "journey_stage": {
+            "type": "string",
+            "title": "Journey Stage"
+          },
+          "is_first_session": {
+            "type": "boolean",
+            "title": "Is First Session"
+          }
+        },
+        "type": "object",
+        "required": [
+          "journey_stage",
+          "is_first_session"
+        ],
+        "title": "JourneyOut"
+      },
+      "LegalNameIn": {
+        "properties": {
+          "legal_name": {
+            "type": "string",
+            "title": "Legal Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "legal_name"
+        ],
+        "title": "LegalNameIn"
+      },
+      "LegalNameOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "legal_name"
+        ],
+        "title": "LegalNameOut"
+      },
+      "LoginIn": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "username",
+          "password"
+        ],
+        "title": "LoginIn"
+      },
+      "LoginOut": {
+        "properties": {
+          "user": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "User"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "tenant_id"
+        ],
+        "title": "LoginOut"
+      },
+      "ObligationListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ObligationOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "ObligationListOut"
+      },
+      "ObligationOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "document_id": {
+            "type": "integer",
+            "title": "Document Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "obligation_type": {
+            "type": "string",
+            "title": "Obligation Type"
+          },
+          "recurrence": {
+            "type": "string",
+            "title": "Recurrence"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "obligor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obligor"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "remind_before_days": {
+            "type": "integer",
+            "title": "Remind Before Days"
+          },
+          "source_doc_chain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Doc Chain"
+          },
+          "resolution_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Method"
+          },
+          "milestone_series_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Series Id"
+          },
+          "milestone_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Index"
+          },
+          "milestone_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Total"
+          },
+          "milestone_trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Trigger"
+          },
+          "trigger_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Condition"
+          },
+          "trigger_delay_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Delay Days"
+          },
+          "trigger_obligation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Obligation Id"
+          },
+          "amount_raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Raw"
+          },
+          "snoozed_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snoozed Until"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "document_id",
+          "description",
+          "obligation_type",
+          "recurrence",
+          "status",
+          "remind_before_days"
+        ],
+        "title": "ObligationOut"
+      },
+      "ObligationPatchIn": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ObligationPatchIn"
+      },
+      "ObligationPatchOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "obligation": {
+            "$ref": "#/components/schemas/ObligationOut"
+          },
+          "activated_count": {
+            "type": "integer",
+            "title": "Activated Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "obligation"
+        ],
+        "title": "ObligationPatchOut"
+      },
+      "ObligationSummaryOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "group_by": {
+            "type": "string",
+            "title": "Group By"
+          },
+          "groups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "status_breakdown": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Status Breakdown"
+          },
+          "source": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "group_by",
+          "groups",
+          "status_breakdown",
+          "source"
+        ],
+        "title": "ObligationSummaryOut",
+        "description": "Server-side obligation aggregate for the Dashboard (#199 follow-up) —\ncanonical group labels so the FE stops deriving direction counts client-side."
+      },
+      "RelationshipConfirmIn": {
+        "properties": {
+          "confirmed_by_sme": {
+            "type": "boolean",
+            "title": "Confirmed By Sme"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmed_by_sme"
+        ],
+        "title": "RelationshipConfirmIn"
+      },
+      "RelationshipConfirmOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/RelationshipOut"
+          },
+          "chain": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Chain"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "relationship",
+          "chain"
+        ],
+        "title": "RelationshipConfirmOut"
+      },
+      "RelationshipListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RelationshipListOut"
+      },
+      "RelationshipOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "from_doc_id": {
+            "type": "integer",
+            "title": "From Doc Id"
+          },
+          "to_doc_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Doc Id"
+          },
+          "unresolved_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Ref"
+          },
+          "relationship_type": {
+            "type": "string",
+            "enum": [
+              "amends",
+              "references_framework"
+            ],
+            "title": "Relationship Type"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed"
+            ],
+            "title": "Status"
+          },
+          "confirmed_by_sme": {
+            "type": "boolean",
+            "title": "Confirmed By Sme"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "from_doc_id",
+          "relationship_type",
+          "status",
+          "confirmed_by_sme"
+        ],
+        "title": "RelationshipOut"
+      },
+      "RemapTypeIn": {
+        "properties": {
+          "doc_type_group": {
+            "type": "string",
+            "title": "Doc Type Group"
+          }
+        },
+        "type": "object",
+        "required": [
+          "doc_type_group"
+        ],
+        "title": "RemapTypeIn"
+      },
+      "RemapTypeOut": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "fields_remapped": {
+            "type": "integer",
+            "title": "Fields Remapped"
+          },
+          "fields_null": {
+            "type": "integer",
+            "title": "Fields Null"
+          },
+          "cost_vnd": {
+            "type": "number",
+            "title": "Cost Vnd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fields_remapped",
+          "fields_null",
+          "cost_vnd"
+        ],
+        "title": "RemapTypeOut"
+      },
+      "SelfPartyIn": {
+        "properties": {
+          "role_label": {
+            "type": "string",
+            "title": "Role Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role_label"
+        ],
+        "title": "SelfPartyIn"
+      },
+      "SelfPartyOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "updated"
+        ],
+        "title": "SelfPartyOut"
+      },
+      "SnoozeOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "snoozed_until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Snoozed Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "snoozed_until"
+        ],
+        "title": "SnoozeOut"
+      },
+      "TenantMeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "plan": {
+            "type": "string",
+            "title": "Plan"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "journey_stage": {
+            "type": "string",
+            "title": "Journey Stage"
+          },
+          "is_first_session": {
+            "type": "boolean",
+            "title": "Is First Session"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "plan",
+          "is_active",
+          "journey_stage",
+          "is_first_session"
+        ],
+        "title": "TenantMeOut"
+      },
+      "TermOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "field_name": {
+            "type": "string",
+            "title": "Field Name"
+          },
+          "field_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Value"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "needs_review": {
+            "type": "boolean",
+            "title": "Needs Review",
+            "default": false
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "page_num": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Num"
+          },
+          "bbox": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "field_name"
+        ],
+        "title": "TermOut"
+      },
+      "TermPatchIn": {
+        "properties": {
+          "field_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Value"
+          }
+        },
+        "type": "object",
+        "title": "TermPatchIn"
+      },
+      "UploadOut": {
+        "properties": {
+          "doc_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_name",
+          "status"
+        ],
+        "title": "UploadOut"
+      },
+      "UserOut": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "tenant_id",
+          "role"
+        ],
+        "title": "UserOut"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

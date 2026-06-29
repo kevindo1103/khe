@@ -6,7 +6,9 @@ Stored in master.db (never in per-tenant DBs).
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -27,6 +29,20 @@ class Tenant(MasterBase):
     db_path = Column(String, nullable=False)           # relative: "tenants/sme-abc.db"
     plan = Column(String, default="starter")           # "starter" | "pro" | "enterprise"
     is_active = Column(Boolean, default=True)
+    # Onboarding journey state machine (#213) — monotonic forward-only:
+    # NEW → EXTRACTING → NEEDS_REVIEW → CONFIRMED → ACTIVATED → STEADY.
+    journey_stage = Column(String, nullable=False, server_default="NEW")
+    # First-session nav-lock; cleared atomically when the stage reaches ACTIVATED.
+    is_first_session = Column(Boolean, nullable=False, server_default="1")
+    # Ingest quota (FR-TN-01 / D-11, #63) — prevents vision-extraction cost
+    # runaway. doc_quota firm-configurable per SME; counter resets calendar 1st.
+    doc_quota = Column(Integer, nullable=False, server_default="500")
+    docs_used_month = Column(Integer, nullable=False, server_default="0")
+    quota_reset_at = Column(Date, nullable=True)
+    # Extraction cost aggregate (#255 pilot monitoring). cost_vnd_month resets with
+    # the calendar-1st quota reset; cost_vnd_total is lifetime (never reset).
+    cost_vnd_month = Column(Float, nullable=False, server_default="0")
+    cost_vnd_total = Column(Float, nullable=False, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
 
     users = relationship("TenantUser", back_populates="tenant", cascade="all, delete-orphan")

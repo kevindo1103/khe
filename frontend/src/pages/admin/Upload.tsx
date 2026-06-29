@@ -12,9 +12,23 @@ export default function Upload() {
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<UploadOut[] | null>(null);
   const [error, setError] = useState<string>('');
+  const [isConsentError, setIsConsentError] = useState(false);
+  const [isQuotaError, setIsQuotaError] = useState(false);
+  const [partialNote, setPartialNote] = useState<string>('');
   const [toastMsg, setToastMsg] = useState<string>('');
   const singleInputRef = useRef<HTMLInputElement>(null);
   const bulkInputRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = () =>
+    (tab === 'single' ? singleInputRef.current : bulkInputRef.current)?.click();
+
+  // a11y (#206): the dropzone is a custom control → keyboard-operable (Enter/Space)
+  const handleDropzoneKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openPicker();
+    }
+  };
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>, multiple: boolean) => {
     const selected = Array.from(e.target.files || []);
@@ -24,6 +38,7 @@ export default function Upload() {
     }
     setFiles(selected.filter((f) => f.type === 'application/pdf'));
     setError('');
+    setIsConsentError(false);
     setResults(null);
   };
 
@@ -40,13 +55,18 @@ export default function Upload() {
     }
     setFiles(dropped);
     setError('');
+    setIsConsentError(false);
     setResults(null);
   };
 
   const upload = async () => {
     if (files.length === 0) return;
+    const submitted = files.length;
     setUploading(true);
     setError('');
+    setIsConsentError(false);
+    setIsQuotaError(false);
+    setPartialNote('');
     setResults(null);
 
     try {
@@ -62,12 +82,21 @@ export default function Upload() {
         const res = await apiFetchMultipart<BulkUploadOut>('/ingest/bulk', fd);
         setResults(res.documents);
         setToastMsg(`Đã tải ${res.count} tài liệu ✓`);
+        // PartialUpload (#227 note 3): some files didn't make it — say so, never a stuck state
+        if (res.count < submitted) {
+          setPartialNote(`${submitted - res.count}/${submitted} file không tải được (không hợp lệ hoặc trùng). ${res.count} file đã tải.`);
+        }
       }
       setFiles([]);
     } catch (err) {
       const apiErr = err as ApiError;
       if (apiErr.status === 403) {
         setError('Chưa ghi nhận đồng ý trích xuất AI. Vui lòng liên hệ đại lý/luật sư để kích hoạt.');
+        setIsConsentError(true);
+      } else if (apiErr.status === 429) {
+        // D-11 quota guard — no extraction happened; tell the user plainly
+        setError('Đã đạt giới hạn số tài liệu trong tháng. Liên hệ đại lý/luật sư để nâng hạn mức.');
+        setIsQuotaError(true);
       } else if (apiErr.status === 422) {
         setError('File không hợp lệ. Chỉ chấp nhận PDF.');
       } else {
@@ -82,6 +111,9 @@ export default function Upload() {
     setFiles([]);
     setResults(null);
     setError('');
+    setIsConsentError(false);
+    setIsQuotaError(false);
+    setPartialNote('');
     if (singleInputRef.current) singleInputRef.current.value = '';
     if (bulkInputRef.current) bulkInputRef.current.value = '';
   };
@@ -113,10 +145,15 @@ export default function Upload() {
       <Card>
         {/* Drop zone */}
         <div
-          className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
+          role="button"
+          tabIndex={0}
+          aria-label={tab === 'single' ? 'Tải lên file PDF' : 'Tải lên tối đa 20 file PDF'}
+          className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors focus-visible:shadow-ring focus-visible:outline-none"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => handleDrop(e, tab === 'bulk')}
-          onClick={() => (tab === 'single' ? singleInputRef.current?.click() : bulkInputRef.current?.click())}
+          onClick={openPicker}
+          onKeyDown={handleDropzoneKey}
+          data-testid="upload-dropzone"
         >
           <div className="text-3xl mb-2">📁</div>
           <div className="text-sm text-ink-muted">
@@ -130,6 +167,7 @@ export default function Upload() {
             accept="application/pdf"
             className="hidden"
             onChange={(e) => handleFileSelect(e, false)}
+            data-testid="upload-file-input"
           />
           <input
             ref={bulkInputRef}
@@ -138,6 +176,7 @@ export default function Upload() {
             multiple
             className="hidden"
             onChange={(e) => handleFileSelect(e, true)}
+            data-testid="upload-file-input"
           />
         </div>
 
@@ -158,7 +197,7 @@ export default function Upload() {
         {/* Actions */}
         {files.length > 0 && (
           <div className="flex gap-2 mt-4">
-            <Button onClick={upload} loading={uploading}>
+            <Button onClick={upload} loading={uploading} testId="upload-progress">
               {tab === 'single' ? 'Tải lên' : `Tải lên ${files.length} file`}
             </Button>
             <Button variant="ghost" onClick={clear} disabled={uploading}>
@@ -169,8 +208,20 @@ export default function Upload() {
 
         {/* Error */}
         {error && (
-          <div className="mt-4">
+          <div
+            className="mt-4"
+            data-testid={
+              isConsentError ? 'upload-consent-required' : isQuotaError ? 'upload-quota-exceeded' : undefined
+            }
+          >
             <Toast kind="error">{error}</Toast>
+          </div>
+        )}
+
+        {/* Partial upload (some files didn't make it) — no stuck state */}
+        {partialNote && (
+          <div className="mt-4" data-testid="upload-partial">
+            <Toast kind="error">{partialNote}</Toast>
           </div>
         )}
 
