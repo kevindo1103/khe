@@ -111,7 +111,7 @@ class HybridOCRProvider:
             )
 
         try:
-            parsed, usage, llm_latency_ms = await self._llm_extract(ocr_text, doc_type)
+            parsed, usage, llm_latency_ms, diag = await self._llm_extract(ocr_text, doc_type)
         except Exception as exc:  # noqa: BLE001
             latency_ms = (time.perf_counter() - started) * 1000
             return empty_result(
@@ -128,7 +128,7 @@ class HybridOCRProvider:
                 provider=self.name,
                 model=self.model,
                 latency_ms=latency_ms,
-                warning=f"{self.name} returned no structured output.",
+                warning=f"{self.name} returned no structured output. {diag}",
             )
 
         llm_cost = cost_vnd(usage, self.in_usd_per_mtok, self.out_usd_per_mtok)
@@ -191,7 +191,7 @@ class HybridOCRProvider:
 
     async def _llm_extract(  # noqa: C901 (kept together for readability)
         self, text: str, doc_type: str
-    ) -> tuple[ContractExtractionLLMFull | None, TokenUsage, float]:
+    ) -> tuple[ContractExtractionLLMFull | None, TokenUsage, float, str]:
         """Feed OCR text to Gemini Flash for structured extraction."""
         from google.genai import types
 
@@ -218,7 +218,9 @@ class HybridOCRProvider:
             input_tokens=getattr(meta, "prompt_token_count", 0) or 0,
             output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
         )
-        return parsed, usage, llm_latency_ms
+        from .gemini_flash import _response_diagnostic
+        diag = "" if isinstance(parsed, ContractExtractionLLMFull) else _response_diagnostic(response)
+        return parsed, usage, llm_latency_ms, diag
 
 
 def _pdf_page_count(file_bytes: bytes) -> int:
