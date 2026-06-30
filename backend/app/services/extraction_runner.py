@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_tenant_session
-from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
+from app.models.tenant import Clause, Definition, Document, Event, Obligation, Party, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations, resolve_date_anchored_obligations
 from app.services import quota, tenant_journey
@@ -223,6 +223,12 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             Clause.tenant_id == tenant_id,
         ).delete()
 
+        # 7c. Idempotency: replace existing definitions (R9 #372).
+        db.query(Definition).filter(
+            Definition.document_id == doc_id,
+            Definition.tenant_id == tenant_id,
+        ).delete()
+
         # 8. Persist terms — all fields returned by the provider (universal + type-specific).
         #     Keep NULL-value rows (field.value is None) — the admin review UI edits
         #     existing terms only, so a missing universal field must still have a row
@@ -272,10 +278,26 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             from app.services.clause_hierarchy import build_clause_hierarchy
             build_clause_hierarchy(new_clauses, db)
 
-        # 8b-iii. R9 (#372): definitions extraction — stub pending KHE_AI schema.
-        # When Gemini schema adds definitions[] array, parse (term, definition) pairs
-        # here, create Definition rows, link source_clause_id via clause_path matching.
-        # No-op for now; CRUD + storage layer is ready.
+        # 8b-iii. R9 (#372): persist defined_terms from Gemini extraction.
+        clause_path_to_id: dict[str, int] = {
+            c.clause_path: c.id for c in new_clauses if c.clause_path and c.id
+        }
+        for dt in result.defined_terms:
+            if not dt.term or not dt.definition:
+                continue
+            source_clause_id = None
+            source_clause_num = dt.source_clause
+            if source_clause_num:
+                path = source_clause_num.replace("Điều ", "").strip().rstrip(".")
+                source_clause_id = clause_path_to_id.get(path)
+            db.add(Definition(
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                term=dt.term,
+                definition=dt.definition,
+                source_clause_num=source_clause_num,
+                source_clause_id=source_clause_id,
+            ))
 
         # 8b-iv. R10 (#373): cross-reference resolution between clauses.
         from app.services.cross_ref import resolve_cross_refs
