@@ -10,6 +10,7 @@ Vietnamese numbering conventions handled (1-indexed, matching prompt schema):
   Mục X.Y          → sub path "X.Y"              (level 2)
   X.Y              → sub path "X.Y"              (level 2)
   X.Y.Z            → sub-sub path "X.Y.Z"        (level 3)
+  Phụ lục A        → appendix path "PL-A"        (level 1)
 
 Clauses with unrecognised numbering (Roman numerals, letters, bare titles)
 keep clause_path=None, parent_id=None, level=None.
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Patterns ordered most-specific first.
 _DIEU_RE = re.compile(r"^(?:Đi[eề]u|DIEU)\s*(\d+)\s*[\.:\s]*$", re.IGNORECASE)
 _KHOAN_MUC_RE = re.compile(r"^(?:Kho[aả]n|M[uụ]c|KHOAN|MUC)\s*(\d+(?:\.\d+)+)\s*[\.:\s]*$", re.IGNORECASE)
+_PHU_LUC_RE = re.compile(r"^(?:Ph[uụ]\s+l[uụ]c|PHỤ\s+LỤC)\s+([A-Za-z0-9]+)", re.IGNORECASE)
 _DOTTED_RE = re.compile(r"^(\d+(?:\.\d+)+)\s*[\.:]?\s*")  # bare "2.1" or "2.1.1 ..."
 _TOP_RE = re.compile(r"^(\d+)\s*[\.:]?\s*")                 # bare "2" or "2. Tên mục"
 
@@ -40,6 +42,9 @@ def _parse_path(clause_num: Optional[str]) -> Optional[str]:
     m = _KHOAN_MUC_RE.match(s)
     if m:
         return m.group(1)
+    m = _PHU_LUC_RE.match(s)
+    if m:
+        return f"PL-{m.group(1).upper()}"
     m = _DOTTED_RE.match(s)
     if m:
         return m.group(1)
