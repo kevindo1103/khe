@@ -21,6 +21,28 @@ from ..schemas import ContractExtractionLLMFull, ExtractionResult, TokenUsage
 from .base import cost_vnd, empty_result, sniff_mime, to_result
 
 
+def _response_diagnostic(response) -> str:
+    """Extract diagnostic info from a Gemini response that failed to parse."""
+    parts = []
+    candidates = getattr(response, "candidates", None)
+    if candidates:
+        c0 = candidates[0]
+        finish = getattr(c0, "finish_reason", None)
+        if finish:
+            parts.append(f"finish={finish}")
+        safety = getattr(c0, "safety_ratings", None)
+        if safety:
+            blocked = [r for r in safety if getattr(r, "blocked", False)]
+            if blocked:
+                parts.append(f"blocked={[str(r.category) for r in blocked]}")
+    text = getattr(response, "text", None)
+    if text:
+        parts.append(f"text_len={len(text)}")
+    elif text == "":
+        parts.append("text=empty")
+    return " | ".join(parts) if parts else "no diagnostic info"
+
+
 class GeminiFlashProvider:
     name = "gemini_flash"
     # gemini-2.0-flash retired by Google (404). Current GA Flash with vision.
@@ -74,11 +96,12 @@ class GeminiFlashProvider:
 
         parsed = getattr(response, "parsed", None)
         if not isinstance(parsed, ContractExtractionLLMFull):
+            diag = _response_diagnostic(response)
             return empty_result(
                 provider=self.name,
                 model=self.model,
                 latency_ms=latency_ms,
-                warning=f"{self.name} returned no structured output.",
+                warning=f"{self.name} returned no structured output. {diag}",
             )
 
         meta = getattr(response, "usage_metadata", None)
