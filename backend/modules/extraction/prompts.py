@@ -227,9 +227,25 @@ Bóc TẤT CẢ điều khoản thành danh sách "clauses". Mỗi phần tử g
     num PHẢI chứa số thứ tự (KHÔNG null, KHÔNG chỉ title).
     "6" → level=1, "6.1" → level=2, "6.1.1" → level=3.
 
+⚠️ QUY TẮC PHỤ LỤC — sub-clauses trong Phụ lục dùng prefix "PL-":
+  Nếu tài liệu có Phụ lục (Phụ lục 1, Phụ lục A...) nằm trong cùng file:
+    level=1: num="Phụ lục 1", clause_path="PL-1"
+    level=2: Khoản/mục thuộc Phụ lục 1 → clause_path="PL-1.1", "PL-1.2"...
+    level=3: Điểm/tiểu mục → clause_path="PL-1.1.1"
+  ❌ Sai: clause_path="1" cho Khoản thuộc Phụ lục (TRÙNG với Điều 1)
+  ✅ Đúng: clause_path="PL-1.1" (unique, không collision)
+  Ví dụ:
+    [{"num":"Phụ lục 1", "title":"PHỤ LỤC THỎA THUẬN KÝ QUỸ", "level":1, "clause_path":"PL-1"},
+     {"num":"Khoản 1", "title":"MỤC ĐÍCH KÝ QUỸ", "level":2, "clause_path":"PL-1.1"},
+     {"num":"Khoản 2", "title":"SỐ TIỀN KÝ QUỸ", "level":2, "clause_path":"PL-1.2"}]
+
 ⚠️ QUY TẮC 2 — LETTERED ITEMS (a, b, c, ...) KHÔNG PHẢI ĐIỀU:
   a), b), c)... bên trong Điều/Khoản là sub-items → gộp vào content clause cha.
   KHÔNG tạo clause riêng với num="Điều k" hay num="a".
+  ⚠️ TOÀN VĂN: content PHẢI chứa ĐẦY ĐỦ nội dung bao gồm tất cả lettered items.
+  KHÔNG cắt ngắn sau câu giới thiệu — giữ nguyên a), b), c), d)... đến hết.
+  ❌ Sai: content="Trong Thỏa thuận này, các cụm từ dưới đây được hiểu như sau:"
+  ✅ Đúng: content="Trong Thỏa thuận này, các cụm từ dưới đây được hiểu như sau: a) \"Bên A\" là... b) \"Bên B\" là... c) \"Tiền Ký quỹ\" là... d) \"Dự án\" là..."
 
 ⚠️ QUY TẮC 3 — KHÔNG FLAT:
   Nếu tài liệu có sub-headings X.Y, clauses PHẢI có level > 1.
