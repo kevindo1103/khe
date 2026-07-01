@@ -10,7 +10,7 @@ Vietnamese numbering conventions handled (1-indexed, matching prompt schema):
   Mục X.Y          → sub path "X.Y"              (level 2)
   X.Y              → sub path "X.Y"              (level 2)
   X.Y.Z            → sub-sub path "X.Y.Z"        (level 3)
-  Phụ lục A        → appendix path "PL-A"        (level 1)
+  Phụ lục X        → appendix path "PL-X"        (level 1)
 
 Clauses with unrecognised numbering (Roman numerals, letters, bare titles)
 keep clause_path=None, parent_id=None, level=None.
@@ -36,15 +36,17 @@ def _parse_path(clause_num: Optional[str]) -> Optional[str]:
     if not clause_num:
         return None
     s = clause_num.strip()
+    if s.startswith("PL-"):
+        return s
+    m = _PHU_LUC_RE.match(s)
+    if m:
+        return f"PL-{m.group(1).upper()}"
     m = _DIEU_RE.match(s)
     if m:
         return m.group(1)
     m = _KHOAN_MUC_RE.match(s)
     if m:
         return m.group(1)
-    m = _PHU_LUC_RE.match(s)
-    if m:
-        return f"PL-{m.group(1).upper()}"
     m = _DOTTED_RE.match(s)
     if m:
         return m.group(1)
@@ -64,6 +66,18 @@ def _parent_path(path: str) -> Optional[str]:
     """Return the immediate parent path: "2.1.1"→"2.1", "2.1"→"2", "2"→None."""
     idx = path.rfind(".")
     return path[:idx] if idx != -1 else None
+
+
+def _stub_num(path: str) -> str:
+    """Generate a clause_num label for a synthesized parent stub."""
+    if path.startswith("PL-"):
+        suffix = path[3:]
+        if "." not in suffix:
+            return f"Phụ lục {suffix}"
+        return path
+    if "." not in path:
+        return f"Điều {path}"
+    return path
 
 
 def build_clause_hierarchy(clauses: list, db) -> None:
@@ -117,7 +131,7 @@ def build_clause_hierarchy(clauses: list, db) -> None:
         stub = Clause(
             tenant_id=tenant_id,
             document_id=document_id,
-            clause_num=f"Điều {path}" if "." not in path else path,
+            clause_num=_stub_num(path),
             title=None,
             content="(tổng hợp từ mục con)",
             clause_path=path,

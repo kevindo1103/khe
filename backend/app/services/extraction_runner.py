@@ -288,7 +288,8 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             source_clause_id = None
             source_clause_num = dt.source_clause
             if source_clause_num:
-                path = source_clause_num.replace("Điều ", "").strip().rstrip(".")
+                from app.services.clause_hierarchy import _parse_path
+                path = _parse_path(source_clause_num) or source_clause_num.replace("Điều ", "").strip().rstrip(".")
                 source_clause_id = clause_path_to_id.get(path)
             db.add(Definition(
                 tenant_id=tenant_id,
