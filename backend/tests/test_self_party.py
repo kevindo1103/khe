@@ -176,7 +176,7 @@ class TestPartiesPersist:
         )
         monkeypatch.setattr(
             extraction_runner, "get_extraction_provider",
-            lambda: FakeVisionProvider(result),
+            lambda **kw: FakeVisionProvider(result),
         )
 
         extraction_runner.run_extraction(doc.id, test_tenant)
@@ -216,7 +216,7 @@ class TestPartiesPersist:
         )
         monkeypatch.setattr(
             extraction_runner, "get_extraction_provider",
-            lambda: FakeVisionProvider(result1),
+            lambda **kw: FakeVisionProvider(result1),
         )
         extraction_runner.run_extraction(doc.id, test_tenant)
 
@@ -233,7 +233,7 @@ class TestPartiesPersist:
         )
         monkeypatch.setattr(
             extraction_runner, "get_extraction_provider",
-            lambda: FakeVisionProvider(result2),
+            lambda **kw: FakeVisionProvider(result2),
         )
         extraction_runner.run_extraction(doc.id, test_tenant)
 

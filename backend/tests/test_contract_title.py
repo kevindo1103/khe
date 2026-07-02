@@ -49,6 +49,11 @@ def _make_mock_result(tieu_de=None, so_hd=None):
     result.clauses = []
     result.parties = []
     result.obligation_schedule = []
+    result.defined_terms = []
+    result.cross_references = []
+    result.has_signature = False
+    result.signature_pages = []
+    result.ocr_text = None
 
     fields = {}
     if tieu_de is not None:
