@@ -152,6 +152,7 @@ class HybridOCRProvider:
             usage=usage,
             cost=total_cost,
             warnings=warnings,
+            ocr_text=ocr_text,
         )
 
     async def _document_ai_ocr(self, file_bytes: bytes) -> tuple[str, int]:

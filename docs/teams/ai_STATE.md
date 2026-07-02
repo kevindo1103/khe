@@ -233,6 +233,23 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   confirmed hierarchy-only (WS3), no `ocr_text`/router/schema diff. WS3 claim is
   accurate; WS0 claim still isn't reflected in any merged PR or open PR. Replied
   on #451 — #450 stays blocked until Backend actually pushes the WS0 diff.
+- **2026-07-02, unblocked:** Backend shipped PR #452 standalone (WS0 was bundled
+  with #441 originally but landed after #441 merged, so reopened separately) —
+  confirmed on fresh `staging` fetch: `ExtractionResult.ocr_text` field,
+  `GET /documents/{id}/ocr-text` route, and runner persistence all present.
+  Rebased branch onto new staging (clean, no conflicts).
+
+## Done (issue #450 — ocr_text plumbing, unblocked by PR #452)
+- [x] `to_result()` in `providers/base.py` gained an optional `ocr_text: str | None
+      = None` kwarg, passed straight through to `ExtractionResult(ocr_text=...)`.
+      Left default `None` so `gemini_flash.py`'s existing `to_result()` call
+      (vision-only, no OCR pass) is unaffected.
+- [x] `hybrid_ocr.py`'s `to_result()` call now passes `ocr_text=ocr_text` (the
+      Document AI OCR text already captured earlier in `extract()`).
+- Smoke-tested directly (no fastapi in this env, so `tests/test_ocr_text.py`
+  couldn't run here — pure-python check confirms `to_result(..., ocr_text=...)`
+  populates the field for hybrid_ocr and stays `None` for gemini_flash).
+  `test_extraction.py` unaffected (54/55, same pre-existing failure).
 
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation

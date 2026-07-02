@@ -57,12 +57,14 @@ def to_result(
     usage: TokenUsage,
     cost: float,
     warnings: list[str] | None = None,
+    ocr_text: str | None = None,
 ) -> ExtractionResult:
     """Map the model's structured output → the canonical ExtractionResult."""
     return ExtractionResult(
         doc_type=parsed.doc_type,
         doc_type_confidence=parsed.doc_type_confidence,
         fields=parsed.as_field_map(),
+        ocr_text=ocr_text,  # #450: raw OCR text (hybrid_ocr only) for ocr-text download (#444)
         # DEC-026/030: Gemini uses ContractExtractionLLMFull (clauses + obligation_schedule
         # + parties); Claude uses the flat base (none — grammar compiler timeout on nested
         # lists). getattr defaults to [] so both schema tiers produce a valid result.
