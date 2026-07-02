@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-28 (#378 — DEC-050 doc-detail v3, 6 new surfaces)_
+_Last updated: 2026-07-02 (#467 — Obligation tab v3 reorg, no-icon design, DEC-055)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
@@ -253,12 +253,11 @@ FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge
 - **#247** — FE follow-up filed (note 2 already done in #246).
 
 ### Open for next session
-- **#378 DEC-050 v3** — mockup delivered, awaiting Kevin review. PR TBD.
-- **PR #310** — approved by QC, awaiting Kevin merge (will auto-close #305).
+- **#467 obligation tab v3** — mockup delivered, awaiting Kevin review + QC verify (gate step 1/4).
+- **#378 DEC-050 v3** — PR #380 merged to staging.
 - **#312 follow-up** — F1 audit drawer remaining (F2/F3 baked into v3).
-- **#246 not merged** — waiting on owner (failed-doc badge fix flagged).
+- **DEC-055 icon cleanup** — obligation_v0.2 + other screens flagged for emoji removal (Q7 system-wide).
 - **DEC-040 canonical fold** — awaiting KHE_Docs → BRD/SRS.
-- **#243 forward notes** — 4 items need PM ratify pass.
 
 ## Issue #378 — DEC-050 doc-detail v3 (6 new surfaces, EPIC #362) — branch `claude/design-doc-detail-dec050-378`
 - Extends `mockup_document_detail_v2.jsx` (#281) with 6 DEC-050 surfaces into a new file.
@@ -270,6 +269,20 @@ FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge
 - **QC #312 fixes baked in:** F2 sidebar badge [3] on Tổng quan tab; F3 H1 reactive to self-party (shows counterparty name when self-party selected)
 - **Sample data:** Công nghệ & IP contract ALPHATECH ↔ Cty TNHH Minh Phát — exercises all party states, hierarchical clauses (3 levels), payment table, image ref, signature/stamp, glossary, orphan ref
 - **Design tokens:** B&W minimalist (DS v0.2 direction). Color rationed: primary `#0F7A56`, amber `#D97706`, red `#DC2626`, muted `#6B7280`.
+- Awaiting Kevin review.
+
+## Issue #467 — Obligation tab v3 reorg (parent #466, DEC-055) — branch `claude/design-obligation-tab-reorg-467`
+- Full reorg of doc-detail tab "Nghĩa vụ & Quyền lợi". Replaces v2 flat list + obligation_v0.2 emoji patterns.
+- **Delivered:** `mockup_obligation_tab_v3.jsx` — 3-axis IA (Direction × Temporal × Series):
+  - **Q1:** SelfPartyGate per-doc REMOVED → `SettingsNudge` "Sửa pháp nhân trong Cài đặt" link
+  - **Q2:** Checkbox multi-select + floating `ActionBar` "Hoàn thành đã chọn (N)"
+  - **Q3:** `SeriesCard` collapsible — progress bar X/Y + "Kế tiếp: Đợt N" preview (14→1 card)
+  - **Q4:** "Chờ kích hoạt" separate section — triggers + penalties with "Phạt" badge
+  - **Q5:** `formatCurrency()` — parse to "130.000.000 đ" or hide entirely
+  - **Q7:** ZERO emoji — all status via `TextBadge` (text + color token). Flagged obligation_v0.2 + other screens for icon cleanup.
+- **IA structure:** Cần xác nhận (NULL, top) → Nghĩa vụ (Quá hạn → Tuần này → Sắp tới) → Quyền lợi → Chờ kích hoạt → Đã hoàn thành (collapsed)
+- **Design tokens:** DS v0.2 canonical. "Servanda" brand voice (DEC-055).
+- **Sample data:** HĐ mua bán căn hộ Sunrise Tower — 14-installment series, overdue, upcoming, triggers, penalties, NULL direction, parseable + unparseable amounts.
 - Awaiting Kevin review.
 
 ## Inbox
