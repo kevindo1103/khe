@@ -572,6 +572,8 @@ class ExtractionResult(BaseModel):
     has_signature: bool = False
     signature_pages: list[int] = Field(default_factory=list)
 
+    ocr_text: str | None = None    # raw OCR text (hybrid_ocr only); persisted to disk by runner
+
     provider: str = ""             # e.g. "gemini_flash"
     model: str = ""                # e.g. "gemini-2.5-flash"
     latency_ms: float = 0.0
