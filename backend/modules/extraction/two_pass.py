@@ -221,11 +221,12 @@ async def extract_skeleton(ocr_text: str, *, api_key: str | None = None) -> Skel
         return SkeletonResult(provider=_MODEL, warnings=[f"skeleton call failed: {type(exc).__name__}: {exc}"])
 
     parsed = getattr(response, "parsed", None)
-    truncated = finish_reason(response) == "MAX_TOKENS"
+    fr = finish_reason(response)
+    truncated = fr == "MAX_TOKENS"
     if not isinstance(parsed, _SkeletonExtractionLLM):
         return SkeletonResult(
             provider=_MODEL, truncated=truncated,
-            warnings=["skeleton returned no structured output" + (" (MAX_TOKENS)" if truncated else "")],
+            warnings=[f"skeleton returned no structured output (finish_reason={fr})"],
         )
 
     meta = getattr(response, "usage_metadata", None)
@@ -234,7 +235,10 @@ async def extract_skeleton(ocr_text: str, *, api_key: str | None = None) -> Skel
         output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
     )
     cost = cost_vnd(usage, _IN_USD_PER_MTOK, _OUT_USD_PER_MTOK)
-    return _to_skeleton_result(parsed, provider=_MODEL, cost=cost, truncated=truncated)
+    result = _to_skeleton_result(parsed, provider=_MODEL, cost=cost, truncated=truncated)
+    if fr not in (None, "STOP", "MAX_TOKENS"):
+        result.warnings.append(f"unexpected finish_reason={fr} despite successful parse")
+    return result
 
 
 # ============================================================================
@@ -280,11 +284,19 @@ class _FillExtractionLLM(BaseModel):
 
 def _clause_manifest(skeleton_clauses: list[SkeletonClauseResult]) -> str:
     """Render the section's skeleton (from Pass 1) as the manifest Pass 2 must fill —
-    exactly these clause_paths, no more, no fewer."""
+    exactly these clause_paths, no more, no fewer.
+
+    Clauses with clause_path=None (Pass 1 legitimately emits this for unrecognised
+    numbering) are called out as unmatched rather than silently stringified to the
+    literal text "None" (which the model could echo back as-is, corrupting a
+    downstream exact-match lookup that expects real JSON null)."""
     lines = []
     for c in skeleton_clauses:
         label = " — ".join(p for p in (c.num, c.title) if p) or "(không số hiệu)"
-        lines.append(f'- clause_path="{c.clause_path}": {label}')
+        if c.clause_path:
+            lines.append(f'- clause_path="{c.clause_path}": {label}')
+        else:
+            lines.append(f'- (KHÔNG có clause_path — để clause_path=null khi trả về): {label}')
     return "\n".join(lines)
 
 
@@ -325,13 +337,38 @@ def build_fill_instruction(section_text: str, skeleton_clauses: list[SkeletonCla
 
 
 def _to_fill_result(
-    parsed: _FillExtractionLLM, *, provider: str, cost: float, truncated: bool
+    parsed: _FillExtractionLLM,
+    skeleton_clauses: list[SkeletonClauseResult],
+    *,
+    provider: str,
+    cost: float,
+    truncated: bool,
 ) -> FillResult:
-    clauses = [FillClauseResult(clause_path=c.clause_path, content=c.content) for c in parsed.clauses]
-    warnings = (
-        ["Fill output hit MAX_TOKENS — section likely has an oversized clause; retry via paragraph-split."]
-        if truncated else []
-    )
+    """Normalize LLM output → FillResult, enforcing the manifest's own "KHÔNG bịa
+    clause_path mới" rule in code (not just prompt text): any returned clause_path
+    that isn't one of the section's known (non-null) skeleton paths — including the
+    literal string "None"/"null" a model might echo for an unnumbered manifest entry
+    — is dropped and counted in a warning rather than silently accepted as real data.
+    """
+    valid_paths = {c.clause_path for c in skeleton_clauses if c.clause_path}
+    clauses: list[FillClauseResult] = []
+    dropped = 0
+    for c in parsed.clauses:
+        if c.clause_path not in valid_paths:
+            dropped += 1
+            continue
+        clauses.append(FillClauseResult(clause_path=c.clause_path, content=c.content))
+
+    warnings: list[str] = []
+    if truncated:
+        warnings.append(
+            "Fill output hit MAX_TOKENS — section likely has an oversized clause; retry via paragraph-split."
+        )
+    if dropped:
+        warnings.append(
+            f"Dropped {dropped} returned clause(s) with clause_path not in this section's skeleton "
+            "(hallucinated, mismatched, or an unnumbered manifest entry echoed back verbatim)."
+        )
     return FillResult(
         clauses=clauses, provider=provider, model=_MODEL, cost_vnd=cost,
         truncated=truncated, warnings=warnings,
@@ -383,11 +420,12 @@ async def fill_section(
         return FillResult(provider=_MODEL, warnings=[f"fill call failed: {type(exc).__name__}: {exc}"])
 
     parsed = getattr(response, "parsed", None)
-    truncated = finish_reason(response) == "MAX_TOKENS"
+    fr = finish_reason(response)
+    truncated = fr == "MAX_TOKENS"
     if not isinstance(parsed, _FillExtractionLLM):
         return FillResult(
             provider=_MODEL, truncated=truncated,
-            warnings=["fill returned no structured output" + (" (MAX_TOKENS)" if truncated else "")],
+            warnings=[f"fill returned no structured output (finish_reason={fr})"],
         )
 
     meta = getattr(response, "usage_metadata", None)
@@ -396,7 +434,13 @@ async def fill_section(
         output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
     )
     cost = cost_vnd(usage, _IN_USD_PER_MTOK, _OUT_USD_PER_MTOK)
-    return _to_fill_result(parsed, provider=_MODEL, cost=cost, truncated=truncated)
+    result = _to_fill_result(parsed, skeleton_clauses, provider=_MODEL, cost=cost, truncated=truncated)
+    # Parsed successfully but with an anomalous finish_reason (e.g. RECITATION/SAFETY
+    # racing a partial parse) — surface it even though data came back, so a caller
+    # doesn't mistake this for a clean completion (#456 review finding).
+    if fr not in (None, "STOP", "MAX_TOKENS"):
+        result.warnings.append(f"unexpected finish_reason={fr} despite successful parse")
+    return result
 
 
 # ============================================================================
@@ -433,21 +477,40 @@ thành nội dung đầy đủ.
 ⚠️ TOÀN VĂN NGUYÊN VẸN: KHÔNG dịch, KHÔNG tóm tắt, KHÔNG cắt ngắn, KHÔNG thêm/bớt câu.
   Giữ nguyên mọi lettered items (a, b, c...), số liệu, bảng (markdown table nếu có).
 ⚠️ KHÔNG lặp lại tiêu đề điều khoản trong content — chỉ nội dung của đoạn này.
-
+__CONTINUATION_NOTE__
 ĐOẠN VĂN BẢN:
 __CHUNK_TEXT__
 
 Trả về JSON đúng schema, không thêm văn bản ngoài JSON.
 """
 
+_CONTINUATION_NOTE = """\
+⚠️ ĐOẠN NÀY LÀ PHẦN TIẾP THEO của đoạn trước — có thể bắt đầu/kết thúc giữa câu, giữa
+  mục a)/b)/c), hoặc giữa hàng của bảng. TUYỆT ĐỐI KHÔNG tự thêm từ nối, KHÔNG hoàn
+  chỉnh câu bị cắt, KHÔNG lặp lại phần đã có ở đoạn trước — chỉ bóc CHÍNH XÁC văn bản
+  xuất hiện trong đoạn này, kể cả khi nó bắt đầu/kết thúc dở dang (D-06: không được
+  sửa nội dung pháp lý để "làm mượt" chỗ cắt).
+"""
+
 
 def build_paragraph_fill_instruction(
-    clause_num: Optional[str], clause_title: Optional[str], chunk_text: str
+    clause_num: Optional[str],
+    clause_title: Optional[str],
+    chunk_text: str,
+    *,
+    is_continuation: bool = False,
 ) -> str:
-    """Pure prompt builder for Pass 3 (unit-testable without SDK/keys)."""
+    """Pure prompt builder for Pass 3 (unit-testable without SDK/keys).
+
+    `is_continuation`: set True when Backend's WS2b runner knows this chunk isn't the
+    first for the clause (i.e. it may start/end mid-sentence). Warns the model against
+    "smoothing over" the cut — a subtle D-06 content-alteration risk if left unstated
+    (#456 review finding: chunk boundaries had no continuation marker)."""
     label = " — ".join(p for p in (clause_num, clause_title) if p) or "(không số hiệu)"
+    note = _CONTINUATION_NOTE if is_continuation else ""
     return (
         _PARAGRAPH_FILL_SPEC.replace("__CLAUSE_LABEL__", label)
+        .replace("__CONTINUATION_NOTE__", note)
         .replace("__CHUNK_TEXT__", chunk_text)
     )
 
@@ -457,11 +520,15 @@ async def fill_paragraph(
     clause_title: Optional[str],
     chunk_text: str,
     *,
+    is_continuation: bool = False,
     api_key: str | None = None,
 ) -> ParagraphFillResult:
     """Pass 3: fill one paragraph/page chunk of a single clause whose full verbatim
     body alone exceeds Pass 2's per-section budget. Called once per chunk; Backend's
-    WS2b runner concatenates the ordered results into the clause's final content."""
+    WS2b runner concatenates the ordered results into the clause's final content.
+
+    Pass `is_continuation=True` for every chunk after the first for a given clause —
+    see `build_paragraph_fill_instruction`."""
     if not chunk_text or not chunk_text.strip():
         return ParagraphFillResult(provider="none", warnings=["empty_chunk_text"])
 
@@ -486,7 +553,9 @@ async def fill_paragraph(
         response = await client.aio.models.generate_content(
             model=_MODEL,
             contents=[types.Part.from_text(
-                text=build_paragraph_fill_instruction(clause_num, clause_title, chunk_text)
+                text=build_paragraph_fill_instruction(
+                    clause_num, clause_title, chunk_text, is_continuation=is_continuation
+                )
             )],
             config=config,
         )
@@ -494,11 +563,12 @@ async def fill_paragraph(
         return ParagraphFillResult(provider=_MODEL, warnings=[f"paragraph fill call failed: {type(exc).__name__}: {exc}"])
 
     parsed = getattr(response, "parsed", None)
-    truncated = finish_reason(response) == "MAX_TOKENS"
+    fr = finish_reason(response)
+    truncated = fr == "MAX_TOKENS"
     if not isinstance(parsed, _ParagraphFillLLM):
         return ParagraphFillResult(
             provider=_MODEL, truncated=truncated,
-            warnings=["paragraph fill returned no structured output" + (" (MAX_TOKENS)" if truncated else "")],
+            warnings=[f"paragraph fill returned no structured output (finish_reason={fr})"],
         )
 
     meta = getattr(response, "usage_metadata", None)
@@ -510,6 +580,8 @@ async def fill_paragraph(
     warnings = (
         ["Paragraph fill hit MAX_TOKENS — chunk still too large, split further."] if truncated else []
     )
+    if fr not in (None, "STOP", "MAX_TOKENS"):
+        warnings.append(f"unexpected finish_reason={fr} despite successful parse")
     return ParagraphFillResult(
         content=parsed.content, provider=_MODEL, model=_MODEL, cost_vnd=cost,
         truncated=truncated, warnings=warnings,

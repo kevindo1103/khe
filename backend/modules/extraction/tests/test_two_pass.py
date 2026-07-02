@@ -103,6 +103,14 @@ def test_clause_manifest_handles_missing_label() -> None:
     assert "(không số hiệu)" in manifest
 
 
+def test_clause_manifest_never_stringifies_none_clause_path() -> None:
+    """Regression test (#456 review finding #1): clause_path=None must never render
+    as the literal text "None" — a model echoing it back would corrupt matching."""
+    manifest = _clause_manifest([SkeletonClauseResult(num="1.5", title=None, clause_path=None)])
+    assert 'clause_path="None"' not in manifest
+    assert "KHÔNG có clause_path" in manifest
+
+
 def test_fill_instruction_embeds_manifest_and_section_text() -> None:
     clauses = [SkeletonClauseResult(num="Điều 1", title="ABC", level=1, clause_path="1")]
     instr = build_fill_instruction("nội dung section...", clauses)
@@ -118,20 +126,49 @@ def test_fill_instruction_handles_literal_json_braces() -> None:
 
 
 def test_fill_result_normalizes_llm_output() -> None:
+    skeleton = [SkeletonClauseResult(num="Điều 1", clause_path="1")]
     parsed = _FillExtractionLLM(
         clauses=[_FillClauseLLM(clause_path="1", content="Nội dung điều 1 đầy đủ.")]
     )
-    result = _to_fill_result(parsed, provider="gemini-2.5-flash", cost=5.0, truncated=False)
+    result = _to_fill_result(parsed, skeleton, provider="gemini-2.5-flash", cost=5.0, truncated=False)
     assert result.clauses[0].clause_path == "1"
     assert result.clauses[0].content == "Nội dung điều 1 đầy đủ."
     assert not result.truncated
+    assert not result.warnings
 
 
 def test_fill_result_truncated_signals_paragraph_split() -> None:
     parsed = _FillExtractionLLM(clauses=[])
-    result = _to_fill_result(parsed, provider="gemini-2.5-flash", cost=0.0, truncated=True)
+    result = _to_fill_result(parsed, [], provider="gemini-2.5-flash", cost=0.0, truncated=True)
     assert result.truncated
     assert "paragraph-split" in result.warnings[0]
+
+
+def test_fill_result_drops_clause_path_not_in_skeleton() -> None:
+    """Regression test (#456 review finding #2): a returned clause_path outside the
+    section's known skeleton set — hallucinated, mismatched, or a stringified "None"
+    echoed back for an unnumbered manifest entry — must be dropped, not accepted."""
+    skeleton = [SkeletonClauseResult(num="Điều 1", clause_path="1")]
+    parsed = _FillExtractionLLM(
+        clauses=[
+            _FillClauseLLM(clause_path="1", content="real content"),
+            _FillClauseLLM(clause_path="None", content="corrupted match"),
+            _FillClauseLLM(clause_path="99", content="hallucinated path"),
+        ]
+    )
+    result = _to_fill_result(parsed, skeleton, provider="gemini-2.5-flash", cost=1.0, truncated=False)
+    assert len(result.clauses) == 1
+    assert result.clauses[0].clause_path == "1"
+    assert any("Dropped 2" in w for w in result.warnings)
+
+
+def test_fill_result_drops_null_clause_path_against_skeleton() -> None:
+    """A null clause_path in the response never matches (valid_paths excludes None)."""
+    skeleton = [SkeletonClauseResult(num="Điều 1", clause_path="1")]
+    parsed = _FillExtractionLLM(clauses=[_FillClauseLLM(clause_path=None, content="orphan")])
+    result = _to_fill_result(parsed, skeleton, provider="gemini-2.5-flash", cost=0.0, truncated=False)
+    assert result.clauses == []
+    assert any("Dropped 1" in w for w in result.warnings)
 
 
 def test_fill_section_empty_skeleton_is_noop() -> None:
@@ -162,6 +199,19 @@ def test_paragraph_fill_instruction_handles_missing_label() -> None:
 def test_paragraph_fill_instruction_handles_literal_json_braces() -> None:
     instr = build_paragraph_fill_instruction("Điều 1", None, '{"x": 1}')
     assert '{"x": 1}' in instr
+
+
+def test_paragraph_fill_instruction_no_continuation_note_by_default() -> None:
+    instr = build_paragraph_fill_instruction("Điều 1", None, "text")
+    assert "PHẦN TIẾP THEO" not in instr
+
+
+def test_paragraph_fill_instruction_continuation_note_when_flagged() -> None:
+    """Regression test (#456 review finding #4): a continuation chunk must warn the
+    model against smoothing over a mid-sentence/mid-table cut (D-06 alteration risk)."""
+    instr = build_paragraph_fill_instruction("Điều 1", None, "text", is_continuation=True)
+    assert "PHẦN TIẾP THEO" in instr
+    assert "KHÔNG tự thêm từ nối" in instr
 
 
 def test_fill_paragraph_empty_chunk_is_noop() -> None:

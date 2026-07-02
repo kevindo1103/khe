@@ -281,6 +281,34 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   grouping clauses into sections, per-section commit/resume, invoking Pass 3 on
   a Pass-2 MAX_TOKENS. This module only provides the pass primitives.
 
+## Fixed — QC review of PR #456 (2026-07-02)
+Two review agents converged on the same top bug; verified all findings directly
+against source before fixing:
+- [x] **#1 (confirmed) `_clause_manifest()` stringified `clause_path=None` as
+  literal `"None"`** — a model echoing it back would corrupt exact-match lookup.
+  Fixed: unnumbered clauses now render as an explicit "để clause_path=null"
+  instruction, never the Python `None` repr.
+- [x] **#2 (confirmed) no validation that returned `clause_path`s match the
+  section's skeleton** — `_to_fill_result()` now takes `skeleton_clauses` and
+  drops any returned clause whose `clause_path` isn't in the section's known
+  non-null path set (hallucinated/mismatched/stringified-None), with a warning
+  carrying the drop count. `fill_section()`'s call site updated to match.
+- [x] **#3 (confirmed) `truncated` conflated MAX_TOKENS with all other
+  no-parse causes** — all three passes now embed the real `finish_reason` in
+  the warning text (`finish_reason={fr}`) instead of a binary MAX_TOKENS
+  suffix, and flag an anomalous `finish_reason` even on a *successful* parse
+  (e.g. RECITATION racing a partial result).
+- [x] **#4 (design risk) Pass 3 chunk boundaries had no continuation
+  marker** — added `is_continuation: bool = False` to
+  `build_paragraph_fill_instruction()`/`fill_paragraph()`. When set, the
+  prompt explicitly warns against "smoothing over" a mid-sentence/mid-table
+  cut (D-06 content-alteration risk) — Backend's WS2b runner should pass
+  `True` for every chunk after the first per clause.
+- Skipped #5 (`.replace()` clobber risk) — reviewer's own assessment was
+  "astronomically unlikely, not worth blocking on"; agreed, left as-is.
+- 5 new regression tests added (25 total in `test_two_pass.py`, was 20) +
+  2 existing tests updated for the new `_to_fill_result()` signature.
+
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results (blocked on samples).
