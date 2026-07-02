@@ -18,10 +18,22 @@ flagged back to #443/PM rather than assumed, since it changes production
 extraction behavior and can't be verified end-to-end without live Gemini keys
 in this environment. This module is a complete, independently callable,
 resumable unit ready for that wiring once decided.
+
+HARD PRECONDITION FOR THAT FUTURE WIRING (#459 QC review finding #6): neither
+`persist_skeleton` nor `run_content_fill` takes out any lock or in-progress
+marker on `doc_id`. Two concurrent invocations for the same doc (a double-click
+retry, or a retry endpoint racing a scheduled sweep) will double-bill the LLM
+and race each other's `db.commit()` calls. The eventual caller MUST serialize
+invocations per doc_id — e.g. a `processing_stage` guard checked-and-set before
+enqueueing, or a proper job queue with per-doc uniqueness — before this can be
+triggered from more than one call site at a time. Not solved here: building a
+locking mechanism without knowing the real invocation context (single worker
+vs. multi-worker, sync vs. background task) risks building the wrong one.
 """
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -58,14 +70,34 @@ def persist_skeleton(
 ) -> list[Clause]:
     """Persist Pass 1's skeleton clauses with content_status='skeleton'.
 
-    Idempotent like the single-call path: replaces any existing clauses for
-    this doc first. Reuses `build_clause_hierarchy` for parent_id/level/stub
-    synthesis — LLM-provided clause_path (already PL-aware per #439) wins over
-    regex inference, same as the single-call runner.
+    Idempotent-by-deletion ONLY when no Pass 2 progress exists yet. If any
+    clause for this doc already has content_status in ('filled', 'truncated'),
+    this is a no-op that returns the existing clauses unchanged — deleting and
+    re-inserting would wipe already-filled content on every re-entry (e.g. a
+    caller that unconditionally calls persist_skeleton before run_content_fill
+    on retry), directly defeating this module's resumable/no-re-billing
+    purpose (#459 QC review finding #1). Callers resuming an in-progress doc
+    should call `run_content_fill` directly, not re-run Pass 1.
 
-    Commits as a checkpoint (Pass 1 is durable before Pass 2 begins) — the
-    caller does not need to commit again for this step.
+    On a genuinely fresh doc (no clauses, or only pre-existing 'skeleton' rows
+    from an interrupted Pass 1 that never reached Pass 2), replaces any
+    existing clauses — reuses `build_clause_hierarchy` for parent_id/level/
+    stub synthesis (LLM-provided clause_path, already PL-aware per #439, wins
+    over regex inference, same as the single-call runner) and commits as a
+    checkpoint before Pass 2 begins.
     """
+    existing = (
+        db.query(Clause)
+        .filter(Clause.document_id == doc_id, Clause.tenant_id == tenant_id)
+        .all()
+    )
+    if existing and any(c.content_status in ("filled", "truncated") for c in existing):
+        logger.info(
+            "persist_skeleton: doc %d already has Pass 2 progress — skipping re-persist",
+            doc_id,
+        )
+        return existing
+
     db.query(Clause).filter(
         Clause.document_id == doc_id, Clause.tenant_id == tenant_id,
     ).delete()
@@ -88,9 +120,17 @@ def persist_skeleton(
     from app.services.clause_hierarchy import build_clause_hierarchy
     build_clause_hierarchy(clauses, db)
     db.commit()
-    for c in clauses:
-        db.refresh(c)
-    return clauses
+
+    # Re-query rather than returning `clauses` directly — build_clause_hierarchy
+    # may append synthesized stub-parent Clause rows to its own local list, not
+    # back to this one (#459 QC review finding #7); a fresh query is the only
+    # way to guarantee the return value reflects everything actually persisted.
+    return (
+        db.query(Clause)
+        .filter(Clause.document_id == doc_id, Clause.tenant_id == tenant_id)
+        .order_by(Clause.id.asc())
+        .all()
+    )
 
 
 # ============================================================================
@@ -134,11 +174,24 @@ def group_into_sections(clauses: list[Clause]) -> list[list[Clause]]:
 
 
 def _find_heading(ocr_text: str, clause_num: Optional[str], search_from: int) -> int:
-    """Best-effort index of a clause's heading in the OCR text, or -1."""
+    """Best-effort index of a clause's heading in the OCR text, or -1.
+
+    Prefers a match at the start of a line (where headings normally sit) over
+    a bare substring match — reduces false positives from a clause_num string
+    appearing mid-sentence (a table of contents entry, or a cross-reference
+    inside another clause's body) before the real heading, which would
+    otherwise permanently shift `search_from` for every later call and
+    corrupt the rest of the document's section slicing (#459 QC review
+    finding #4). Falls back to a bare substring search if no line-start match
+    exists, rather than failing outright (D-08: degrade gracefully).
+    """
     if not clause_num:
         return -1
-    idx = ocr_text.find(clause_num, search_from)
-    return idx
+    pattern = re.compile(r"(?:^|\n)[ \t]*" + re.escape(clause_num), re.MULTILINE)
+    m = pattern.search(ocr_text, search_from)
+    if m:
+        return m.end() - len(clause_num)
+    return ocr_text.find(clause_num, search_from)
 
 
 def slice_section_text(ocr_text: str, sections: list[list[Clause]]) -> list[str]:
@@ -218,12 +271,27 @@ async def run_content_fill(
 ) -> dict:
     """Resumable Pass 2 (+ Pass 3 fallback) orchestration.
 
-    Iterates sections in hierarchy order; only sections with at least one
-    non-'filled' clause are re-processed — a fresh call on an already-'filled'
-    doc is a near-instant no-op. Commits after EACH section (or, on
-    truncation, after each Pass-3-assembled clause) so a crash/timeout/deploy
-    mid-run loses at most one section's work, and re-running this function
-    picks up exactly where it left off.
+    Iterates sections in hierarchy order; only clauses with content_status !=
+    'filled' are ever re-sent to an LLM call — a fresh call on an
+    already-'filled' doc is a near-instant no-op, and a *partially*-filled
+    section only re-bills its remaining clauses, not the whole section
+    (#459 QC review finding #3: manifests sent to `fill_section` are built
+    from pending clauses only, even though `section_text` still carries full
+    section context so the model isn't missing surrounding clauses).
+
+    A clause already marked 'truncated' from a prior call routes straight to
+    Pass 3 (per-clause paragraph fill) instead of another Pass 2 attempt —
+    guarantees convergence within one more retry instead of an indefinite
+    skeleton/truncated cycle for content the LLM keeps omitting for reasons
+    other than MAX_TOKENS (#459 QC review finding #5). Every write path
+    checks `content_status == "filled"` before touching a clause, so
+    already-good content is never regressed by a later retry (#459 QC review
+    finding #2).
+
+    Commits after EACH section's Pass 2 call (or, on Pass 3, after each
+    assembled clause) so a crash/timeout/deploy mid-run loses at most one
+    section's un-checkpointed work, and re-running this function picks up
+    exactly where it left off.
 
     Returns a progress summary: {"total": N, "filled": N, "truncated": N}.
     """
@@ -237,38 +305,52 @@ async def run_content_fill(
     section_texts = slice_section_text(ocr_text, sections)
 
     for section, section_text in zip(sections, section_texts):
-        if all(c.content_status == "filled" for c in section):
+        pending = [c for c in section if c.content_status != "filled"]
+        if not pending:
             continue  # already done — resume skips this section entirely
 
-        skeleton_manifest = [
-            SkeletonClauseResult(
-                num=c.clause_num, title=c.title, level=c.level, clause_path=c.clause_path,
-            )
-            for c in section
-        ]
-        result: FillResult = await fill_section(section_text, skeleton_manifest, api_key=api_key)
+        clause_text_by_id = dict(zip(
+            (c.id for c in section), _split_section_by_clause(section_text, section),
+        ))
 
-        if result.truncated or not result.clauses:
-            # Section-level fill didn't complete cleanly — fall back to
-            # per-clause paragraph-split (Pass 3) for every clause in this
-            # section rather than guessing which single clause overflowed.
-            for clause, clause_text in zip(section, _split_section_by_clause(section_text, section)):
-                await _fill_clause_via_paragraphs(
-                    db, clause, clause_text, api_key=api_key,
+        needs_pass3 = [c for c in pending if c.content_status == "truncated"]
+        fresh = [c for c in pending if c.content_status != "truncated"]
+
+        if fresh:
+            skeleton_manifest = [
+                SkeletonClauseResult(
+                    num=c.clause_num, title=c.title, level=c.level, clause_path=c.clause_path,
                 )
-            continue
+                for c in fresh
+            ]
+            result: FillResult = await fill_section(section_text, skeleton_manifest, api_key=api_key)
 
-        by_path = {fc.clause_path: fc.content for fc in result.clauses}
-        for clause in section:
-            if clause.clause_path in by_path:
-                clause.content = by_path[clause.clause_path]
-                clause.content_status = "filled"
-            elif clause.content_status != "filled":
-                # Not returned by this call (e.g. empty-content parent clause
-                # the model legitimately omitted) — leave for a future retry
-                # rather than silently marking it done with stale/empty content.
-                clause.content_status = "truncated"
-        db.commit()  # per-section checkpoint
+            if result.truncated or not result.clauses:
+                # Section-level fill didn't complete cleanly for any of the
+                # pending clauses — fall back to per-clause paragraph-split
+                # (Pass 3) rather than guessing which single clause overflowed.
+                needs_pass3.extend(fresh)
+            else:
+                by_path = {fc.clause_path: fc.content for fc in result.clauses}
+                for clause in fresh:
+                    if clause.clause_path in by_path:
+                        clause.content = by_path[clause.clause_path]
+                        clause.content_status = "filled"
+                    else:
+                        # Not returned by this call (e.g. empty-content parent
+                        # clause the model legitimately omitted, or a genuine
+                        # partial truncation) — route to Pass 3 next rather
+                        # than silently marking it done or re-cycling forever.
+                        clause.content_status = "truncated"
+                        needs_pass3.append(clause)
+                db.commit()  # per-section checkpoint
+
+        for clause in needs_pass3:
+            if clause.content_status == "filled":
+                continue  # never regress content a concurrent/earlier pass already filled
+            await _fill_clause_via_paragraphs(
+                db, clause, clause_text_by_id[clause.id], api_key=api_key,
+            )
 
     all_clauses = (
         db.query(Clause)
