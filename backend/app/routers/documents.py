@@ -632,11 +632,17 @@ def get_document(
         .count()
     )
 
-    # When the doc failed extraction, surface the reason from the latest
-    # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
+    # When the doc failed extraction (terminal) OR needs a retry (transient outage /
+    # MAX_TOKENS, #436/#446), surface the reason from the latest matching Event
+    # (#79 follow-up — UAT/FE self-diagnosis; widened per QC review on PR #458 —
+    # previously only checked status=="failed", so a retryable doc's reason never
+    # surfaced even though `_mark_transient_failure` recorded it).
     failure_reason: str | None = None
     if doc.status == "failed":
         fail_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_failed")
+        failure_reason = fail_payload.get("reason") if fail_payload else None
+    elif doc.processing_stage == "retry_needed":
+        fail_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_transient_failure")
         failure_reason = fail_payload.get("reason") if fail_payload else None
 
     # Last extraction provider/model from the extraction_performed Event (#233) —
@@ -657,6 +663,7 @@ def get_document(
         clause_count=clause_count,
         parties=[PartyOut.model_validate(p) for p in parties],
         failure_reason=failure_reason,
+        extraction_warnings=doc.extraction_warnings,
         provider=provider,
         model=model,
         confirmed_by_user_at=doc.confirmed_by_user_at,

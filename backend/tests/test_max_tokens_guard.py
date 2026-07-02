@@ -2,7 +2,9 @@
 
 A Gemini MAX_TOKENS truncation must keep the document retryable with a clear
 "document too large" message — never advance to another Gemini-backed provider
-(same output wall) and never silently succeed with truncated content.
+(ratified trade-off, #443 — accepted even though a different provider/mode is
+not guaranteed to hit the same wall) and never silently succeed with
+truncated content.
 """
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -100,7 +102,7 @@ def test_max_tokens_keeps_doc_pending_with_size_message(test_tenant, db, tmp_pat
 
     fresh = _reload(db, doc.id, test_tenant)
     assert fresh.status == "pending"
-    assert fresh.processing_stage == "pending"
+    assert fresh.processing_stage == "retry_needed"
     assert fresh.extraction_warnings is not None
     assert "MAX_TOKENS" in fresh.extraction_warnings
 

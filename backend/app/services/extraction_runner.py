@@ -586,15 +586,23 @@ def _mark_transient_failure(
 ) -> None:
     """Keep a document retryable after a transient provider outage (#436).
 
-    Unlike `_mark_failed`, does NOT set a terminal `failed` state — resets to
-    `pending` so the doc can be retried (manually or via a future reextract
-    endpoint) without landing in the same silently-useless-Haiku-result bucket
-    QC found in #435. Warnings are stored on the doc row for UI display.
+    Unlike `_mark_failed`, does NOT set a terminal `failed` state — `status`
+    resets to `pending` so the doc can be retried (via `POST
+    /{doc_id}/re-extract`, #97) without landing in the same
+    silently-useless-Haiku-result bucket QC found in #435.
+
+    `processing_stage='retry_needed'` (QC review, PR #458) — deliberately NOT
+    'pending', which collides with a freshly-uploaded doc that hasn't started
+    extraction yet (`processing_stage` starts `NULL`, not 'pending') and isn't
+    in the documented `queued|ocr|llm|saving|done|failed` enum either. A
+    distinct value lets the frontend tell "never started" from "needs retry"
+    and show the retry button only for the latter. Warnings are stored on the
+    doc row (`extraction_warnings`) for UI display.
     """
     doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
     if doc:
         doc.status = "pending"
-        doc.processing_stage = "pending"
+        doc.processing_stage = "retry_needed"
         doc.processing_progress = 0
         doc.extraction_warnings = json.dumps(warnings) if warnings else None
         db.commit()

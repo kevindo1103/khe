@@ -1,8 +1,12 @@
 """Tests for 503/UNAVAILABLE transient-outage handling (#436, QC #435).
 
-A Gemini 503 must keep the document retryable (status/processing_stage='pending'),
-not land in the terminal 'failed' state — distinguishes "try again later" from a
-genuine extraction failure.
+A Gemini 503 must keep the document retryable (status='pending',
+processing_stage='retry_needed'), not land in the terminal 'failed' state —
+distinguishes "try again later" from a genuine extraction failure.
+
+processing_stage='retry_needed' (not 'pending') per QC review on PR #458 —
+'pending' collides with a freshly-uploaded doc that hasn't started
+extraction yet.
 """
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -81,7 +85,7 @@ def test_does_not_flag_other_errors():
 
 
 def test_503_keeps_doc_pending_not_failed(test_tenant, db, tmp_path):
-    """A 503 warning keeps status/processing_stage='pending', not 'failed'."""
+    """A 503 warning keeps status='pending' + processing_stage='retry_needed', not 'failed'."""
     doc = _make_doc(db, test_tenant)
 
     fake_file = tmp_path / doc.file_path
@@ -104,7 +108,7 @@ def test_503_keeps_doc_pending_not_failed(test_tenant, db, tmp_path):
 
     fresh = _reload(db, doc.id, test_tenant)
     assert fresh.status == "pending"
-    assert fresh.processing_stage == "pending"
+    assert fresh.processing_stage == "retry_needed"
     assert fresh.processing_progress == 0
     assert fresh.extraction_warnings is not None
     assert "503" in fresh.extraction_warnings

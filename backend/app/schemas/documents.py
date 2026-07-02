@@ -159,10 +159,15 @@ class DocumentDetailOut(BaseModel):
     obligations: list[Any] = []
     clause_count: int = 0
     parties: list[PartyOut] = []
-    # When status == "failed", populated from the most recent extraction_failed
-    # Event's payload.reason — surfaces the exact failure path (#79 follow-up)
-    # so UAT can self-diagnose without VPS access. Null for non-failed docs.
+    # Populated from the most recent extraction_failed OR extraction_transient_failure
+    # Event's payload.reason — surfaces the exact failure path (#79 follow-up; #436/#446
+    # widened to cover retryable transient failures too, QC review PR #458) so UAT/FE
+    # can self-diagnose without VPS access. Null for docs with no failure history.
     failure_reason: str | None = None
+    # #436/#446 (QC review PR #458): raw provider warnings for the latest extraction
+    # attempt — lets FE show "Gemini tạm thời không khả dụng" / "Document quá lớn"
+    # instead of a bare status. Null when no warnings were recorded.
+    extraction_warnings: list[str] | None = None
     # Last extraction provider/model from the extraction_performed Event (#233).
     # Lets the staging smoke gate discriminate gemini_flash (anchors required, #230)
     # vs claude fallback (null anchors OK). Also feeds NĐ 13 PII-processing audit.
@@ -190,6 +195,7 @@ class DocumentDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
+    _parse_extraction_warnings = field_validator("extraction_warnings", mode="before")(_parse_json_list)
 
 
 # ── Document-level PATCH (#363 D-07 + #371 R8) ──

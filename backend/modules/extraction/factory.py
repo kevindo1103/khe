@@ -151,11 +151,19 @@ class _FallbackProvider:
                     result.warnings = [*prior_warnings, *result.warnings]
                 return result
             if is_max_tokens_truncation(result.warnings):
-                # Same output wall — every Gemini-backed provider in the chain
-                # would hit it too. Stop here instead of wasting cost on a
-                # doomed retry (#446, mini-sprint #443).
+                # Ratified trade-off (#443, Kevin 2026-07-02): stop here rather
+                # than advance to the next Gemini-backed provider. NOTE this is
+                # NOT "every provider would hit the same wall" as fact — a
+                # text-mode provider (hybrid_ocr) truncating does not guarantee
+                # a vision-mode provider (gemini_flash) truncates too on the
+                # same doc (observed: doc #20 recovered via gemini_flash after
+                # hybrid_ocr hit MAX_TOKENS, QC review PR #458). The trade is
+                # deliberate: a doomed-or-not retry is a coin flip that costs a
+                # full extraction call either way, so we accept a deterministic
+                # "document too large" message over a probabilistic vision
+                # fallback — see #442/#446 for the full rationale.
                 logger.warning(
-                    "Provider %s hit MAX_TOKENS, stopping fallback (same output wall): %s",
+                    "Provider %s hit MAX_TOKENS, stopping fallback (accepted trade-off, #443): %s",
                     provider.name,
                     "; ".join(result.warnings),
                 )
