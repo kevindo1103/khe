@@ -224,6 +224,12 @@ class Clause(TenantBase):
     parent_id = Column(Integer, nullable=True)  # self-ref to clauses.id; app-level (no FK — avoids delete-order issues)
     level = Column(Integer, nullable=True)            # 0=top, 1=sub, 2=sub-sub (derived, not user-editable)
     clause_path = Column(String, nullable=True)       # dotted path e.g. "2.1.1" (for hierarchy sort)
+    # ── tenant_029: two-pass map-reduce content state (#449, mini-sprint #443) ──
+    # NULL = single-call extraction (legacy path, content already present at insert).
+    # "skeleton" = Pass 1 hierarchy only, content="" pending fill.
+    # "filled" = Pass 2 verbatim content persisted.
+    # "truncated" = Pass 2 hit MAX_TOKENS on this section; needs Pass 3 paragraph-split retry.
+    content_status = Column(String, nullable=True)
 
 
 class Definition(TenantBase):
