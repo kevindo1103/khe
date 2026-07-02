@@ -198,6 +198,15 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         # 6. Hard extraction failure (D-08: never fabricate).
         if result.is_error:
             if is_max_tokens_truncation(result.warnings):
+                # #461 (mini-sprint #443, ratified by Kevin 2026-07-02): auto-trigger
+                # the two-pass clause pipeline as a background continuation, rather
+                # than leaving the doc stuck on a single-call MAX_TOKENS. Requires
+                # OCR text — only hybrid_ocr's text-mode path carries it; a vision-mode
+                # MAX_TOKENS (gemini_flash) has no OCR text to reuse, so falls through
+                # to the same retryable message as before.
+                if isinstance(result.ocr_text, str) and result.ocr_text.strip():
+                    asyncio.run(_run_two_pass_fallback(db, doc_id, tenant_id, result.ocr_text))
+                    return
                 _mark_transient_failure(
                     db, doc_id, tenant_id,
                     "Document quá lớn, đã cắt bớt kết quả.",
@@ -617,6 +626,123 @@ def _mark_transient_failure(
         actor="system",
         purpose="vision_extraction",
         payload=json.dumps({"reason": reason, "warnings": warnings}),
+    )
+    db.add(event)
+    db.commit()
+
+
+async def _run_two_pass_fallback(
+    db: Session,
+    doc_id: int,
+    tenant_id: str,
+    ocr_text: str,
+) -> None:
+    """Auto-recover a MAX_TOKENS truncation via the two-pass clause pipeline (#461).
+
+    SCOPE GAP — flagged, not silently papered over (D-08): `two_pass_runner`
+    (#449) only recovers CLAUSE content. The single-call attempt that hit
+    MAX_TOKENS would also have tried to extract universal/type-specific
+    fields, parties, obligation_schedule, definitions, cross_references, and
+    signature detection in the SAME call — none of that exists here. A doc
+    that completes via this path has real, full clause text but EMPTY
+    Terms/Parties/Obligations/Definitions. Marking it "extracted" without
+    surfacing this would reproduce the exact silent-partial-success bug QC
+    caught with the Haiku PDF fallback (#435/#436) — arguably worse here,
+    since the clause view looks complete and would mask the gap. Surfaced via
+    `extraction_warnings` instead. A metadata-only pass to close this gap is
+    tracked as a fast-follow (see #461 comment thread) — out of scope here.
+
+    Resumable end-to-end: if this doc is retried later (`POST /re-extract`),
+    the single-call attempt will hit MAX_TOKENS again (nothing about the doc
+    changed) and land back in this same function. `persist_skeleton` is a
+    no-op once Pass 2 progress exists and `run_content_fill` only re-bills
+    non-'filled' clauses (#459 QC review fixes), so retries converge instead
+    of re-doing completed work.
+    """
+    from app.services.two_pass_runner import persist_skeleton, run_content_fill
+    from modules.extraction.two_pass import extract_skeleton
+
+    _update_progress(tenant_id, doc_id, "two_pass_skeleton", _PROGRESS_CHECKPOINTS["ocr"])
+    try:
+        skeleton = await extract_skeleton(ocr_text)
+    except Exception as exc:
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            "Document quá lớn, đã cắt bớt kết quả. (two-pass skeleton lỗi)",
+            [f"two_pass skeleton exception: {type(exc).__name__}: {exc}"],
+        )
+        return
+
+    if skeleton.truncated or not skeleton.clauses:
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            "Document quá lớn, đã cắt bớt kết quả. (two-pass skeleton rỗng)",
+            skeleton.warnings or ["two_pass skeleton returned no clauses"],
+        )
+        return
+
+    persist_skeleton(db, tenant_id, doc_id, skeleton)
+    _update_progress(tenant_id, doc_id, "two_pass_fill", _PROGRESS_CHECKPOINTS["llm"])
+
+    try:
+        summary = await run_content_fill(db, tenant_id, doc_id, ocr_text)
+    except Exception as exc:
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            "Document quá lớn, đã cắt bớt kết quả. (two-pass fill lỗi)",
+            [f"two_pass fill exception: {type(exc).__name__}: {exc}"],
+        )
+        return
+
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
+    if doc is None:
+        logger.warning("Cannot finalize two-pass result for doc %d: not found for tenant %s", doc_id, tenant_id)
+        return
+
+    if summary["truncated"] > 0:
+        # Some clauses never converged even after Pass 3 — stay retryable
+        # rather than declaring a partial result "done".
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            f"Document quá lớn — {summary['truncated']}/{summary['total']} điều khoản chưa trích xuất được.",
+            [f"two_pass partial: {summary['filled']}/{summary['total']} clauses filled"],
+        )
+        return
+
+    # R10 (#373): cross-reference resolution is a pure post-process over
+    # already-persisted Clause.content — no dependency on the original LLM
+    # call's raw output (same call used by the single-call path, line ~337).
+    # Two-pass DOES persist full clause content, so this is recovered "for
+    # free" (QC review finding on PR #463) — narrows the fields/parties/
+    # obligations scope gap by one item without needing new AI-side work.
+    from app.services.cross_ref import resolve_cross_refs
+    resolve_cross_refs(db, tenant_id, doc_id)
+
+    doc.status = "extracted"
+    doc.processing_stage = "done"
+    doc.processing_progress = 100
+    doc.extraction_warnings = json.dumps([
+        f"Trích xuất qua chế độ tài liệu lớn (two-pass) — {summary['filled']}/{summary['total']} điều khoản "
+        "đầy đủ. Trường thông tin/đối tác/nghĩa vụ CHƯA được trích xuất tự động do tài liệu quá lớn — "
+        "cần bổ sung thủ công."
+    ])
+    db.commit()
+
+    event = Event(
+        tenant_id=tenant_id,
+        event_type="extraction_two_pass_completed",
+        entity_type="document",
+        entity_id=doc_id,
+        actor="system",
+        purpose="vision_extraction",
+        payload=json.dumps({
+            "clauses_filled": summary["filled"],
+            "clauses_total": summary["total"],
+            "cross_refs_resolved": True,
+            "fields_extracted": False,
+            "parties_extracted": False,
+            "obligations_extracted": False,
+        }),
     )
     db.add(event)
     db.commit()
