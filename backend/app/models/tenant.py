@@ -45,7 +45,7 @@ class Document(TenantBase):
     extraction_latency_ms = Column(Float, nullable=True)   # total extraction latency in ms
     extraction_warnings = Column(Text, nullable=True)      # JSON array of warning strings
     # ── tenant_020: extraction progress (#360) ──
-    processing_stage = Column(String, nullable=True)       # queued|ocr|llm|saving|done|failed|retry_needed
+    processing_stage = Column(String, nullable=True)       # queued|ocr|llm|saving|done|failed|retry_needed|two_pass_skeleton|two_pass_fill
     processing_progress = Column(Integer, nullable=True)   # 0-100
     # ── tenant_021: contract title + number (#363) ──
     title = Column(String, nullable=True)                  # extracted contract title (tieu_de_hd term)
