@@ -1036,6 +1036,40 @@ def download_file(
     )
 
 
+@docs_router.get("/{doc_id}/ocr-text")
+def get_ocr_text(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return OCR text for a document (#444).
+
+    Only available for documents processed via hybrid_ocr (scanned PDFs).
+    Response header: X-Khe-OCR-Disclaimer labels this as machine-generated.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    ocr_path = settings.STORAGE_DIR / (doc.file_path + ".ocr.txt")
+    if not ocr_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OCR text not available for this document",
+        )
+
+    return FileResponse(
+        path=str(ocr_path),
+        filename=doc.file_name.rsplit(".", 1)[0] + ".ocr.txt",
+        media_type="text/plain; charset=utf-8",
+        headers={"X-Khe-OCR-Disclaimer": "Machine-generated OCR, may contain errors"},
+    )
+
+
 # ── Patch term (D-07) ──
 
 @docs_router.patch("/{doc_id}/terms/{term_id}")
