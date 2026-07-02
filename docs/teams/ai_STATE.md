@@ -199,9 +199,34 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
       (two-pass map-reduce, #448) needs for batch-sizing.
 - [ ] **Not done in this pass:** WS1's `MAX_TOKENS` trap (`is_error=True`,
       no provider-advance) — that's the Backend half of WS1, coordinate via #443.
-- Unit tests: `test_extraction.py` 54/55 pass (1 pre-existing unrelated failure,
-  `test_canonical_fields_v2_expanded` expects 12 canonical fields, actual 17 —
-  predates this change, confirmed via `git stash`).
+- [x] **Rebased branch onto `origin/staging`** (was stale off `main` — staging had
+      ~20 commits ahead incl. PR #425 AI Phụ lục prompt fix for #439 and PR #441
+      Backend hierarchy fix). Resolved 1 merge conflict in `hybrid_ocr.py`
+      (`_response_diagnostic` tuple return vs my logging line — kept both).
+- Unit tests: `test_extraction.py` 54/55 pass post-rebase (1 pre-existing unrelated
+  failure, `test_canonical_fields_v2_expanded` — count assertion stale vs actual
+  `CANONICAL_FIELDS` len, predates this change, confirmed via `git stash` both
+  pre- and post-rebase).
+
+## Coordination flag — #443 tracker discrepancy (2026-07-02)
+- #443's tracker comment claimed PR #441 "bundles WS0 [#444 ocr-text download] +
+  WS3-backend [#439/#440 hierarchy]" and #450 (AI relay) claimed
+  `ExtractionResult.ocr_text` was "already on ExtractionResult (added in Backend
+  PR #441)". **Verified false on staging**: merged PR #441 (`9a7d427`, branch
+  `claude/fix-phu-luc-hierarchy-440`) only touches `clause_hierarchy.py` +
+  `extraction_runner.py` (+tests) for #439/#440. No `ocr_text` field, no runner
+  persistence, no `GET /documents/{id}/ocr-text` route anywhere on staging.
+  No open PR has this either (checked `list_pull_requests`).
+- **Did NOT implement #450's one-liner** — adding `ocr_text=ocr_text` to
+  `HybridOCRProvider.extract()`'s result construction would require guessing the
+  field's shape on `ExtractionResult` (schemas.py) since it doesn't exist yet.
+  Commented on #450 + #443 flagging the gap; waiting on actual WS0 PR before
+  wiring the one-liner.
+- #439 AI-half (Phụ lục `PL-` prompt rules) **confirmed already merged** via PR
+  #425 — no new prompt work needed there. Still need to re-check whether the
+  original #439 bug (bare "Khoản N" under Phụ lục colliding with Điều N) is
+  fully closed by #425 + #441 combined, or if a residual gap remains, before
+  starting #448 (blocked on #439).
 
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
