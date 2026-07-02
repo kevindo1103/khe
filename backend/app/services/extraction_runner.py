@@ -209,7 +209,7 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         _update_progress(tenant_id, doc_id, "saving", _PROGRESS_CHECKPOINTS["saving"])
 
         # 6b. Persist OCR text to disk if available (hybrid_ocr produces this).
-        if result.ocr_text:
+        if isinstance(result.ocr_text, str) and result.ocr_text:
             ocr_path = settings.STORAGE_DIR / (doc.file_path + ".ocr.txt")
             try:
                 ocr_path.parent.mkdir(parents=True, exist_ok=True)

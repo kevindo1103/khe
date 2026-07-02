@@ -56,6 +56,11 @@ def _make_mock_result(parties=None):
     result.fields = {}
     result.obligation_schedule = []
     result.parties = parties or []
+    result.defined_terms = []
+    result.cross_references = []
+    result.has_signature = False
+    result.signature_pages = []
+    result.ocr_text = None
     return result
 
 

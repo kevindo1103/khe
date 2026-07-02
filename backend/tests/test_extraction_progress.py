@@ -88,6 +88,11 @@ def _make_mock_result():
     result.clauses = []
     result.parties = []
     result.obligation_schedule = []
+    result.defined_terms = []
+    result.cross_references = []
+    result.has_signature = False
+    result.signature_pages = []
+    result.ocr_text = None
     return result
 
 
