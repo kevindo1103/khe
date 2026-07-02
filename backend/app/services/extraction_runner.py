@@ -208,6 +208,15 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         _update_progress(tenant_id, doc_id, "saving", _PROGRESS_CHECKPOINTS["saving"])
 
+        # 6b. Persist OCR text to disk if available (hybrid_ocr produces this).
+        if result.ocr_text:
+            ocr_path = settings.STORAGE_DIR / (doc.file_path + ".ocr.txt")
+            try:
+                ocr_path.parent.mkdir(parents=True, exist_ok=True)
+                ocr_path.write_text(result.ocr_text, encoding="utf-8")
+            except Exception:
+                logger.warning("Failed to save OCR text for doc %d", doc_id, exc_info=True)
+
         # 7. Idempotency: replace existing terms.
         #    Kept in the same transaction as the inserts below; the final
         #    commit below persists all changes atomically.
