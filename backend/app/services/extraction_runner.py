@@ -197,6 +197,13 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # 6. Hard extraction failure (D-08: never fabricate).
         if result.is_error:
+            if _is_transient_provider_outage(result.warnings):
+                _mark_transient_failure(
+                    db, doc_id, tenant_id,
+                    "Provider temporarily unavailable (503/UNAVAILABLE)",
+                    result.warnings,
+                )
+                return
             _mark_failed(
                 db,
                 doc_id,
@@ -548,6 +555,53 @@ def _mark_failed(
         actor="system",
         purpose="vision_extraction",
         payload=json.dumps({"reason": reason, **(payload or {})}),
+    )
+    db.add(event)
+    db.commit()
+
+
+def _is_transient_provider_outage(warnings: list[str]) -> bool:
+    """True if warnings indicate a transient upstream outage (#436, QC #435).
+
+    Distinguishes "Gemini is temporarily overloaded, try again" from a genuine
+    extraction failure — the former should keep the doc retryable, not terminal.
+    """
+    text = "; ".join(warnings)
+    return "503" in text or "UNAVAILABLE" in text
+
+
+def _mark_transient_failure(
+    db: Session,
+    doc_id: int,
+    tenant_id: str,
+    reason: str,
+    warnings: list[str],
+) -> None:
+    """Keep a document retryable after a transient provider outage (#436).
+
+    Unlike `_mark_failed`, does NOT set a terminal `failed` state — resets to
+    `pending` so the doc can be retried (manually or via a future reextract
+    endpoint) without landing in the same silently-useless-Haiku-result bucket
+    QC found in #435. Warnings are stored on the doc row for UI display.
+    """
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
+    if doc:
+        doc.status = "pending"
+        doc.processing_stage = "pending"
+        doc.processing_progress = 0
+        doc.extraction_warnings = json.dumps(warnings) if warnings else None
+        db.commit()
+    else:
+        logger.warning("Cannot mark document %d transient-failed: not found for tenant %s", doc_id, tenant_id)
+
+    event = Event(
+        tenant_id=tenant_id,
+        event_type="extraction_transient_failure",
+        entity_type="document",
+        entity_id=doc_id,
+        actor="system",
+        purpose="vision_extraction",
+        payload=json.dumps({"reason": reason, "warnings": warnings}),
     )
     db.add(event)
     db.commit()

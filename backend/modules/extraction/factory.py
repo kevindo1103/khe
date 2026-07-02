@@ -61,19 +61,32 @@ _REGISTRY: dict[str, tuple[type, tuple[str, ...]]] = {
 # a provider to the front; the rest of this chain follows for resilience.
 _DEFAULT_CHAIN: tuple[str, ...] = ("gemini_flash", "claude_haiku")
 
+# PDF-specific chain (#436, QC #435): claude_haiku uses the lean
+# ContractExtractionLLM schema (7 flat fields, no clauses/parties/obligations) —
+# a "successful" Haiku extraction on a PDF is silently useless. Excluded here so a
+# Gemini outage keeps the doc retryable instead of masquerading as done with 0
+# clauses. Haiku stays available for image-only inputs (still extracts base fields).
+_PDF_CHAIN: tuple[str, ...] = ("hybrid_ocr", "gemini_flash")
+
 
 def _has_key(env_vars: tuple[str, ...]) -> bool:
     return any(os.environ.get(v) for v in env_vars)
 
 
 def _resolve_chain(prefer: str) -> tuple[str, ...]:
-    """`prefer` first, then the default chain — deduped, order preserved."""
+    """`prefer` first, then the rest of its base chain — deduped, order preserved.
+
+    `prefer="hybrid_ocr"` (PDFs, per DEC-049) uses `_PDF_CHAIN` — no claude_haiku.
+    Everything else (image inputs) uses `_DEFAULT_CHAIN`, which keeps haiku as a
+    fallback since it still extracts the 7 base fields from a single image.
+    """
     if prefer not in _REGISTRY:
         raise ValueError(
             f"Unknown provider {prefer!r}. Known: {sorted(_REGISTRY)}."
         )
-    ordered = [prefer, *(n for n in _DEFAULT_CHAIN if n != prefer)]
-    # Keep only registered names (registry may be narrower than the default chain).
+    base = _PDF_CHAIN if prefer == "hybrid_ocr" else _DEFAULT_CHAIN
+    ordered = [prefer, *(n for n in base if n != prefer)]
+    # Keep only registered names (registry may be narrower than the base chain).
     return tuple(n for n in dict.fromkeys(ordered) if n in _REGISTRY)
 
 
