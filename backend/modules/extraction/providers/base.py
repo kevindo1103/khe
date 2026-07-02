@@ -26,6 +26,19 @@ def finish_reason(response: object) -> str | None:
     return str(reason) if reason is not None else None
 
 
+def is_max_tokens_truncation(warnings: list[str]) -> bool:
+    """True if an ExtractionResult's warnings indicate Gemini output-token truncation.
+
+    Providers embed `finish_reason` via `finish=<value>` in their "no structured
+    output" warning (see `gemini_flash._response_diagnostic`). Shared here so both
+    the fallback chain (factory.py — stop advancing, same output wall) and the
+    runner (extraction_runner.py — keep doc retryable, not terminal) agree on the
+    same detection (#446).
+    """
+    text = "; ".join(warnings)
+    return "MAX_TOKENS" in text
+
+
 def sniff_mime(image_bytes: bytes) -> str:
     """Best-effort media-type detection from magic bytes. Defaults to image/jpeg."""
     if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":

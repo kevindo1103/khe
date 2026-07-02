@@ -21,7 +21,7 @@ from app.services.consent import check_extraction_consent, get_active_consent_re
 from app.services.obligation_engine import derive_obligations, resolve_date_anchored_obligations
 from app.services import quota, tenant_journey
 from app.services.date_parse import parse_date as _parse_date
-from modules.extraction import ExtractionUnavailable, get_extraction_provider
+from modules.extraction import ExtractionUnavailable, get_extraction_provider, is_max_tokens_truncation
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,13 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # 6. Hard extraction failure (D-08: never fabricate).
         if result.is_error:
+            if is_max_tokens_truncation(result.warnings):
+                _mark_transient_failure(
+                    db, doc_id, tenant_id,
+                    "Document quá lớn, đã cắt bớt kết quả.",
+                    result.warnings,
+                )
+                return
             if _is_transient_provider_outage(result.warnings):
                 _mark_transient_failure(
                     db, doc_id, tenant_id,

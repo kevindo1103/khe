@@ -31,6 +31,7 @@ from .providers import (
     GeminiFlashProvider,
     HybridOCRProvider,
 )
+from .providers.base import is_max_tokens_truncation
 from .schemas import ExtractionResult
 
 
@@ -148,6 +149,20 @@ class _FallbackProvider:
             if not result.is_error:
                 if prior_warnings:
                     result.warnings = [*prior_warnings, *result.warnings]
+                return result
+            if is_max_tokens_truncation(result.warnings):
+                # Same output wall — every Gemini-backed provider in the chain
+                # would hit it too. Stop here instead of wasting cost on a
+                # doomed retry (#446, mini-sprint #443).
+                logger.warning(
+                    "Provider %s hit MAX_TOKENS, stopping fallback (same output wall): %s",
+                    provider.name,
+                    "; ".join(result.warnings),
+                )
+                result.warnings = [
+                    *prior_warnings,
+                    *(f"[{provider.name}] {w}" for w in result.warnings),
+                ]
                 return result
             logger.warning(
                 "Provider %s failed, advancing fallback: %s",

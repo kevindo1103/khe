@@ -34,7 +34,7 @@ from .schemas import (
     PaymentScheduleItem,
     TokenUsage,
 )
-from .providers.base import USD_TO_VND, cost_vnd
+from .providers.base import USD_TO_VND, cost_vnd, is_max_tokens_truncation
 from .provider import VisionExtractionProvider
 from .factory import ExtractionUnavailable, get_extraction_provider
 from .remap import RemapFieldResult, RemapResult, remap_type
@@ -57,6 +57,7 @@ __all__ = [
     "VisionExtractionProvider",
     "get_extraction_provider",
     "ExtractionUnavailable",
+    "is_max_tokens_truncation",
     "remap_type",
     "RemapResult",
     "RemapFieldResult",
