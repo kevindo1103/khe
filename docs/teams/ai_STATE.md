@@ -309,6 +309,30 @@ against source before fixing:
 - 5 new regression tests added (25 total in `test_two_pass.py`, was 20) +
   2 existing tests updated for the new `_to_fill_result()` signature.
 
+## Backlog audit (2026-07-02) — cleared stale for:ai issues
+Audited all older open `for:ai` issues predating mini-sprint #443, cross-referenced
+against merged commits on `staging`. Closed 6 as genuinely resolved:
+- **#230** anchors (page_num/ref) — live-verified in Sprint 1 smoke.
+- **#413** hybrid_ocr activation — confirmed routing in `extraction_runner.py`.
+- **#420** garbled pdftotext — root cause eliminated (pdftotext removed entirely,
+  DocAI for all PDFs), not just detected.
+- **#423** lettered-items truncation — TOÀN VĂN rule present verbatim in
+  `_CLAUSES_SPEC`.
+- **#416** sub-clause splitting (4 consolidated issues) — all fixed via
+  #421/#423/#425 chain; Phụ lục-specific residual tracked separately in #439
+  (already closed this session).
+- **#345** auto-route + chunking — done via a simpler architecture than specced
+  (concatenate-then-single-LLM-call instead of extract-per-chunk-then-merge);
+  functionally equivalent, sidesteps cross-chunk party dedup entirely.
+
+Left open with status comments (not mine to close — cross-team or genuinely
+unstarted): **#340** (hybrid OCR mega-thread, 8 gates — some done via #345/#413,
+G4 obsolete, G2/G3/G5 no evidence of running, G7/G8 infra-owned), **#274**
+(StandingObligationDeriver, Backend/Designer-owned, unstarted), **#399** (Nhóm B
+metadata BA, not yet authored), **#272** (BA epic, sub-issues track real work),
+**#367** (R4b multi-doc split, correctly PM-deferred to Sprint 2 — left as-is,
+already accurately tracked).
+
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results (blocked on samples).
