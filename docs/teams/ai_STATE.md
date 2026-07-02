@@ -227,6 +227,12 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   original #439 bug (bare "Khoản N" under Phụ lục colliding with Điều N) is
   fully closed by #425 + #441 combined, or if a residual gap remains, before
   starting #448 (blocked on #439).
+- **2026-07-02, follow-up:** Backend posted #451 (relay) re-asserting WS0 shipped
+  in PR #441. Re-verified via `pull_request_read get` + `get_files` directly on
+  the GitHub PR object (not just local git log) — PR #441 is `changed_files: 3`,
+  confirmed hierarchy-only (WS3), no `ocr_text`/router/schema diff. WS3 claim is
+  accurate; WS0 claim still isn't reflected in any merged PR or open PR. Replied
+  on #451 — #450 stays blocked until Backend actually pushes the WS0 diff.
 
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
