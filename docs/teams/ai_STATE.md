@@ -186,6 +186,71 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   (Claude provider falls back to `ANTHROPIC_API_KEY` for local/SDK default). Never log/hardcode.
 - Local dev: add both to `backend/.env.local` (gitignored).
 
+## Done (issue #445 — WS1-AI, parent #443 mini-sprint)
+- [x] `max_output_tokens=65_536` set explicitly (model max) in both
+      `gemini_flash.py` (`GeminiFlashProvider.extract`) and `hybrid_ocr.py`
+      (`HybridOCRProvider._llm_extract`) — was previously unset (SDK implicit
+      default), root cause of silent truncation on large docs (#442, doc #20).
+- [x] `finish_reason()` helper added to `providers/base.py` — reads
+      `response.candidates[0].finish_reason` off the google-genai response.
+- [x] Both providers now `logger.info` per extraction call: `input_tokens`,
+      `output_tokens` (`candidates_token_count`), `max_output_tokens`,
+      `finish_reason`, `latency_ms` — builds the empirical corpus WS2
+      (two-pass map-reduce, #448) needs for batch-sizing.
+- [ ] **Not done in this pass:** WS1's `MAX_TOKENS` trap (`is_error=True`,
+      no provider-advance) — that's the Backend half of WS1, coordinate via #443.
+- [x] **Rebased branch onto `origin/staging`** (was stale off `main` — staging had
+      ~20 commits ahead incl. PR #425 AI Phụ lục prompt fix for #439 and PR #441
+      Backend hierarchy fix). Resolved 1 merge conflict in `hybrid_ocr.py`
+      (`_response_diagnostic` tuple return vs my logging line — kept both).
+- Unit tests: `test_extraction.py` 54/55 pass post-rebase (1 pre-existing unrelated
+  failure, `test_canonical_fields_v2_expanded` — count assertion stale vs actual
+  `CANONICAL_FIELDS` len, predates this change, confirmed via `git stash` both
+  pre- and post-rebase).
+
+## Coordination flag — #443 tracker discrepancy (2026-07-02)
+- #443's tracker comment claimed PR #441 "bundles WS0 [#444 ocr-text download] +
+  WS3-backend [#439/#440 hierarchy]" and #450 (AI relay) claimed
+  `ExtractionResult.ocr_text` was "already on ExtractionResult (added in Backend
+  PR #441)". **Verified false on staging**: merged PR #441 (`9a7d427`, branch
+  `claude/fix-phu-luc-hierarchy-440`) only touches `clause_hierarchy.py` +
+  `extraction_runner.py` (+tests) for #439/#440. No `ocr_text` field, no runner
+  persistence, no `GET /documents/{id}/ocr-text` route anywhere on staging.
+  No open PR has this either (checked `list_pull_requests`).
+- **Did NOT implement #450's one-liner** — adding `ocr_text=ocr_text` to
+  `HybridOCRProvider.extract()`'s result construction would require guessing the
+  field's shape on `ExtractionResult` (schemas.py) since it doesn't exist yet.
+  Commented on #450 + #443 flagging the gap; waiting on actual WS0 PR before
+  wiring the one-liner.
+- #439 AI-half (Phụ lục `PL-` prompt rules) **confirmed already merged** via PR
+  #425 — no new prompt work needed there. Still need to re-check whether the
+  original #439 bug (bare "Khoản N" under Phụ lục colliding with Điều N) is
+  fully closed by #425 + #441 combined, or if a residual gap remains, before
+  starting #448 (blocked on #439).
+- **2026-07-02, follow-up:** Backend posted #451 (relay) re-asserting WS0 shipped
+  in PR #441. Re-verified via `pull_request_read get` + `get_files` directly on
+  the GitHub PR object (not just local git log) — PR #441 is `changed_files: 3`,
+  confirmed hierarchy-only (WS3), no `ocr_text`/router/schema diff. WS3 claim is
+  accurate; WS0 claim still isn't reflected in any merged PR or open PR. Replied
+  on #451 — #450 stays blocked until Backend actually pushes the WS0 diff.
+- **2026-07-02, unblocked:** Backend shipped PR #452 standalone (WS0 was bundled
+  with #441 originally but landed after #441 merged, so reopened separately) —
+  confirmed on fresh `staging` fetch: `ExtractionResult.ocr_text` field,
+  `GET /documents/{id}/ocr-text` route, and runner persistence all present.
+  Rebased branch onto new staging (clean, no conflicts).
+
+## Done (issue #450 — ocr_text plumbing, unblocked by PR #452)
+- [x] `to_result()` in `providers/base.py` gained an optional `ocr_text: str | None
+      = None` kwarg, passed straight through to `ExtractionResult(ocr_text=...)`.
+      Left default `None` so `gemini_flash.py`'s existing `to_result()` call
+      (vision-only, no OCR pass) is unaffected.
+- [x] `hybrid_ocr.py`'s `to_result()` call now passes `ocr_text=ocr_text` (the
+      Document AI OCR text already captured earlier in `extract()`).
+- Smoke-tested directly (no fastapi in this env, so `tests/test_ocr_text.py`
+  couldn't run here — pure-python check confirms `to_result(..., ocr_text=...)`
+  populates the field for hybrid_ocr and stays `None` for gemini_flash).
+  `test_extraction.py` unaffected (54/55, same pre-existing failure).
+
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results (blocked on samples).
@@ -195,3 +260,6 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
 - issue #258 — clause remap. Status: **done** (KHE_AI scope shipped, full stack on staging).
 - issue #248 — cost figure ratification. Status: **awaiting PM** (`for:pm`).
 - issue #268 — chat D-08 false-negatives. Status: **analysis posted** (not AI scope).
+- issue #445 (`for:ai`, WS1-AI, parent #443) — max_output_tokens + instrumentation. Status: **done**, this PR.
+- issue #439 (Phụ lục sub-clause `clause_path`, Part 1 prompt fix) — **next up**.
+- issue #448 (two-pass map-reduce prompts) — blocked on #439 + WS3 (Backend Phụ lục hierarchy parse).

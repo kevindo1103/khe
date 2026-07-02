@@ -14,6 +14,18 @@ from ..schemas import (
 USD_TO_VND: float = 25_400.0
 
 
+def finish_reason(response: object) -> str | None:
+    """Best-effort `finish_reason` off a google-genai response's first candidate.
+
+    Used to detect MAX_TOKENS truncation (#442/#445) alongside candidates_token_count.
+    """
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return None
+    reason = getattr(candidates[0], "finish_reason", None)
+    return str(reason) if reason is not None else None
+
+
 def sniff_mime(image_bytes: bytes) -> str:
     """Best-effort media-type detection from magic bytes. Defaults to image/jpeg."""
     if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
@@ -45,12 +57,14 @@ def to_result(
     usage: TokenUsage,
     cost: float,
     warnings: list[str] | None = None,
+    ocr_text: str | None = None,
 ) -> ExtractionResult:
     """Map the model's structured output → the canonical ExtractionResult."""
     return ExtractionResult(
         doc_type=parsed.doc_type,
         doc_type_confidence=parsed.doc_type_confidence,
         fields=parsed.as_field_map(),
+        ocr_text=ocr_text,  # #450: raw OCR text (hybrid_ocr only) for ocr-text download (#444)
         # DEC-026/030: Gemini uses ContractExtractionLLMFull (clauses + obligation_schedule
         # + parties); Claude uses the flat base (none — grammar compiler timeout on nested
         # lists). getattr defaults to [] so both schema tiers produce a valid result.

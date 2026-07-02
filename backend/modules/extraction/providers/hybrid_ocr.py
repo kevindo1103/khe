@@ -22,12 +22,15 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import os
 import time
 
 from ..prompts import SYSTEM_GUARDRAIL, build_text_instruction
 from ..schemas import ContractExtractionLLMFull, ExtractionResult, TokenUsage
-from .base import cost_vnd, empty_result, to_result
+from .base import cost_vnd, empty_result, finish_reason, to_result
+
+logger = logging.getLogger(__name__)
 
 _DOCAI_SYNC_PAGE_LIMIT = 15
 
@@ -40,6 +43,8 @@ class HybridOCRProvider:
     in_usd_per_mtok = 0.30
     out_usd_per_mtok = 2.50
     ocr_cost_per_page_vnd = 39.0
+    # #445: explicit cap (model max) — see gemini_flash.py for rationale.
+    max_output_tokens = 65_536
 
     def __init__(
         self,
@@ -147,6 +152,7 @@ class HybridOCRProvider:
             usage=usage,
             cost=total_cost,
             warnings=warnings,
+            ocr_text=ocr_text,
         )
 
     async def _document_ai_ocr(self, file_bytes: bytes) -> tuple[str, int]:
@@ -200,6 +206,7 @@ class HybridOCRProvider:
             response_mime_type="application/json",
             response_schema=ContractExtractionLLMFull,
             temperature=0.0,
+            max_output_tokens=self.max_output_tokens,
         )
         contents = [
             types.Part.from_text(text=text),
@@ -217,6 +224,15 @@ class HybridOCRProvider:
         usage = TokenUsage(
             input_tokens=getattr(meta, "prompt_token_count", 0) or 0,
             output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
+        )
+        logger.info(
+            "hybrid_ocr llm_extract: input_tokens=%d output_tokens=%d max_output_tokens=%d "
+            "finish_reason=%s latency_ms=%.0f",
+            usage.input_tokens,
+            usage.output_tokens,
+            self.max_output_tokens,
+            finish_reason(response),
+            llm_latency_ms,
         )
         from .gemini_flash import _response_diagnostic
         diag = "" if isinstance(parsed, ContractExtractionLLMFull) else _response_diagnostic(response)

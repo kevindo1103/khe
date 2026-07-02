@@ -13,12 +13,15 @@ gemini-2.5-flash-lite ($0.10/$0.40) is the cheaper alternative for the 150đ tar
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 
 from ..prompts import SYSTEM_GUARDRAIL, build_instruction
 from ..schemas import ContractExtractionLLMFull, ExtractionResult, TokenUsage
-from .base import cost_vnd, empty_result, sniff_mime, to_result
+from .base import cost_vnd, empty_result, finish_reason, sniff_mime, to_result
+
+logger = logging.getLogger(__name__)
 
 
 def _response_diagnostic(response) -> str:
@@ -50,6 +53,11 @@ class GeminiFlashProvider:
     model = "gemini-2.5-flash"
     in_usd_per_mtok = 0.30   # verified 2026-06-11 ($0.30/$2.50 per 1M)
     out_usd_per_mtok = 2.50
+    # #445: set explicitly instead of relying on an unknown SDK default — doc #20
+    # truncated around ~22-25k output tokens under the implicit default, well
+    # under the model's actual 65,536 ceiling. Use the model max so TOÀN VĂN
+    # (verbatim clause) output isn't cut off before the real limit.
+    max_output_tokens = 65_536
 
     def __init__(self, api_key: str | None = None) -> None:
         # Lazy import — keep package importable without the SDK installed.
@@ -73,6 +81,7 @@ class GeminiFlashProvider:
             response_mime_type="application/json",
             response_schema=ContractExtractionLLMFull,
             temperature=0.0,  # deterministic extraction (Gemini still accepts this)
+            max_output_tokens=self.max_output_tokens,
         )
         contents = [
             types.Part.from_bytes(data=image_bytes, mime_type=mime),
@@ -108,6 +117,15 @@ class GeminiFlashProvider:
         usage = TokenUsage(
             input_tokens=getattr(meta, "prompt_token_count", 0) or 0,
             output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
+        )
+        logger.info(
+            "gemini_flash extract: input_tokens=%d output_tokens=%d max_output_tokens=%d "
+            "finish_reason=%s latency_ms=%.0f",
+            usage.input_tokens,
+            usage.output_tokens,
+            self.max_output_tokens,
+            finish_reason(response),
+            latency_ms,
         )
         return to_result(
             parsed,
