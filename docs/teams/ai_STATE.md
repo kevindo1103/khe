@@ -251,6 +251,64 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   populates the field for hybrid_ocr and stays `None` for gemini_flash).
   `test_extraction.py` unaffected (54/55, same pre-existing failure).
 
+## Done (issue #448 — WS2a, two-pass map-reduce prompts, parent #443)
+- [x] New module `backend/modules/extraction/two_pass.py` (follows `remap.py`'s
+      pattern — pure prompt builders + lean LLM schemas + async caller):
+  - **Pass 1 (`extract_skeleton`)** — hierarchy-only skeleton (num/title/level/
+    clause_path, NO content) from full OCR text. Reuses the proven QUY TẮC
+    PHỤ LỤC / sub-clause-split / no-flat rules from `_CLAUSES_SPEC` but as a
+    self-contained spec (didn't refactor the shared main-path prompt — regression
+    risk on the already-QC'd single-call extraction). `max_output_tokens=16_384`
+    (circuit breaker; skeleton output should never approach it).
+  - **Pass 2 (`fill_section`)** — verbatim content for one section's (one Điều
+    or one Phụ lục) clauses, given a manifest of the section's skeleton
+    `clause_path`s from Pass 1. `max_output_tokens=32_768` (section-scoped, well
+    under the 65,536 whole-doc ceiling from #445).
+  - **Pass 3 (`fill_paragraph`)** — single paragraph/page chunk fill for the
+    rare oversized clause. `max_output_tokens=8_192`.
+  - All three report `truncated: bool` (via `finish_reason() == "MAX_TOKENS"`,
+    the #445 helper) so Backend's WS2b runner can distinguish "done" from
+    "needs paragraph-split retry" without parsing warning strings.
+  - R4b multi-doc detection (Pass 1 stretch goal per PM's #443 triage) —
+    **not implemented**, matches the ratified demotion to non-blocking.
+- [x] Exported via `backend/modules/extraction/__init__.py`.
+- [x] 20 new pure unit tests (`test_two_pass.py`, no keys/SDK) — prompt-builder
+      content checks, no-op guards, result normalizers, `truncated` propagation,
+      and a regression test for the `.format()`-vs-literal-JSON-braces bug I hit
+      while writing this (switched to placeholder + `.replace()`).
+  `test_extraction.py` unaffected (94/95, same pre-existing failure).
+- **Not in my scope (Backend WS2b, #449):** the `content_status` state machine,
+  grouping clauses into sections, per-section commit/resume, invoking Pass 3 on
+  a Pass-2 MAX_TOKENS. This module only provides the pass primitives.
+
+## Fixed — QC review of PR #456 (2026-07-02)
+Two review agents converged on the same top bug; verified all findings directly
+against source before fixing:
+- [x] **#1 (confirmed) `_clause_manifest()` stringified `clause_path=None` as
+  literal `"None"`** — a model echoing it back would corrupt exact-match lookup.
+  Fixed: unnumbered clauses now render as an explicit "để clause_path=null"
+  instruction, never the Python `None` repr.
+- [x] **#2 (confirmed) no validation that returned `clause_path`s match the
+  section's skeleton** — `_to_fill_result()` now takes `skeleton_clauses` and
+  drops any returned clause whose `clause_path` isn't in the section's known
+  non-null path set (hallucinated/mismatched/stringified-None), with a warning
+  carrying the drop count. `fill_section()`'s call site updated to match.
+- [x] **#3 (confirmed) `truncated` conflated MAX_TOKENS with all other
+  no-parse causes** — all three passes now embed the real `finish_reason` in
+  the warning text (`finish_reason={fr}`) instead of a binary MAX_TOKENS
+  suffix, and flag an anomalous `finish_reason` even on a *successful* parse
+  (e.g. RECITATION racing a partial result).
+- [x] **#4 (design risk) Pass 3 chunk boundaries had no continuation
+  marker** — added `is_continuation: bool = False` to
+  `build_paragraph_fill_instruction()`/`fill_paragraph()`. When set, the
+  prompt explicitly warns against "smoothing over" a mid-sentence/mid-table
+  cut (D-06 content-alteration risk) — Backend's WS2b runner should pass
+  `True` for every chunk after the first per clause.
+- Skipped #5 (`.replace()` clobber risk) — reviewer's own assessment was
+  "astronomically unlikely, not worth blocking on"; agreed, left as-is.
+- 5 new regression tests added (25 total in `test_two_pass.py`, was 20) +
+  2 existing tests updated for the new `_to_fill_result()` signature.
+
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results (blocked on samples).
