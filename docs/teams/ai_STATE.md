@@ -186,6 +186,23 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   (Claude provider falls back to `ANTHROPIC_API_KEY` for local/SDK default). Never log/hardcode.
 - Local dev: add both to `backend/.env.local` (gitignored).
 
+## Done (issue #445 — WS1-AI, parent #443 mini-sprint)
+- [x] `max_output_tokens=65_536` set explicitly (model max) in both
+      `gemini_flash.py` (`GeminiFlashProvider.extract`) and `hybrid_ocr.py`
+      (`HybridOCRProvider._llm_extract`) — was previously unset (SDK implicit
+      default), root cause of silent truncation on large docs (#442, doc #20).
+- [x] `finish_reason()` helper added to `providers/base.py` — reads
+      `response.candidates[0].finish_reason` off the google-genai response.
+- [x] Both providers now `logger.info` per extraction call: `input_tokens`,
+      `output_tokens` (`candidates_token_count`), `max_output_tokens`,
+      `finish_reason`, `latency_ms` — builds the empirical corpus WS2
+      (two-pass map-reduce, #448) needs for batch-sizing.
+- [ ] **Not done in this pass:** WS1's `MAX_TOKENS` trap (`is_error=True`,
+      no provider-advance) — that's the Backend half of WS1, coordinate via #443.
+- Unit tests: `test_extraction.py` 54/55 pass (1 pre-existing unrelated failure,
+  `test_canonical_fields_v2_expanded` expects 12 canonical fields, actual 17 —
+  predates this change, confirmed via `git stash`).
+
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results (blocked on samples).
@@ -195,3 +212,6 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
 - issue #258 — clause remap. Status: **done** (KHE_AI scope shipped, full stack on staging).
 - issue #248 — cost figure ratification. Status: **awaiting PM** (`for:pm`).
 - issue #268 — chat D-08 false-negatives. Status: **analysis posted** (not AI scope).
+- issue #445 (`for:ai`, WS1-AI, parent #443) — max_output_tokens + instrumentation. Status: **done**, this PR.
+- issue #439 (Phụ lục sub-clause `clause_path`, Part 1 prompt fix) — **next up**.
+- issue #448 (two-pass map-reduce prompts) — blocked on #439 + WS3 (Backend Phụ lục hierarchy parse).
