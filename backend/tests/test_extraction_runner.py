@@ -2,7 +2,7 @@
 import io
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, backend_dir)
@@ -10,6 +10,7 @@ sys.path.insert(0, backend_dir)
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings
 from app.core.security import get_password_hash
 from app.db.database import MasterSessionLocal, get_tenant_session, init_master_db, init_tenant_db
 from app.models.master import Tenant, TenantUser
@@ -594,3 +595,50 @@ class TestPaymentScheduleObligations:
         assert len(handover) == 1
         assert handover[0]["source_clause_num"] == "Điều 3"
         assert handover[0]["derived_from"] == "original"
+
+
+# ── OCR text persistence (#450 — hybrid_ocr → to_result(ocr_text=...) wiring) ──
+
+class TestOcrTextPersistence:
+    """Closes the coverage gap: nothing previously exercised the path from a
+    provider result carrying ocr_text through to the .ocr.txt file the
+    GET /documents/{id}/ocr-text endpoint (#444) reads from."""
+
+    def test_ocr_text_persisted_to_disk(self, auth_client, tmp_path):
+        result = _make_success_result()
+        result.ocr_text = "Điều 1: Nội dung hợp đồng gốc từ Document AI OCR."
+        fake = FakeProvider(result)
+
+        with patch.object(Settings, "STORAGE_DIR", new_callable=PropertyMock, return_value=tmp_path):
+            with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+                r = auth_client.post(
+                    "/ingest/upload",
+                    files={"file": ("ocr_text_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+                )
+                assert r.status_code == 201
+                doc_id = r.json()["doc_id"]
+
+            data = auth_client.get(f"/documents/{doc_id}").json()
+            assert data["status"] == "extracted"
+
+            r2 = auth_client.get(f"/documents/{doc_id}/ocr-text")
+            assert r2.status_code == 200
+            assert "Điều 1" in r2.text
+            assert r2.headers.get("x-khe-ocr-disclaimer") == "Machine-generated OCR, may contain errors"
+
+    def test_no_ocr_text_no_file_written(self, auth_client, tmp_path):
+        """gemini_flash-style results (ocr_text=None) must not produce a stale
+        .ocr.txt — download endpoint should 404, not serve leftover/wrong text."""
+        fake = FakeProvider(_make_success_result())  # ocr_text defaults to None
+
+        with patch.object(Settings, "STORAGE_DIR", new_callable=PropertyMock, return_value=tmp_path):
+            with patch("app.services.extraction_runner.get_extraction_provider", return_value=fake):
+                r = auth_client.post(
+                    "/ingest/upload",
+                    files={"file": ("no_ocr_text_test.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+                )
+                assert r.status_code == 201
+                doc_id = r.json()["doc_id"]
+
+            r2 = auth_client.get(f"/documents/{doc_id}/ocr-text")
+            assert r2.status_code == 404
