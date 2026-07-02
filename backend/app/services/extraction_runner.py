@@ -21,7 +21,7 @@ from app.services.consent import check_extraction_consent, get_active_consent_re
 from app.services.obligation_engine import derive_obligations, resolve_date_anchored_obligations
 from app.services import quota, tenant_journey
 from app.services.date_parse import parse_date as _parse_date
-from modules.extraction import ExtractionUnavailable, get_extraction_provider
+from modules.extraction import ExtractionUnavailable, get_extraction_provider, is_max_tokens_truncation
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,20 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # 6. Hard extraction failure (D-08: never fabricate).
         if result.is_error:
+            if is_max_tokens_truncation(result.warnings):
+                _mark_transient_failure(
+                    db, doc_id, tenant_id,
+                    "Document quá lớn, đã cắt bớt kết quả.",
+                    result.warnings,
+                )
+                return
+            if _is_transient_provider_outage(result.warnings):
+                _mark_transient_failure(
+                    db, doc_id, tenant_id,
+                    "Provider temporarily unavailable (503/UNAVAILABLE)",
+                    result.warnings,
+                )
+                return
             _mark_failed(
                 db,
                 doc_id,
@@ -548,6 +562,61 @@ def _mark_failed(
         actor="system",
         purpose="vision_extraction",
         payload=json.dumps({"reason": reason, **(payload or {})}),
+    )
+    db.add(event)
+    db.commit()
+
+
+def _is_transient_provider_outage(warnings: list[str]) -> bool:
+    """True if warnings indicate a transient upstream outage (#436, QC #435).
+
+    Distinguishes "Gemini is temporarily overloaded, try again" from a genuine
+    extraction failure — the former should keep the doc retryable, not terminal.
+    """
+    text = "; ".join(warnings)
+    return "503" in text or "UNAVAILABLE" in text
+
+
+def _mark_transient_failure(
+    db: Session,
+    doc_id: int,
+    tenant_id: str,
+    reason: str,
+    warnings: list[str],
+) -> None:
+    """Keep a document retryable after a transient provider outage (#436).
+
+    Unlike `_mark_failed`, does NOT set a terminal `failed` state — `status`
+    resets to `pending` so the doc can be retried (via `POST
+    /{doc_id}/re-extract`, #97) without landing in the same
+    silently-useless-Haiku-result bucket QC found in #435.
+
+    `processing_stage='retry_needed'` (QC review, PR #458) — deliberately NOT
+    'pending', which collides with a freshly-uploaded doc that hasn't started
+    extraction yet (`processing_stage` starts `NULL`, not 'pending') and isn't
+    in the documented `queued|ocr|llm|saving|done|failed` enum either. A
+    distinct value lets the frontend tell "never started" from "needs retry"
+    and show the retry button only for the latter. Warnings are stored on the
+    doc row (`extraction_warnings`) for UI display.
+    """
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
+    if doc:
+        doc.status = "pending"
+        doc.processing_stage = "retry_needed"
+        doc.processing_progress = 0
+        doc.extraction_warnings = json.dumps(warnings) if warnings else None
+        db.commit()
+    else:
+        logger.warning("Cannot mark document %d transient-failed: not found for tenant %s", doc_id, tenant_id)
+
+    event = Event(
+        tenant_id=tenant_id,
+        event_type="extraction_transient_failure",
+        entity_type="document",
+        entity_id=doc_id,
+        actor="system",
+        purpose="vision_extraction",
+        payload=json.dumps({"reason": reason, "warnings": warnings}),
     )
     db.add(event)
     db.commit()

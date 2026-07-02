@@ -42,10 +42,20 @@ def _client():
     return c
 
 
-def _make_doc(status: str, with_fail_reason: str | None = None) -> int:
+def _make_doc(
+    status: str,
+    with_fail_reason: str | None = None,
+    processing_stage: str | None = None,
+    extraction_warnings: list[str] | None = None,
+    event_type: str = "extraction_failed",
+) -> int:
     s = get_tenant_session("fr-tenant")
     try:
-        doc = Document(tenant_id="fr-tenant", file_name=f"{status}.pdf", file_path="x/y.pdf", status=status)
+        doc = Document(
+            tenant_id="fr-tenant", file_name=f"{status}.pdf", file_path="x/y.pdf", status=status,
+            processing_stage=processing_stage,
+            extraction_warnings=json.dumps(extraction_warnings) if extraction_warnings else None,
+        )
         s.add(doc)
         s.commit()
         s.refresh(doc)
@@ -54,7 +64,7 @@ def _make_doc(status: str, with_fail_reason: str | None = None) -> int:
             s.add(Event(
                 tenant_id="fr-tenant",
                 entity_type="document", entity_id=doc_id,
-                event_type="extraction_failed", actor="system",
+                event_type=event_type, actor="system",
                 payload=json.dumps({"reason": with_fail_reason}),
             ))
             s.commit()
@@ -108,3 +118,53 @@ def test_failed_doc_picks_latest_reason_on_multiple_events():
 
     c = _client()
     assert c.get(f"/documents/{doc_id}").json()["failure_reason"] == "second failure"
+
+
+# ── Transient failures (#436/#446, QC review PR #458) ────────────────────────
+# Previously failure_reason/extraction_warnings only surfaced for status=="failed",
+# so a doc kept retryable by `_mark_transient_failure` (status stays "pending")
+# never showed its reason to the API — the backend recorded the failure correctly
+# but the read path silently dropped it. Fixed: also check
+# processing_stage=="retry_needed" and expose extraction_warnings directly.
+
+
+def test_retry_needed_doc_exposes_reason():
+    """A doc kept retryable (status='pending', processing_stage='retry_needed')
+    surfaces the reason from the latest extraction_transient_failure event —
+    not just terminal 'failed' docs."""
+    doc_id = _make_doc(
+        "pending",
+        with_fail_reason="Document quá lớn, đã cắt bớt kết quả.",
+        processing_stage="retry_needed",
+        event_type="extraction_transient_failure",
+    )
+    c = _client()
+    r = c.get(f"/documents/{doc_id}")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "pending"
+    assert data["processing_stage"] == "retry_needed"
+    assert data["failure_reason"] == "Document quá lớn, đã cắt bớt kết quả."
+
+
+def test_retry_needed_doc_exposes_extraction_warnings():
+    """extraction_warnings (raw provider warnings) is exposed on the doc row,
+    independent of the Event-derived failure_reason."""
+    doc_id = _make_doc(
+        "pending",
+        processing_stage="retry_needed",
+        extraction_warnings=["gemini_flash extract failed: 503 The model is overloaded."],
+    )
+    c = _client()
+    data = c.get(f"/documents/{doc_id}").json()
+    assert data["extraction_warnings"] == ["gemini_flash extract failed: 503 The model is overloaded."]
+
+
+def test_plain_pending_doc_has_no_failure_reason():
+    """A freshly-uploaded doc (processing_stage=None, not 'retry_needed') has no
+    failure_reason — distinguishes 'never started' from 'needs retry'."""
+    doc_id = _make_doc("pending")
+    c = _client()
+    data = c.get(f"/documents/{doc_id}").json()
+    assert data["failure_reason"] is None
+    assert data["processing_stage"] is None

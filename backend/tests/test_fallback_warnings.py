@@ -79,3 +79,38 @@ def test_no_prefix_when_first_provider_succeeds():
 
     assert not result.is_error
     assert result.warnings == ["hybrid:pdftotext"]
+
+
+def test_max_tokens_stops_fallback_chain(monkeypatch):
+    """MAX_TOKENS truncation does NOT advance to the next provider (#446)."""
+    p_truncated = _FakeProvider(
+        "hybrid_ocr", _make_error("hybrid_ocr", "hybrid_ocr returned no structured output. finish=MAX_TOKENS | text_len=76538")
+    )
+    p_unused = _FakeProvider("gemini_flash", _make_error("gemini_flash", "should not run"))
+    fb = _FallbackProvider([p_truncated, p_unused])
+    result = asyncio.run(fb.extract(b"test"))
+
+    assert result.is_error
+    assert "MAX_TOKENS" in "; ".join(result.warnings)
+    assert "should not run" not in "; ".join(result.warnings)
+
+
+def test_max_tokens_returns_before_second_provider_runs():
+    """Second provider's extract() is never invoked when the first hits MAX_TOKENS."""
+    calls = []
+
+    class _TrackedProvider:
+        def __init__(self, name, result):
+            self.name = name
+            self._result = result
+
+        async def extract(self, image_bytes, doc_type="auto"):
+            calls.append(self.name)
+            return self._result
+
+    p1 = _TrackedProvider("hybrid_ocr", _make_error("hybrid_ocr", "finish=MAX_TOKENS"))
+    p2 = _TrackedProvider("gemini_flash", _make_error("gemini_flash", "should not run"))
+    fb = _FallbackProvider([p1, p2])
+    asyncio.run(fb.extract(b"test"))
+
+    assert calls == ["hybrid_ocr"]
