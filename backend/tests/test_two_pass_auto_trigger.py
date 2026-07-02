@@ -176,6 +176,78 @@ def test_full_success_marks_extracted_with_scope_gap_warning(test_tenant, db, tm
     assert payload["fields_extracted"] is False
     assert payload["parties_extracted"] is False
     assert payload["obligations_extracted"] is False
+    assert payload["cross_refs_resolved"] is True
+
+
+def test_success_resolves_cross_refs(test_tenant, db, tmp_path):
+    """Cross-reference resolution runs on the success path — it's a pure
+    post-process over persisted Clause.content, no dependency on the
+    original LLM call, so it's recovered "for free" even though
+    fields/parties/obligations are not (QC review finding, PR #463)."""
+    mock_result = _make_mock_result(ocr_text="Điều 1: Nội dung.")
+    fake_skeleton = SkeletonResult(
+        clauses=[SkeletonClauseResult(num="Điều 1", title=None, level=1, clause_path="1")],
+    )
+
+    doc = _make_doc(db, test_tenant)
+    fake_file = tmp_path / doc.file_path
+    fake_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_file.write_bytes(b"fake pdf content")
+
+    mock_provider = AsyncMock()
+    mock_provider.extract = AsyncMock(return_value=mock_result)
+    mock_resolve_cross_refs = MagicMock()
+
+    with patch("app.services.extraction_runner.settings") as mock_settings, \
+         patch("app.services.extraction_runner.get_extraction_provider", return_value=mock_provider), \
+         patch("app.services.extraction_runner.check_extraction_consent", return_value=True), \
+         patch("app.services.extraction_runner.get_active_consent_reference", return_value="ref-1"), \
+         patch("modules.extraction.two_pass.extract_skeleton", new=AsyncMock(return_value=fake_skeleton)), \
+         patch("app.services.two_pass_runner.persist_skeleton"), \
+         patch("app.services.two_pass_runner.run_content_fill",
+               new=AsyncMock(return_value={"total": 1, "filled": 1, "truncated": 0})), \
+         patch("app.services.cross_ref.resolve_cross_refs", new=mock_resolve_cross_refs):
+        mock_settings.STORAGE_DIR = tmp_path
+        run_extraction(doc.id, test_tenant)
+
+    mock_resolve_cross_refs.assert_called_once()
+    # extraction_runner opens its own tenant session internally (not the test
+    # fixture's `db`), so only assert the (tenant_id, doc_id) args match.
+    called_args = mock_resolve_cross_refs.call_args.args
+    assert called_args[1] == test_tenant
+    assert called_args[2] == doc.id
+
+
+def test_partial_fill_does_not_resolve_cross_refs(test_tenant, db, tmp_path):
+    """A partial (still-retryable) fill must NOT run cross-ref resolution —
+    that would scan incomplete clause content."""
+    mock_result = _make_mock_result(ocr_text="Điều 1: Nội dung.")
+    fake_skeleton = SkeletonResult(
+        clauses=[SkeletonClauseResult(num="Điều 1", title=None, level=1, clause_path="1")],
+    )
+
+    doc = _make_doc(db, test_tenant)
+    fake_file = tmp_path / doc.file_path
+    fake_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_file.write_bytes(b"fake pdf content")
+
+    mock_provider = AsyncMock()
+    mock_provider.extract = AsyncMock(return_value=mock_result)
+    mock_resolve_cross_refs = MagicMock()
+
+    with patch("app.services.extraction_runner.settings") as mock_settings, \
+         patch("app.services.extraction_runner.get_extraction_provider", return_value=mock_provider), \
+         patch("app.services.extraction_runner.check_extraction_consent", return_value=True), \
+         patch("app.services.extraction_runner.get_active_consent_reference", return_value="ref-1"), \
+         patch("modules.extraction.two_pass.extract_skeleton", new=AsyncMock(return_value=fake_skeleton)), \
+         patch("app.services.two_pass_runner.persist_skeleton"), \
+         patch("app.services.two_pass_runner.run_content_fill",
+               new=AsyncMock(return_value={"total": 5, "filled": 3, "truncated": 2})), \
+         patch("app.services.cross_ref.resolve_cross_refs", new=mock_resolve_cross_refs):
+        mock_settings.STORAGE_DIR = tmp_path
+        run_extraction(doc.id, test_tenant)
+
+    mock_resolve_cross_refs.assert_not_called()
 
 
 def test_partial_fill_stays_retryable_not_marked_extracted(test_tenant, db, tmp_path):

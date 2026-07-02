@@ -709,6 +709,15 @@ async def _run_two_pass_fallback(
         )
         return
 
+    # R10 (#373): cross-reference resolution is a pure post-process over
+    # already-persisted Clause.content — no dependency on the original LLM
+    # call's raw output (same call used by the single-call path, line ~337).
+    # Two-pass DOES persist full clause content, so this is recovered "for
+    # free" (QC review finding on PR #463) — narrows the fields/parties/
+    # obligations scope gap by one item without needing new AI-side work.
+    from app.services.cross_ref import resolve_cross_refs
+    resolve_cross_refs(db, tenant_id, doc_id)
+
     doc.status = "extracted"
     doc.processing_stage = "done"
     doc.processing_progress = 100
@@ -729,6 +738,7 @@ async def _run_two_pass_fallback(
         payload=json.dumps({
             "clauses_filled": summary["filled"],
             "clauses_total": summary["total"],
+            "cross_refs_resolved": True,
             "fields_extracted": False,
             "parties_extracted": False,
             "obligations_extracted": False,
