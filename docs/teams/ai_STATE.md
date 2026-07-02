@@ -4,194 +4,125 @@
 > `docs/teams/ai_STATE.md`, `docs/benchmark_*.md` (via DOCS_INBOX).
 > Branch: `claude/feat-ai-vision-extraction-3k3gup`.
 
-_Last updated: 2026-06-25 (Sprint 1 wrap — #230 anchors live, #258 remap shipped, #268 analysis posted)_
+_Last updated: 2026-07-02 (Cycle 6-7 — DEC-050 R1-R10 shipped, hybrid_ocr all-PDF routing, clause extraction quality 6-PR arc, Phụ lục PL- paths)_
 
 ## Decisions in force
-- **DEC-002** — single `VisionExtractionProvider.extract()` interface; NO separate
-  OCR + LLM pipeline.
-- **DEC-010** — US-hosted APIs OK in Phase 1; log `consent_reference` to `events`
-  before first extraction per tenant (NĐ 13/2023).
+- **DEC-002** — single `VisionExtractionProvider.extract()` interface; fallback chain.
+- **DEC-010** — US-hosted APIs OK in Phase 1; log `consent_reference` to `events`.
+- **DEC-049** — hybrid OCR pipeline: ALL PDFs → Document AI OCR / pdftotext → Gemini text mode.
+- **DEC-050** — R1-R10 schema v3 (15 canonical + defined_terms + cross_references + signature flags).
 - **D-01 / D-06** — extraction is READ-ONLY; AI never authors/edits legal content.
 
 ## Provider lineup
 | Provider | Role | Model | ~Cost/doc |
 |---|---|---|---|
-| GeminiFlashProvider | primary (vision) | `gemini-2.5-flash` | ~177đ (measured) |
+| HybridOCRProvider | **primary for ALL PDFs** | `gemini-2.5-flash` (text mode) | ~39đ/page OCR + LLM |
+| GeminiFlashProvider | images only (non-PDF) | `gemini-2.5-flash` (vision) | ~177đ |
 | ClaudeHaikuProvider | fallback (<90% accuracy) | `claude-haiku-4-5` | ~560đ |
 | ClaudeSonnetProvider | complex / handwritten | `claude-sonnet-4-6` | ~1,693đ |
 | `remap_type()` | text-only remap (#258) | `gemini-2.5-flash` (text) | ~2-3đ |
 
-> **Cost note:** 177đ measured on staging (vs 59đ on H_MB_6 local). Issue #248
-> filed `for:pm` to ratify canonical figure for docs. `remap_type()` uses
-> provider tag `gemini_flash_text` for cost tracking (#255).
+> **Routing change (PR #414, #413):** ALL PDFs now route through `hybrid_ocr` instead of
+> `gemini_flash` vision. Gemini text mode follows prompt rules (hierarchy, lettered items)
+> accurately; vision mode ignores them. Factory gate changed from `GOOGLE_APPLICATION_CREDENTIALS`
+> to `GEMINI_API_KEY` — pdftotext path works without DocAI creds.
+
+## Done (Cycle 7 — clause extraction quality arc)
+
+### PR #414 → staging (merged) — Route ALL PDFs through hybrid_ocr (#413)
+- [x] `extraction_runner.py`: PDF detection → `prefer="hybrid_ocr"` instead of scan-only routing
+- [x] `factory.py`: `hybrid_ocr` registry gated on Gemini key, not DocAI creds
+- [x] Root cause: Gemini vision-only ignores complex prompt rules (_CLAUSES_SPEC)
+
+### PR #419 → staging (merged) — TH-A sub-clause splitting (#416 A)
+- [x] Added TH-A hierarchy examples to `_CLAUSES_SPEC` — sub-clauses (5.1, 10.1) as separate level=2
+- [x] First round prompt tuning for sub-clause splitting
+
+### PR #422 → staging (merged) — Num format + garbled pdftotext (#416 B/C, #420)
+- [x] Enforced num format: TH-A level=1 → "Điều X", level=2 → "X.Y"
+- [x] num↔clause_path consistency rules
+- [x] `is_garbled_vietnamese()` in `scan_detect.py` — diacritical ratio < 2% → garbled → fallback to DocAI
+- [x] Garble warning preserved when DocAI also fails
+- [x] 5 unit tests for garble detection (`test_scan_detect.py`)
+
+### PR #424 → staging (merged) — Restructure _CLAUSES_SPEC (#423)
+- [x] Promoted sub-clause splitting to first rule (🔴 marker)
+- [x] Concrete wrong-vs-right JSON output examples
+- [x] Conditional self-check: "if all level=1 AND doc has sub-headings → split"
+- [x] Removed contradictory example (showed sub-clause in content field)
+- [x] Net -22 lines (more concise, stronger signal)
+
+### PR #425 → staging (pending merge) — Lettered items + Phụ lục (#423, #439)
+- [x] QUY TẮC 2 TOÀN VĂN: content must include ALL lettered items a-d, no truncation
+- [x] QUY TẮC PHỤ LỤC: sub-clauses under Phụ lục → `clause_path="PL-X.Y"` (no collision with Điều)
+- [x] Backend changes (`_stub_num`, PL- passthrough) filed as relay #440 per DEC-047
+
+### Relay issues filed
+- [x] #440 `from:ai` `for:backend` — `_stub_num()` for PL- stubs + `extraction_runner.py:291` PL- source_clause resolution
+
+## Done (Cycle 6 — DEC-050 R1-R10 + DEC-049 hybrid OCR)
+
+### PR #381 → staging (merged, QC reviewed) — DEC-050 R1-R10 EPIC #362
+- [x] Schema v3: `ContractExtractionLLMFull` — 15 universal canonical fields + 30 type-specific
+- [x] `V2_UNIVERSAL_FIELDS`: 8 new fields (tieu_de_hd, so_hop_dong, ngay_ky, ngay_khai_truong, tien_dat_coc, thoi_han_bao_hanh, thoi_han_thong_bao, doc_type_group)
+- [x] R1 contract title/number, R2 parties address/representative/tax_code
+- [x] R3 clause hierarchy (level/clause_path), R5b signature detection
+- [x] R6 commencement date, R7 auto-renewal obligations
+- [x] R8 payment schedule, R9 defined_terms[], R10 cross_references[]
+- [x] Benchmarked on VPS: docs 1 + 22, all new fields populated correctly
+
+### Infra coordination (PR #415 merged)
+- [x] `GOOGLE_APPLICATION_CREDENTIALS` deployed to staging/prod systemd units
+- [x] Scanned PDFs now have full Document AI OCR support
 
 ## Done (Sprint 1 — #230 anchors, #258 remap, #268 analysis)
 
-### PR #232 → staging (merged, QC sign-off ✓)
-- [x] `AnchoredField(ExtractedField)` — `page_num` (1-based int) + `ref` (clause label).
-      Gemini Full schema only; Claude lean stays anchor-free (grammar guard).
-- [x] `_ANCHOR_SPEC` prompt rewrite — mandatory + example-driven (11 lines). Live-validated:
-      7/8 valued fields populated by Gemini (`page_num=7/12`, `ref=5/12`).
-- [x] `anchor_probe.py` — isolated #230 validator. Calls provider directly (no HTTP/auth/DB).
-      Per-field table, exit code 0/1 as gate. Provider-conditional expectations.
-- [x] Smoke scripts (`smoke_e2e_staging.py` + `.sh`) — `/api/` prefix fix, anchor gate
-      softened to warning (deployed vs not-deployed ambiguity).
-- [x] Post-deploy integration smoke: 12/12 steps green, `anchored(page_num)=7 with_ref=5`.
+### PR #232 → staging (merged, QC sign-off)
+- [x] `AnchoredField(ExtractedField)` — `page_num` + `ref` anchors
+- [x] `_ANCHOR_SPEC` prompt rewrite, smoke scripts, integration smoke
 
-### Issue #258 — clause remap (KHE_AI scope shipped)
-- [x] `remap.py` — `async remap_type(clauses, target_type) -> RemapResult`.
-      Text-only Gemini Flash call (~2-3đ vs ~177đ vision). No quota, no file needed.
-- [x] PM-ratified output: `RemapResult(fields, provider, cost_vnd, warnings)`,
-      `RemapFieldResult(value, ref, page_num=None, confidence, needs_review)`.
-- [x] `_to_remap_result()` — row for EVERY target key (D-07), drops invented keys,
-      `page_num` always None (honest, text-only), confidence clamped.
-- [x] No-op guards: empty clauses → `no_clauses`; no type-specific fields → `no_type_specific_fields_for_target`.
-- [x] `build_remap_instruction()` — lists only target's fields from `TYPE_SPECIFIC_FIELDS`.
-- [x] LLM schema: `_RemapExtractionLLM` with `list[_RemapFieldLLM]` — lean, Gemini-safe.
-- [x] 9 unit tests (`test_remap.py`); all passing.
-- [x] Public API exported: `remap_type`, `RemapResult`, `RemapFieldResult` in `__init__.py`.
-- [x] Full #258 stack deployed to staging (Backend endpoint + KHE_AI + FE UI all merged).
+### Issue #258 — clause remap (shipped)
+- [x] `remap.py` — text-only Gemini Flash call (~2-3đ), 9 unit tests
 
 ### Issue #268 — chat D-08 false-negatives (analysis posted, not AI scope)
-- [x] Root-cause analysis posted on #268:
-      Q2 = SQLite `lower()` ASCII-only on Vietnamese diacritics (unicode-lower bug pattern).
-      Q3 = tool-selection (model picks wrong tool for query type).
-- [x] Not KHE_AI scope — Backend chat router owns the fix.
 
-### DOCS_INBOX posts (×4)
-- [x] AnchoredField schema + prompt (PR #232)
-- [x] Cost figure (177đ staging vs 59đ local — issue #248 filed `for:pm`)
-- [x] Provider/model field on DocumentDetailOut (#233/#235)
-- [x] Remap module (#258 — new `remap.py`, output contract, provider tag)
-
-## Done (issue #53 — provider factory for Backend #25 PR-B)
-- [x] `get_extraction_provider(prefer="gemini_flash")` exported from
-      `modules.extraction` public API — returns a ready `VisionExtractionProvider`.
-- [x] Typed `ExtractionUnavailable` (RuntimeError subclass) when no key/SDK present
-      → Backend maps to 503 / status=failed (infra condition, not a doc error).
-- [x] Key handling encapsulated (lazy; `GEMINI_API_KEY`/`CLAUDE_API_KEY` + Google/
-      Anthropic fallbacks). `import main` stays green without keys/SDKs.
-- [x] Fallback policy encapsulated (DEC-002): Gemini primary → Claude Haiku.
-      `_FallbackProvider` advances **only on hard failure** (`ExtractionResult.is_error`)
-      — happy path charged once; never re-routes on mere `needs_review`.
-- [x] `ExtractionResult.is_error` property (warnings + 0 input tokens) — lets Backend
-      distinguish failure from a successful-but-uncertain extraction (D-08).
-- [x] +8 unit tests (no keys/SDKs); 18 total passing. README usage updated.
-- Final signature posted to #53 for KHE_Backend to wire PR-B.
+## Done (issue #53 — provider factory)
+- [x] `get_extraction_provider()` factory with fallback chain
+- [x] `ExtractionUnavailable` typed error, +8 unit tests
 
 ## Done (issue #3 — Sprint 0)
-- [x] `VisionExtractionProvider` Protocol + `ExtractionResult` / `ExtractedField` /
-      `ContractExtractionLLM` schemas (confidence + needs_review; D-06/D-08 enforced).
-- [x] GeminiFlash / ClaudeHaiku / ClaudeSonnet adapters (single-call vision +
-      structured output; lazy SDK import; honest error reporting, no fabrication).
-- [x] Shared VN read-only prompts; USD→VND cost + latency instrumentation.
-- [x] Benchmark runner + normalized metrics (per-field accuracy, p50/p95, cost/doc).
-- [x] Fixtures manifest template + PII rules (`data/`, `manifest.json` gitignored).
-- [x] 10 pure unit tests (no keys/SDKs) — passing.
-- [x] `docs/benchmark_vision_extraction_v0.1.md` (methodology + targets; results pending).
+- [x] Provider protocol + schemas + benchmark runner
 
 ## Blocked / pending
-- **Haiku-text benchmark for remap (#258 Q2):** PM ratified Gemini Flash text as
-  default remap provider. Benchmark Haiku-text alternative post-ship. Needs PII-scrubbed
-  samples with clauses. Unblocked but not yet run.
-- **Issue #248 — cost figure ratification:** 177đ (staging) vs 59đ (local H_MB_6).
-  Awaiting PM decision on canonical cost figure for docs. `for:pm` label.
-- **Post-remap E2E smoke on staging:** Full #258 stack deployed but the remap endpoint
-  path specifically not yet E2E-tested via smoke.
-- **Key rotation:** Gemini + Claude API keys used in local testing should be rotated.
-- **Live benchmark numbers (full 15-sample run)** — needs:
-  1. 15 HĐ thật F&B/bán lẻ (PM decision 2026-06-11: **không dùng synthetic**, chờ
-     bộ thật để số liệu có giá trị quyết định).
-  2. PII scrub trước khi đưa vào fixtures (NĐ 13/2023).
-  → `blocker:waiting-dependency` (samples).
-- **Long PDFs (>~100 trang, >~32MB)** — file FIDIC 193pp/18.8MB vượt Claude inline
-  + Gemini inline limit. Cần File API path (deferred; F&B SME contracts thường ngắn
-  → low priority).
+- **PR #425** — awaiting merge (lettered items + Phụ lục prompt rules)
+- **Relay #440** — backend needs to add `_stub_num()` + PL- passthrough to `clause_hierarchy.py`
+- **R4b (#367)** — sub-doc boundary detection, blocked by R4a (#366)
+- **Rotate GCP service account key** — exposed in prior session, URGENT
+- **Haiku-text remap benchmark** — needs PII-scrubbed samples with clauses[]
+- **15-sample benchmark** — blocked on real HĐ samples + PII scrub
+- **Issue #248** — cost figure ratification, awaiting PM
 
-## Live test 2026-06-11 — H_MB_6.pdf (HĐ mua bán BĐS, 59pp scan)
-First end-to-end run with real provider keys. Pipeline verified on a **scanned
-(no text layer) PDF** — single vision call (DEC-002), no separate OCR step.
+## _CLAUSES_SPEC evolution (prompt tuning arc)
+| Round | PR | Problem | Fix |
+|---|---|---|---|
+| 1 | #407 | Preamble as Điều, lettered items as "Điều k/l/m" | TH-A/TH-B + QT2 lettered items |
+| 2 | #411 | TH-B num=null | Explicit right/wrong examples |
+| 3 | #414 | ALL PDFs vision-only (ignores rules) | Route ALL PDFs → hybrid_ocr |
+| 4 | #419 | No TH-A sub-clause examples | Added 5.1/5.2 splitting example |
+| 5 | #422 | num format inconsistent, garbled pdftotext | NUM FORMAT + is_garbled_vietnamese() |
+| 6 | #424 | LLM still merging sub-clauses | Restructured: split rule first, 🔴 marker |
+| 7 | #425 | Content truncation, Phụ lục collision | TOÀN VĂN + QUY TẮC PHỤ LỤC |
 
-| Metric | Haiku | Sonnet |
-|---|---|---|
-| doc_type | hd_nha_cung_cap (wrong — hallucinated MVP type) | khac (truthful — doc is out of MVP scope) |
-| doi_tac | ✅ correct | ✅ correct |
-| ngay_hieu_luc | 2021-07-11 ✅ | 2021-07-11 ✅ |
-| thoi_han_hd | "36 tháng" | "36 tháng kể từ ngày Bên Bán ký biên bản nghiệm thu…" (full context) |
-| ngay_het_han / gia_tri_hd | None (D-08 ✅ — no guessing) | None (D-08 ✅) |
-| Latency | 32.5s | **9.1s** (3.5× faster, counter-intuitive) |
-| Cost | 560đ | 1,693đ (3×) |
-
-Gemini added 2026-06-11 (after billing active; gemini-2.0-flash retired → using
-`gemini-2.5-flash`):
-
-| Metric | Gemini 2.5 Flash |
-|---|---|
-| doc_type | khac (1.00) ✅ truthful |
-| doi_tac / ngay_hieu_luc / thoi_han_hd | ✅ all correct (1.00) |
-| dieu_khoan_thanh_toan | ✅ **full clause — both Claude models MISSED this** |
-| ngay_het_han / gia_tri_hd | None (same as Claude) |
-| Input tokens | **3,652** (vs Claude ~20,577 — 5.6× fewer) |
-| Cost | **59đ** (vs Haiku 560đ / Sonnet 1,693đ — ~10× cheaper) |
-| Latency | 14.6s |
-
-→ Gemini Flash extracted MORE than Claude at 1/10 cost on this doc — supports
-DEC-002 (Gemini primary, Claude fallback). Pricing **verified 2026-06-11**:
-gemini-2.5-flash $0.30/$2.50, gemini-2.5-flash-lite $0.10/$0.40 per 1M. So 59đ is
-accurate; even 2.5-flash sits well under the 150đ primary target (lite ≈14đ).
-
-Notes:
-- File **out of MVP seed** (HĐ mua bán căn hộ chung cư, không thuộc F&B/bán lẻ
-  thuê/NCC/lao động). Used only as pipeline-verification, not benchmark sample.
-- **Sonnet faster than Haiku on long scans** — surprising. Re-measure on 5–10
-  more samples in Sprint 1; if pattern holds, Sonnet role in DEC-002 may broaden
-  from "complex/handwritten" to "complex OR long-scan".
-- Both providers respected D-08 (return None, never fabricate).
-
-## DOCS_INBOX note — TO POST AFTER MERGE
-Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
-
-```
-### 2026-06-11 — KHE_AI / claude/feat-ai-vision-extraction-3k3gup
-- **PR / trigger:** TBD → main (post-merge)
-- **Đã đụng:** backend/modules/extraction/** (scope-only), docs/benchmark_*, docs/teams/ai_STATE.md
-- **Thay đổi:** Live-test trên HĐ thật cho thấy **HĐ VN thường ghi
-  `ngày hiệu lực + thời hạn`, không ghi thẳng `ngày hết hạn`**. Trong sample
-  H_MB_6: model trả `ngay_het_han=None` (đúng D-08, không bịa) nhưng
-  `thoi_han_hd="36 tháng"` + `ngay_hieu_luc=2021-07-11` ⇒ engine có thể suy ra.
-- **Docs cần cập nhật:**
-  - BRD §6 (Term/Field) — clarify: `ngày hết hạn` có thể derived = `ngày hiệu lực
-    + thời hạn` ở tầng Obligation, không bắt buộc bóc trực tiếp từ Document.
-  - SRS / Obligation engine spec — FR-OB-01: thêm rule "if ngay_het_han is null
-    AND ngay_hieu_luc + thoi_han_hd both present ⇒ derive ngay_het_han".
-- **Ambiguity / cần PM xác nhận:** xử lý `thoi_han_hd` dạng phi-số ("không xác
-  định thời hạn", "kể từ khi nghiệm thu") — engine không derive được; cần định
-  nghĩa: skip (no obligation) vs flag-for-human?
-```
-
-## Next (for incoming session)
-- **Haiku-text remap benchmark** — compare Gemini Flash text vs Claude Haiku text on
-  remap accuracy + cost. Needs PII-scrubbed samples with populated clauses[].
-- **Post-remap staging smoke** — hit `POST /documents/{id}/remap-type` end-to-end on
-  staging (upload → extract → remap to different type → verify new terms).
-- **Rotate local API keys** used during anchor_probe + remap testing.
-- **Issue #248 follow-up** — once PM ratifies cost figure, fold into docs (or post
-  DOCS_INBOX for docs-editor).
-- **15-sample benchmark** — still blocked on real HĐ samples + PII scrub.
-
-## Env / secrets (relay KHE_Infra, 2026-06-11)
-- GitHub Actions secrets set in repo: **`GEMINI_API_KEY`** (primary) and
-  **`CLAUDE_API_KEY`** (fallback). Injected at runtime via deploy-main/staging.yml.
-- Code reads `os.environ["GEMINI_API_KEY"]` / `os.environ["CLAUDE_API_KEY"]`
-  (Claude provider falls back to `ANTHROPIC_API_KEY` for local/SDK default). Never log/hardcode.
-- Local dev: add both to `backend/.env.local` (gitignored).
+## Env / secrets
+- GitHub Actions secrets: `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`
+- `hybrid_ocr` factory gated on `GEMINI_API_KEY`/`GOOGLE_API_KEY` (not DocAI creds)
+- DocAI creds needed only for scanned PDFs; digital PDFs use pdftotext (free)
+- Local dev: add keys to `backend/.env.local` (gitignored)
 
 ## Inbox
-- issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
-  done; awaiting live run for results (blocked on samples).
-- relay KHE_Infra (2026-06-11) — secret names confirmed; provider key lookup aligned to `CLAUDE_API_KEY`.
-- issue #53 (`for:ai`, `from:backend`, `task-assignment`) — export `get_extraction_provider()`
-  factory for #25 PR-B. Status: **done**.
-- issue #258 — clause remap. Status: **done** (KHE_AI scope shipped, full stack on staging).
-- issue #248 — cost figure ratification. Status: **awaiting PM** (`for:pm`).
-- issue #268 — chat D-08 false-negatives. Status: **analysis posted** (not AI scope).
+- issue #3 — Sprint 0 benchmark. Status: implementation done; awaiting samples.
+- issue #53 — provider factory. Status: **done**.
+- issue #258 — clause remap. Status: **done**.
+- issue #248 — cost figure ratification. Status: **awaiting PM**.
+- issue #268 — chat D-08 analysis. Status: **posted** (not AI scope).
+- issue #440 — Phụ lục PL- backend relay. Status: **filed** `for:backend`.
