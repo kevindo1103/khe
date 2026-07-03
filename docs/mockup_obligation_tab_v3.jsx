@@ -620,30 +620,44 @@ function ObligationTabV3({ obligations, hasLegalName }) {
   const done = obligations.filter((o) => o.status === "done" || o.status === "cancelled");
   const nullDir = obligations.filter((o) => o.direction === null);
 
-  // Within each direction: group by temporal bucket, then by series
+  // Within each direction: classify series ONCE by its next actionable item's
+  // temporal bucket (not once per bucket its members happen to touch — a
+  // 14-installment series has members in 3 different buckets; the card must
+  // render exactly once, positioned by urgency of the next unpaid installment).
   function renderDirectionSection(items, title, subtitle) {
     if (items.length === 0) return null;
 
     const buckets = ["overdue", "this_week", "upcoming"];
-    const byBucket = {};
-    buckets.forEach((b) => { byBucket[b] = items.filter((o) => temporalBucket(o) === b); });
+    const seriesIds = [...new Set(items.filter((o) => o.series_id).map((o) => o.series_id))];
+    const standaloneItems = items.filter((o) => !o.series_id);
+
+    const seriesByBucket = { overdue: [], this_week: [], upcoming: [] };
+    seriesIds.forEach((sid) => {
+      const allSeriesItems = obligations.filter((o) => o.series_id === sid);
+      const sorted = [...allSeriesItems].sort((a, b) => a.series_idx - b.series_idx);
+      const next = sorted.find((o) => o.status !== "done" && o.status !== "cancelled");
+      const bucket = next ? temporalBucket(next) : "upcoming";
+      seriesByBucket[buckets.includes(bucket) ? bucket : "upcoming"].push(sid);
+    });
+
+    const standaloneByBucket = {};
+    buckets.forEach((b) => { standaloneByBucket[b] = standaloneItems.filter((o) => temporalBucket(o) === b); });
 
     return (
       <div style={{ marginBottom: t.space[6] }}>
         <SectionHeader title={title} subtitle={subtitle} count={items.length} />
         <div style={{ border: `1px solid ${t.color.border}`, borderRadius: t.radius.lg, overflow: "hidden" }}>
           {buckets.map((bk) => {
-            const bucketItems = byBucket[bk];
-            if (!bucketItems || bucketItems.length === 0) return null;
-
-            const seriesIds = [...new Set(bucketItems.filter((o) => o.series_id).map((o) => o.series_id))];
-            const standalone = bucketItems.filter((o) => !o.series_id);
+            const seriesInBucket = seriesByBucket[bk];
+            const standalone = standaloneByBucket[bk];
+            const visibleCount = seriesInBucket.length + standalone.length;
+            if (visibleCount === 0) return null;
 
             return (
               <div key={bk}>
-                <BucketHeader bucket={bk} count={bucketItems.length} />
-                {/* Series cards */}
-                {seriesIds.map((sid) => (
+                <BucketHeader bucket={bk} count={visibleCount} />
+                {/* Series cards — each series renders exactly once */}
+                {seriesInBucket.map((sid) => (
                   <div key={sid} style={{ padding: `${t.space[2]}px ${t.space[3]}px` }}>
                     <SeriesCard
                       items={obligations.filter((o) => o.series_id === sid)}
