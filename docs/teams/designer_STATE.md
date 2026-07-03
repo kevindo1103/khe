@@ -339,10 +339,10 @@ Kevin ratified v1.1 "Sổ cái" on #467/#469 (2026-07-03) via comment relay (mes
 - **Design tokens:** DS v0.2 canonical. "Servanda" brand voice (DEC-055).
 - **Sample data:** HĐ mua bán căn hộ Sunrise Tower — 14-installment series, overdue, upcoming, triggers, penalties, NULL direction, parseable + unparseable amounts.
 - **Kevin review (2026-07-03) — PASS.** Verified: 3 commits = 1 real fix (series-card dedupe, `6898cce`, landed before Kevin's review) + 1 STATE.md-only doc commit (`24a06fb`, zero code). No further mockup changes requested.
-- **2 items carried forward to Frontend kickoff (gate step 4) — open decisions, NOT blockers for this mockup or #468 merge:**
+- **1 item carried forward to Frontend kickoff (gate step 4) — open decision, NOT a blocker:**
   1. **Bulk-complete has no confirm step.** `handleBulkComplete` (`mockup_obligation_tab_v3.jsx` ~L610) fires immediately on click — no `ReadbackModal`/confirm gate before marking N obligations done. Kevin: open Frontend decision, not a hard blocker — Backend endpoint shape is unaffected either way (bulk PATCH takes an ID array regardless of whether FE confirms first).
-  2. **Phạt badge styling — mockup uses v0.2-era solid fill** (`TextBadge bg={danger_soft} fg={danger}`, no `border` prop → solid pill), but **DS v1.1 canonical requires outline** (transparent bg, red border) to stay visually distinct from solid-fill `overdue` (see `mockup_design_system_v1.1.jsx` `Badge` `penalty` kind, #470). Frontend should build the "Phạt" badge per v1.1 spec, NOT copy this mockup's solid-fill treatment verbatim — this PR is grandfathered on v0.2 tokens and won't be touched to fix this.
-- Status: Kevin-approved. Next: QC verify (gate step 3), then Frontend/Backend kickoff can file (gate step 4) — kickoff issue should carry both items above.
+- **Phạt badge styling — FIXED (PR #468 follow-up).** PM flagged pre-merge (comment 05:23) that the mockup used v0.2-era solid fill; the fix landed in a follow-up patch AFTER #468 had already merged with the bug still present (missed because only CI status was checked before merging, not all open comments — noted for next time: always read outstanding PR comments before merge, not just checks). Now `<TextBadge fg={t.color.danger} border={t.color.danger}>Phạt</TextBadge>` — outline, transparent bg, matches `mockup_design_system_v1.1.jsx`'s `penalty` kind exactly.
+- Status: Kevin-approved, QC-verified, merged (`a426e0f`) + penalty-badge follow-up fix. Gate #466 step 1-3 done — Frontend/Backend kickoff (step 4) can file.
 
 ## Inbox
 - issue #24 (`for:designer`, `task-assignment`, GATING #30 + #31) — Sprint 1
