@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-07-03 (#481 — document list v3 on DS v1.1, closes rollout gap 3/3)_
+_Last updated: 2026-07-03 (#481 — document list v3 on DS v1.1, closes rollout gap 3/3; #480 merged)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
