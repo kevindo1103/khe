@@ -222,16 +222,17 @@ function AmountDisplay({ raw }) {
 
 function SourceClauseLink({ clause }) {
   if (!clause) return null;
+  // Q7: no icon glyph — link affordance carried by color + underline-on-hover only.
   return (
     <button style={{
       border: "none", background: "transparent", color: t.color.primary,
       fontSize: t.font.size.xs, fontWeight: t.font.weight.medium,
       cursor: "pointer", fontFamily: t.font.family, padding: 0,
-      textDecoration: "none",
+      textDecoration: "underline",
     }}
       title={`Nhảy đến ${clause} trong tab Nội dung hợp đồng`}
     >
-      {clause} &#x2197;
+      {clause}
     </button>
   );
 }
@@ -618,7 +619,7 @@ function ObligationTabV3({ obligations, hasLegalName }) {
   const quyenLoi = obligations.filter((o) => o.direction === "quyền_lợi" && o.status !== "waiting_trigger" && o.status !== "done" && o.status !== "cancelled");
   const waiting = obligations.filter((o) => o.status === "waiting_trigger");
   const done = obligations.filter((o) => o.status === "done" || o.status === "cancelled");
-  const nullDir = obligations.filter((o) => o.direction === null);
+  const nullDir = obligations.filter((o) => o.direction === null && o.status !== "waiting_trigger" && o.status !== "done" && o.status !== "cancelled");
 
   // Within each direction: classify series ONCE by its next actionable item's
   // temporal bucket (not once per bucket its members happen to touch — a
