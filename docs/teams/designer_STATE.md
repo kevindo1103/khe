@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-06-28 (#378 — DEC-050 doc-detail v3, 6 new surfaces)_
+_Last updated: 2026-07-03 (#470 — Servanda DS v1.1 formalized as `mockup_design_system_v1.1.jsx`)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
@@ -253,12 +253,26 @@ FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge
 - **#247** — FE follow-up filed (note 2 already done in #246).
 
 ### Open for next session
+- **#470 DS v1.1 formalization** — `mockup_design_system_v1.1.jsx` delivered, esbuild-clean, awaiting Kevin/QC review.
+- **#467 obligation tab v3 reorg** — PR #468 open, grandfathered on v0.2 tokens per PM (see #467/#469 thread). Not touched here.
 - **#378 DEC-050 v3** — mockup delivered, awaiting Kevin review. PR TBD.
 - **PR #310** — approved by QC, awaiting Kevin merge (will auto-close #305).
 - **#312 follow-up** — F1 audit drawer remaining (F2/F3 baked into v3).
 - **#246 not merged** — waiting on owner (failed-doc badge fix flagged).
 - **DEC-040 canonical fold** — awaiting KHE_Docs → BRD/SRS.
 - **#243 forward notes** — 4 items need PM ratify pass.
+
+## Issue #470 — Servanda DS v1.1 formalized (supersedes v0.2) — branch `claude/design-system-v1.1-formalize-470`
+Kevin ratified v1.1 "Sổ cái" on #467/#469 (2026-07-03) via comment relay (messy history: v1.0 proposed → PM wrongly retracted it as unratified → Kevin overrode the retraction, kept v1.0 → promoted to v1.1 folding 3 v0.2 strengths). This task turns that comment-thread spec into an actual living file, mirroring `mockup_design_system_v0.2.jsx`'s format (tokens export + component set + gallery showcase, self-contained, zero build).
+- **Delivered:** `mockup_design_system_v1.1.jsx` — esbuild-transpile clean, 19 exports (`tokens` + 18 components).
+- **Tokens — completely distinct from v0.2** (do not mix): paper `#FBFAF7`/surface `#FFFFFF`/ink `#1C2420`/inkMuted `#5A6660`/inkFaint `#8B948F` (intentionally sub-AA, placeholder-only) · **`borderStrong` `#7E8983`** (NEW, 3.47:1, the ONLY border for interactive components — n200/n300 decorative-only) · primary "Lục Khế" `#1E5C49` · danger `#A6372B`/warning `#8A5800`/info `#33597E`/**done `#5A6660`** (no `success` token — deliberate, completion is quiet gray not celebratory green) · radius 6/10/pill · **elevation e0–e3** (NEW, "paper stacked in layers" metaphor) · font Be Vietnam Pro (UI) + Source Serif 4 (contract verbatim text only, D-06).
+- **3 things folded from v0.2** (only these — see file header for full rationale): (1) measured-contrast methodology, which surfaced the real `borderStrong` gap; (2) #206 A11y handoff contract wholesale — `NavItem`/`IconButton`/`Dropzone`/`LiveRegion`/`VisuallyHidden` ported and re-themed; (3) layered elevation e0–e3 replacing v1.0's flat single shadow.
+- **New v1.1-only components:** `ContractQuote` (serif D-06 quote block), `ReadbackModal` (D-02 confirm ritual: readback→decide→record), `Banner` (3-level, bold-label-replaces-icon — worked example replaces old SelfPartyGate emoji), `ActionBar` (inverted-ink bulk-select bar), `Tabs` (counted).
+- **Badge — full 13-entry status vocabulary** implemented as `kind` presets (`overdue`/`dueSoon`/`future`/`waiting`/`penalty`/`done`/`cancelled`/`unclear`/`series`/`manual`/`aiVerified`), solid-vs-outline variant distinguishes urgency from provenance/info (`penalty` outline explicitly distinct from `overdue` solid, per spec).
+- **Icon rule enforced structurally:** only `IconButton` renders a glyph, and it dev-warns if `label` is missing; every other component is text+color only.
+- **Showcase gallery:** renders full token set (ground/ink/brand/semantic swatches, type scale incl. live `ContractQuote` sample, spacing/radius/elevation), all 13 badges, `ReadbackModal` demo, `Banner` worked example (SelfPartyGate replacement), `Tabs`+`ActionBar` interactive demo, and all 4 a11y primitives.
+- **NOT retroactive:** PR #468 (#467) stays on v0.2 tokens — grandfathered, not touched. Migrate-on-touch policy applies (same as v0.1→v0.2 precedent) — only NEW mockups from here build on v1.1.
+- Awaiting Kevin/QC review (gate — same pattern as #466/#467).
 
 ## Issue #378 — DEC-050 doc-detail v3 (6 new surfaces, EPIC #362) — branch `claude/design-doc-detail-dec050-378`
 - Extends `mockup_document_detail_v2.jsx` (#281) with 6 DEC-050 surfaces into a new file.
