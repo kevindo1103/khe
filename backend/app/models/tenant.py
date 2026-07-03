@@ -59,6 +59,10 @@ class Document(TenantBase):
     # ── tenant_028: signature detection (#368, R5) ──
     has_signature = Column(Boolean, nullable=True)         # True if doc has physical/digital signature
     signature_pages = Column(Text, nullable=True)          # JSON list e.g. "[1, 3]"
+    # ── tenant_031: honest completeness flag (#276) ──
+    # NULL = verifier never ran; True = likely miss; False = verifier cleared.
+    # NO default — legacy and freshly extracted docs must remain NULL.
+    may_have_unextracted_obligations = Column(Boolean, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
