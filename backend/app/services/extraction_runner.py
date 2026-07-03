@@ -43,7 +43,7 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
-_VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "other"}
+_VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "penalty", "other"}
 _VALID_TRIGGERS = {"date", "event"}
 
 
