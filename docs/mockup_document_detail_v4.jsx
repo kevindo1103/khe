@@ -168,8 +168,10 @@ const DOC = {
         { ref_text: "HĐ khung dịch vụ CNTT 2025", ref_type: "document", is_orphan: false, target_doc_id: 5, target_doc_title: "HĐ khung dịch vụ CNTT 2025" },
       ],
     },
-    // Extra standalone orphan refs to exercise the capped panel realistically
-    // (real case on doc #14: 14 orphan refs — panel must not grow unbounded).
+    // Extra standalone orphan refs to exercise the capped panel's teaser +
+    // "Xem tất cả" overflow behavior (sample has 6 orphans total, enough to
+    // trigger the cap; the case that motivated this fix is doc #14, which
+    // has 14 — same cap/modal logic, just not reproduced at 1:1 count here).
     {
       id: 5, parent_id: null, level: 0, clause_path: "11", num: "Điều 11", title: "Bất khả kháng",
       content_status: "filled",
@@ -477,18 +479,22 @@ function ClauseTreeItem({ clause, depth, onOpenOrphanModal, showContentStatus })
   const [expanded, setExpanded] = useState(depth === 0);
   const hasChildren = clause.children && clause.children.length > 0;
   const isStub = clause.content === "(tổng hợp từ mục con)"; // real marker, DocumentDetail.tsx:1194
-  const isLoading = clause.content_status === "skeleton";
+  // Gated behind showContentStatus (Q2, unratified proposal) — with the toggle
+  // off, the default view must show today's ACTUAL behavior (content_status
+  // doesn't exist in production yet, so a skeleton clause is just empty/blank,
+  // same as any other data gap), not leak the proposed loading copy.
+  const isLoading = showContentStatus && clause.content_status === "skeleton";
 
   return (
     <div>
-      <button onClick={() => setExpanded(!expanded)} style={{
+      <button onClick={() => setExpanded(!expanded)} aria-expanded={expanded} style={{
         display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
         padding: `${t.space[3]}px ${t.space[4]}px`, paddingLeft: t.space[4] + depth * 24,
         border: "none", borderBottom: `1px solid ${t.color.n200}`, background: t.color.surface,
         cursor: "pointer", fontFamily: t.font.family, textAlign: "left",
       }}>
         <span style={{ display: "flex", alignItems: "center", gap: t.space[2] }}>
-          {depth > 0 && <span style={{ color: t.color.n300, fontSize: t.font.size.xs }}>└</span>}
+          {depth > 0 && <span aria-hidden="true" style={{ color: t.color.n300, fontSize: t.font.size.xs }}>└</span>}
           <span style={{ fontSize: depth === 0 ? t.font.size.base : t.font.size.sm, fontWeight: depth === 0 ? t.font.weight.semibold : t.font.weight.medium, color: t.color.ink }}>
             {clause.num}{clause.title ? ` — ${clause.title}` : ""}
           </span>
@@ -496,7 +502,7 @@ function ClauseTreeItem({ clause, depth, onOpenOrphanModal, showContentStatus })
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: t.space[3] }}>
           {showContentStatus && <ContentStatusIndicator status={clause.content_status} />}
-          <span style={{ fontSize: t.font.size.sm, color: t.color.inkMuted }}>{expanded ? "▴" : "▾"}</span>
+          <span aria-hidden="true" style={{ fontSize: t.font.size.sm, color: t.color.inkMuted }}>{expanded ? "▴" : "▾"}</span>
         </span>
       </button>
 
@@ -552,9 +558,9 @@ function GlossarySection({ definitions }) {
   if (definitions.length === 0) return null;
   return (
     <div style={{ border: `1px solid ${t.color.n200}`, borderRadius: t.radius.card, marginBottom: t.space[5], overflow: "hidden" }}>
-      <button onClick={() => setOpen(!open)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: t.space[3], background: t.color.paper, border: "none", cursor: "pointer", fontFamily: t.font.family }}>
+      <button onClick={() => setOpen(!open)} aria-expanded={open} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: t.space[3], background: t.color.paper, border: "none", cursor: "pointer", fontFamily: t.font.family }}>
         <span style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.semibold, color: t.color.ink }}>Định nghĩa ({definitions.length})</span>
-        <span style={{ color: t.color.inkMuted }}>{open ? "▴" : "▾"}</span>
+        <span aria-hidden="true" style={{ color: t.color.inkMuted }}>{open ? "▴" : "▾"}</span>
       </button>
       {open && definitions.map((d) => (
         <div key={d.id} style={{ padding: t.space[3], borderTop: `1px solid ${t.color.n200}` }}>
@@ -804,7 +810,7 @@ export default function DocumentDetailV4() {
             <div><strong>Card "Loại hợp đồng" + "Thời hạn hợp đồng":</strong> disabled logic + copy/tooltip lấy nguyên văn từ DocumentDetail.tsx:970-1027 (không diễn giải lại). Card "Thời hạn" bỏ hẳn <code>bg-surface-alt</code> tint theo feedback Kevin — dùng <code>Card</code> mặc định từ v1.1.</div>
             <div><strong>Term label:</strong> đổi <code>ink-muted</code> → <code>ink</code> đậm hơn theo feedback (dễ quét nhanh khi list dài).</div>
             <div><strong>Badge "Nhập tay":</strong> dùng đúng <code>&lt;Badge kind="manual"&gt;</code> có sẵn trong v1.1 (verify: <code>BADGE_KINDS.manual = {"{"} tone: inkMuted, variant: outline {"}"}</code>) — không tự chế class, đúng bài học từ #468.</div>
-            <div><strong>Cross-ref 3 loại thật:</strong> <code>ref_type: "clause"|"appendix"|"document"</code> (ClauseCrossRef model, tenant.py:255-269) — mockup render cả 3, không chỉ 2 loại như v3 (v3 chưa có case cross-document). Orphan panel cap <code>maxHeight: 160px</code> + "Xem tất cả (N) →" mở <code>Modal</code> thật từ v1.1, cuộn riêng bên trong — fix case thật 14 orphan refs trên doc #14.</div>
+            <div><strong>Cross-ref 3 loại thật:</strong> <code>ref_type: "clause"|"appendix"|"document"</code> (ClauseCrossRef model, tenant.py:255-269) — mockup render cả 3, không chỉ 2 loại như v3 (v3 chưa có case cross-document). Orphan panel cap <code>maxHeight: 160px</code> + "Xem tất cả (N) →" mở <code>Modal</code> thật từ v1.1, cuộn riêng bên trong — giải quyết case thật doc #14 (14 orphan refs); sample data ở đây có 6 orphan (đủ trigger cap/overflow), không tái tạo đúng 14.</div>
             <div><strong>PartyCard:</strong> self trước (tint <code>primarySoft</code> + badge "Bên mình"), field grid theo đúng field <code>Party</code> model (address/contact/representative/tax_code/aliases, tenant.py:142-161).</div>
             <div><strong>4 quyết định mở:</strong> đóng khung <code>OpenDecisionCallout</code> riêng biệt (viền đứt vàng, nhãn "chờ Kevin ratify") — 3 từ PM #478 + 1 tự phát hiện (Term.source="remap"). Mỗi callout trích dẫn file:line thật, không suy diễn.</div>
             <div><strong>Không thuộc scope:</strong> tab Nghĩa vụ &amp; Quyền lợi (đã có #466/#467/#468/#472). Đổi hành vi backend/API (kể cả khi mockup đề xuất field mới như <code>content_status</code> expose ở <code>ClauseOut</code> — đó là việc Backend, không tự làm ở đây).</div>

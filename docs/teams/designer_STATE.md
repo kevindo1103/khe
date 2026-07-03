@@ -344,7 +344,11 @@ Scope: chỉ 3 tab (Tổng quan / Nội dung hợp đồng / Bên ký kết). Ta
   3. UI cho `DocumentRelationship` — vào scope không? (cần Backend thêm endpoint expose, hiện chưa có)
   4. (Designer tự phát hiện) `Term.source="remap"` chưa được brief nhắc — hiển thị thế nào?
 - **Sample data:** cùng hợp đồng ALPHATECH ↔ Minh Phát như v3 (dễ so sánh), nhưng field shape khớp model thật 100%: 3 loại cross-ref (`clause`/`appendix`/`document`), đủ 4 giá trị `content_status`, marker stub thật `'(tổng hợp từ mục con)'`, 3 loại `DocumentRelationship`.
-- Awaiting Kevin review.
+- **QC review (PR #480) — 3 findings, tất cả confirmed + fixed:**
+  1. `content_status="skeleton"` loading text không gate theo toggle `showContentStatus` (Q2 unratified) — fix: thêm `showContentStatus &&` vào điều kiện `isLoading`, mặc định (toggle tắt) giờ hiện đúng hành vi thật hôm nay (clause rỗng, không có loading text đề xuất).
+  2. Glyph `▴/▾/└` không có `aria-hidden`, nút toggle không có `aria-expanded` — dùng glyph trần thay vì đi qua `IconButton` (cơ chế a11y riêng của v1.1 cho glyph chức năng). Fix: thêm `aria-hidden="true"` trên glyph, `aria-expanded={expanded}` trên button cha (đúng hơn ép dùng `IconButton` vì các nút này đã có text label thấy được, không phải icon-only).
+  3. Comment "14 orphan refs" gây hiểu lầm — sample data chỉ có 6 orphan. Fix: sửa comment nói rõ 6 orphan đủ trigger cap/overflow, case thật doc #14 (14 refs) không được tái tạo 1:1.
+- Awaiting re-verify.
 
 ## Issue #467 — Obligation tab v3 reorg (parent #466, DEC-055) — branch `claude/design-obligation-tab-reorg-467`
 - Full reorg of doc-detail tab "Nghĩa vụ & Quyền lợi". Replaces v2 flat list + obligation_v0.2 emoji patterns.
