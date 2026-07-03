@@ -1,5 +1,6 @@
 const LIFECYCLE_MAP: Record<string, { label: string; cls: string }> = {
-  active:    { label: 'Đang hiệu lực', cls: 'bg-success-soft text-success' },
+  // #485 Q1 (green-creep cleanup): active = normal neutral state, not celebratory green.
+  active:    { label: 'Đang hiệu lực', cls: 'border border-border text-ink-muted' },
   expiring:  { label: 'Sắp hết hạn',  cls: 'bg-warning-soft text-warning' },
   expired:   { label: 'Hết hạn',      cls: 'bg-danger-soft text-danger' },
   settled:   { label: 'Đã thanh lý',  cls: 'bg-surface-alt text-ink-muted' },

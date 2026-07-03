@@ -11,11 +11,11 @@ export function ConfidenceMeter({ value, className = '' }: ConfidenceMeterProps)
     <div className={`flex items-center gap-2 ${className}`}>
       <div className="w-20 h-2 bg-border rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${isLow ? 'bg-warning' : 'bg-success'}`}
+          className={`h-full rounded-full transition-all ${isLow ? 'bg-warning' : 'bg-done'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className={`text-2xs font-medium ${isLow ? 'text-warning' : 'text-success'}`}>
+      <span className={`text-2xs font-medium ${isLow ? 'text-warning' : 'text-done'}`}>
         {pct}%
       </span>
     </div>
