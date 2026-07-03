@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-07-03 (#467 — QC findings fixed on PR #468; #470 DS v1.1 merged to staging)_
+_Last updated: 2026-07-03 (#478 — doc-detail v4, 3-tab reorg on DS v1.1, real import)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
@@ -325,6 +325,30 @@ Kevin ratified v1.1 "Sổ cái" on #467/#469 (2026-07-03) via comment relay (mes
 - **Sample data:** Công nghệ & IP contract ALPHATECH ↔ Cty TNHH Minh Phát — exercises all party states, hierarchical clauses (3 levels), payment table, image ref, signature/stamp, glossary, orphan ref
 - **Design tokens:** B&W minimalist (DS v0.2 direction). Color rationed: primary `#0F7A56`, amber `#D97706`, red `#DC2626`, muted `#6B7280`.
 - Awaiting Kevin review.
+
+## Issue #478 — Doc-detail v4, 3-tab reorg on DS v1.1 — branch `claude/design-doc-detail-v4-478`
+Scope: chỉ 3 tab (Tổng quan / Nội dung hợp đồng / Bên ký kết). Tab Nghĩa vụ & Quyền lợi KHÔNG đụng — đã có #466/#467/#468/#472, tránh 2 nguồn sự thật song song.
+- **Delivered:** `mockup_document_detail_v4.jsx` — **import THẬT** từ `mockup_design_system_v1.1.jsx` (`tokens`, `Button`, `Card`, `Modal`, `Badge`), khác v3 (mirror token inline). Verify: esbuild bundle 2 file thành công (63.7kb), toàn bộ `t.color.*` dùng trong file đối chiếu đúng key thật trong v1.1 (không typo).
+- **Research trước khi build (Explore agent, 2026-07-03):** verify field/component thật qua backend models + `DocumentDetail.tsx` + `mockup_design_system_v1.1.jsx`. Phát hiện lệch so với brief #478 gốc:
+  - `Term.source` có **3 giá trị thật**: `"extracted"|"remap"|"manual"` (brief chỉ nói 2) — field này **chưa có trong API** (`TermOut` schema, backend/app/schemas/documents.py:73-84)
+  - Field tên thật `contract_term` (tenant.py:57), không phải `contract_duration` (kể cả CLAUDE.md ghi nhầm)
+  - `content_status` 4 giá trị thật: `NULL/"skeleton"/"filled"/"truncated"` (không phải "skeleton"/"complete"), tenant_029, 0% API + 0% frontend
+  - `DocumentRelationship.relationship_type` xác nhận đúng 3 giá trị amends/references_framework/annex, 0% frontend UI
+  - `clause_count` không phải cột DB — tính động qua COUNT query
+  - ConfidenceMeter + SignatureBadge XÁC NHẬN đang dùng success/xanh lá thật hôm nay
+  - Card "Loại hợp đồng" disabled + card "Thời hạn hợp đồng" tint xám XÁC NHẬN đúng hành vi/copy thật — dùng nguyên văn copy/tooltip gốc trong mockup
+- **4 fix theo feedback Kevin:** bỏ tint xám card Thời hạn (Card mặc định v1.1); label Term đổi `ink` đậm thay `ink-muted`; rẽ nhánh `Term.source` (manual→`<Badge kind="manual">` outline có sẵn, không tự chế class — bài học #468); panel cross-ref mồ côi cap `maxHeight:160px` + nút "Xem tất cả (N) →" mở `Modal` thật từ v1.1.
+- **4 quyết định mở** (3 từ PM #478 + 1 Designer tự phát hiện) — đóng khung `OpenDecisionCallout` riêng (viền đứt vàng, nhãn "chờ Kevin ratify"), mỗi callout trích file:line thật:
+  1. ConfidenceMeter/SignatureBadge màu success → đổi `done`/`warning`? (v1.1 không có token success)
+  2. UI cho `content_status` (two-pass) — vào scope sprint này không? (cần Backend thêm field vào `ClauseOut` trước)
+  3. UI cho `DocumentRelationship` — vào scope không? (cần Backend thêm endpoint expose, hiện chưa có)
+  4. (Designer tự phát hiện) `Term.source="remap"` chưa được brief nhắc — hiển thị thế nào?
+- **Sample data:** cùng hợp đồng ALPHATECH ↔ Minh Phát như v3 (dễ so sánh), nhưng field shape khớp model thật 100%: 3 loại cross-ref (`clause`/`appendix`/`document`), đủ 4 giá trị `content_status`, marker stub thật `'(tổng hợp từ mục con)'`, 3 loại `DocumentRelationship`.
+- **QC review (PR #480) — 3 findings, tất cả confirmed + fixed:**
+  1. `content_status="skeleton"` loading text không gate theo toggle `showContentStatus` (Q2 unratified) — fix: thêm `showContentStatus &&` vào điều kiện `isLoading`, mặc định (toggle tắt) giờ hiện đúng hành vi thật hôm nay (clause rỗng, không có loading text đề xuất).
+  2. Glyph `▴/▾/└` không có `aria-hidden`, nút toggle không có `aria-expanded` — dùng glyph trần thay vì đi qua `IconButton` (cơ chế a11y riêng của v1.1 cho glyph chức năng). Fix: thêm `aria-hidden="true"` trên glyph, `aria-expanded={expanded}` trên button cha (đúng hơn ép dùng `IconButton` vì các nút này đã có text label thấy được, không phải icon-only).
+  3. Comment "14 orphan refs" gây hiểu lầm — sample data chỉ có 6 orphan. Fix: sửa comment nói rõ 6 orphan đủ trigger cap/overflow, case thật doc #14 (14 refs) không được tái tạo 1:1.
+- Awaiting re-verify.
 
 ## Issue #467 — Obligation tab v3 reorg (parent #466, DEC-055) — branch `claude/design-obligation-tab-reorg-467`
 - Full reorg of doc-detail tab "Nghĩa vụ & Quyền lợi". Replaces v2 flat list + obligation_v0.2 emoji patterns.
