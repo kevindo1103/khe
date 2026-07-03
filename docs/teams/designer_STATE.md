@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-07-02 (#467 — Obligation tab v3 reorg, no-icon design, DEC-055)_
+_Last updated: 2026-07-03 (Servanda DS v1.1 ratified — supersedes v0.2 as canonical)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
@@ -253,11 +253,53 @@ FE confirm-flow impl (JourneyContext refactor + confirm button + mandatory nudge
 - **#247** — FE follow-up filed (note 2 already done in #246).
 
 ### Open for next session
-- **#467 obligation tab v3** — mockup delivered, awaiting Kevin review + QC verify (gate step 1/4).
+- **Servanda DS v1.1 is now canonical for ALL mockups going forward** — see dedicated section below. PR #468 (#467) is grandfathered on v0.2 tokens (already reviewed OK, no rework needed for token reasons).
+- **#467 obligation tab v3** — mockup delivered (PR #468), awaiting Kevin review + QC verify (gate step 2-3/4). Content/IA/behavior already reviewed OK by PM per #467 comment thread; token version is v0.2 (grandfathered, not v1.1).
 - **#378 DEC-050 v3** — PR #380 merged to staging.
 - **#312 follow-up** — F1 audit drawer remaining (F2/F3 baked into v3).
-- **DEC-055 icon cleanup** — obligation_v0.2 + other screens flagged for emoji removal (Q7 system-wide).
+- **DEC-055 icon cleanup** — obligation_v0.2 + other screens flagged for emoji removal (Q7 system-wide) — now superseded by v1.1's absolute icon-ban (1 exception: `IconButton`).
 - **DEC-040 canonical fold** — awaiting KHE_Docs → BRD/SRS.
+
+## Servanda Design System v1.1 — CANONICAL (supersedes DS v0.2) — ratified 2026-07-03
+PM relay history on #467/#469 was messy (v1.0 proposed → retracted as unratified → Kevin overrode retraction, kept v1.0 → promoted to v1.1 folding 3 v0.2 strengths). **Net result: v1.1 is canonical for every mockup from this point forward.** DS v0.2 (`mockup_design_system_v0.2.jsx`) is superseded but NOT retroactively required on already-reviewed work (PR #468 grandfathered).
+
+**Philosophy — "Sổ cái" (Ledger), 5 principles from D-rules:**
+1. Ledger, not startup dashboard — warm paper ground, dark ink, no gradients/glassmorphism
+2. State never lies (D-08) — including "Chưa rõ hướng" (unknown direction)
+3. Urgency must be "earned" (Von Restorff) — red is a scarce resource
+4. **Serif = the contract's words, Sans = the software's words** (D-06) — every verbatim contract quote renders serif
+5. Confirmation is a ritual: readback → decide → record (D-02), no dark patterns (D-11)
+
+**Token table (full, v1.1):**
+
+| Token | Value | Note |
+|---|---|---|
+| paper / surface | `#FBFAF7` / `#FFFFFF` | |
+| ink / ink-muted / ink-faint | `#1C2420` (15.21:1) / `#5A6660` (5.74:1) / `#8B948F` (2.99:1, intentionally sub-AA) | ink-faint = placeholder/disabled ONLY |
+| **border-strong** (v1.1 NEW) | `#7E8983` (3.47:1 vs paper, WCAG 1.4.11 pass) | interactive borders: input/button/checkbox. Replaces `n-300` for these uses |
+| n-200 / n-300 | `#E6E5DE` / `#D2D2C9` | decorative borders ONLY — NOT interactive components (they fail 3:1) |
+| primary / hover / tint | `#1E5C49` (7.5:1) / `#174A3B` / `#EAF1EC` | "Lục Khế" |
+| danger / warn / info / done (+tint each) | `#A6372B` / `#8A5800` / `#33597E` / `#5A6660` | 5.2–6.4:1 per badge pair |
+| radius | 6px control / 10px card / pill badge only | |
+| spacing | 4px rhythm: 4/8/12/16/24/32/48/64 | content max-width ≤880px |
+| **elevation** (v1.1 NEW) | `e0: none` · `e1: 0 1px 2px rgba(28,36,32,.06)` · `e2: 0 2px 6px rgba(28,36,32,.09)` · `e3: 0 16px 32px rgba(28,36,32,.20)` | replaces flat 1-tier shadow — "layered paper" metaphor |
+| font | Be Vietnam Pro (UI, self-host VN subset) + Source Serif 4 (contract verbatim text ONLY, never UI chrome) | type scale 28/22/16/15/13.5/12.5 + 11 uppercase label; weights 400/500/600; `tabular-nums` all digits |
+
+**Icon rule:** absolute ban, ONE exception — `IconButton` (single functional glyph, tight space, mandatory `aria-label`). Business/status state ALWAYS uses text badge, never icon.
+
+**13 canonical status badges (vocabulary, do not invent new ones):** Quá hạn N ngày (danger) · Hôm nay / Còn N ngày (warn) · future date (neutral) · Chờ kích hoạt / Chờ xác nhận (info) · **Phạt** (red OUTLINE + transparent fill — visually distinct from solid-fill danger overdue) · Đã hoàn thành / Đã thanh lý (done — quiet gray, NOT celebratory green) · Đã hủy (done + line-through) · Chưa rõ hướng (neutral + Settings link) · Đợt 07/14 (primary) · Nhập tay / AI·đã duyệt (neutral — 2-tier provenance per DEC-055).
+
+**8 hard color rules:** danger exclusive to overdue+destructive · max ONE red zone per screen · completion = quiet gray, never celebratory green · color never sole channel of meaning · no gradients, elevation via e0-e3 only (not ad-hoc shadows) · (+3 more, see style guide artifact Kevin holds — ping PM on #467/#469 if offline HTML reference needed).
+
+**4 new mandatory components (a11y contract, #206 folded in):** `NavItem` (always `<button>`/`<a>`, never `<div onClick>`) · `IconButton` (icon-only, mandatory `aria-label`) · `Dropzone` (`role="button"` + `tabIndex=0` + Enter/Space) · `LiveRegion` (`aria-live="polite"` for self-changing text, e.g. extraction progress).
+
+**10 components with real render (in Kevin's style-guide artifact):** 4-tier button (1 primary per viewport) · obligation card (checkbox + ≤2 badges + tabular meta + right-aligned action) · series card collapsed (progress + next installment + amount) · bulk action bar (inverted-ink background) · 3-level banner replacing icons (SelfPartyGate→Settings link is the worked example) · D-02 readback modal (serif) · form label-above/error-says-fix · tabs-with-counts · D-08 honest empty state · event-chain narrating toast.
+
+**11 UI/UX laws checklist** (Jakob/Hick/Miller/Fitts/Von Restorff/Gestalt/Doherty/Peak-End/Tesler/Postel/Aesthetic-Usability) — QC uses this at gate step 3 to verify mockups.
+
+**Voice:** address as "bạn", self-refer "Servanda", no exclamation marks, facts before framing, errors = what+why+how-to-fix.
+
+**Migration note:** next NEW mockup (not #467/PR #468, which is grandfathered) must build on v1.1 tokens. Reference `mockup_design_system_v0.2.jsx` component *shapes* are still useful (Button/Card/Badge/Modal structure) but every hex/shadow/border value must switch to the v1.1 table above — especially swap any `border`/`borderStrong` usage to the new `border-strong` token, not `n-300`.
 
 ## Issue #378 — DEC-050 doc-detail v3 (6 new surfaces, EPIC #362) — branch `claude/design-doc-detail-dec050-378`
 - Extends `mockup_document_detail_v2.jsx` (#281) with 6 DEC-050 surfaces into a new file.
