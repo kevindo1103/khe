@@ -465,7 +465,7 @@ function WaitingTriggerRow({ ob }) {
           <span style={{ fontSize: t.font.size.base, fontWeight: t.font.weight.medium, color: t.color.ink }}>
             {ob.desc}
           </span>
-          {ob.is_penalty && <TextBadge bg={t.color.danger_soft} fg={t.color.danger}>Phạt</TextBadge>}
+          {ob.is_penalty && <TextBadge fg={t.color.danger} border={t.color.danger}>Phạt</TextBadge>}
         </div>
         <div style={{ fontSize: t.font.size.sm, color: t.color.inkMuted, marginTop: t.space[1] }}>
           Nếu "{ob.trigger_condition}"
