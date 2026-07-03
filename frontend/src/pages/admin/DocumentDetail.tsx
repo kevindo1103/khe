@@ -183,9 +183,9 @@ function SourceClauseLink({
       type="button"
       onClick={() => onJump(clauseNum)}
       className="text-2xs font-medium text-primary underline hover:text-primary-hover"
-      title={`Nhảy đến Điều ${clauseNum} trong tab Nội dung hợp đồng`}
+      title={`Nhảy đến ${clauseNum} trong tab Nội dung hợp đồng`}
     >
-      Điều {clauseNum}
+      {clauseNum}
     </button>
   );
 }
@@ -1288,7 +1288,7 @@ function TabObligations({
 }: {
   doc: DocumentDetailOut;
   onFulfill: (ob: ObligationOut) => void;
-  onBulkComplete: (ids: number[]) => void;
+  onBulkComplete: (ids: number[]) => Promise<void>;
   bulkCompleting: boolean;
   onJumpToClause: (clauseNum: string) => void;
 }) {
@@ -1476,8 +1476,10 @@ function TabObligations({
       <ObligationActionBar
         count={selected.size}
         completing={bulkCompleting}
-        onComplete={() => {
-          onBulkComplete([...selected]);
+        onComplete={async () => {
+          // Keep selection (and the action bar) visible through the request so
+          // the "Đang xử lý…" state is reachable — only clear on completion.
+          await onBulkComplete([...selected]);
           setSelected(new Set());
         }}
         onCancel={() => setSelected(new Set())}
