@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.6 |
-| Trạng thái | Fold cycle 6 — EPIC #362 (DEC-050) production promote PR #402 2026-06-29 + DEC-049 hybrid OCR staging + Sprint 2 EPIC #397 filed |
+| Phiên bản | v0.7 |
+| Trạng thái | Fold cycle 7 — DEC-055 Servanda tier + DEC-056 Obligation OS + Design System v1.1 + ~15 impl entries |
 | Owner | KHE_Docs |
-| Source | BRD v0.9 §13 milestones (upstream: `PRODUCT_STRATEGY_Khe_v0.2.md` §10 + §7.1 billing) |
+| Source | BRD v0.10 §13 milestones (upstream: `PRODUCT_STRATEGY_Khe_v0.2.md` §5c/§5d/§10) |
 
 ---
 
@@ -22,6 +22,7 @@
 | v0.1 | 2026-06-11 | KHE_Docs | Initial. Fold PM_Assistant draft (entry 3) + Strategy v2 milestones (entry 4: M-1 concierge, 2-firm pilot). Mark Sprint 0 ✅ COMPLETE per backend #19 + infra #21. |
 | v0.2 | 2026-06-18 | KHE_Docs | Add cascade reference to upstream `PRODUCT_STRATEGY_Khe_v0.2.md` §10 (3 giai-đoạn + kill signals canonical). Add DEC-018 (Vertical OPEN) to Open Decisions. No milestone changes. |
 | v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Sprint 1 backlog adds: FR-TN-01..03 quota guard (Backend) + #26 obligation engine + reminder scheduler. M0 vertical slice marked staging-complete (Backend PR #54 ingest + PR #59 relationships + PR #60 extraction worker). Sprint 0 infra final ✅ (Infra PR #48: domain khe.iceflow.cloud + migrate_all_tenants + CORS). Open decisions: domain confirmed (khe.iceflow.cloud), DEC-016 still open, DEC-018 wedge selection post-pilot, FR-TN policy ratified cycle 3. |
+| v0.7 | 2026-07-03 | KHE_Docs | **Cycle 7 fold — DEC-055 + DEC-056 + DS v1.1 + impl entries.** Decision log +DEC-055 (Servanda + Ledger/AI tier + D-16) + DEC-056 (Obligation OS + D-17) + DS v1.1 (2026-07-03 supersedes v1.0). Sprint 5 pilot backlog partial done (bulk endpoint PR #475 + obligation tab reorg FE #476). NEW Sprint 6+ DEC-056 rule pack pilot planning (1 firm đại lý thuế, thuế + BHXH cơ bản). Numbering conflicts resolved: PM D-11/D-12 → D-16/D-17 canonical. |
 | v0.6 | 2026-06-29 | KHE_Docs | **Cycle 6 fold — EPIC #362 (DEC-050) production promote PR #402 2026-06-29.** 11/13 R1-R10 shipped (R4b ingest-split + Nhóm B metadata deferred). DEC-049 hybrid OCR (KHE_AI PR #341 — staging, opt-in, default policy chờ Kevin). Sprint 2 EPIC #397 filed: P0 staging→main promote chain + DEC-002 revision · P1 obligation/rights reorg + compliance #105 + relationship UI #398 · P2 R4b + Nhóm B #399 · P3 signature/image pipeline. Decision log +DEC-049/050. Pilot tenant `tran-thai-cam-ranh` continues. 5 layer commits this cycle (BRD v0.9 + SRS v0.6 + Glossary v0.7 + CLAUDE.md v0.10 + this PROJECT_PLAN). |
 | v0.5 | 2026-06-27 | KHE_Docs | **Cycle 5 fold — EPIC #300 production promote `ce48bbd` 2026-06-27.** Pilot tenant `tran-thai-cam-ranh` live (issue #336). DEC-048 RATIFIED (Obligation Fulfillment + Dependency Chain). 6 layer commits (BRD v0.8 + SRS v0.5 + Glossary v0.6 + CLAUDE.md v0.9 + USER_MANUAL_PILOT_v0.1.md + this PROJECT_PLAN). Sprint 5 backlog filed: KHE_AI LLM re-extraction path cho POST /reread v2, Document.provider column ratify (clause-gap), open_ended recurrence Sprint 6+. |
 | v0.4 | 2026-06-20 | KHE_Docs | **Cycle 4 fold (16 entries).** Sprint 1 → 🟢 STAGING-COMPLETE: obligation engine (PR #64) + reminder service (PR #66) + chat (PR #68/#104/#115/#125/#132) + admin chat (PR #133) + clauses populate (PR #108) + extraction schema v2 (PR #135 + #140 + #141) + party roles (PR #142). M0 core loop verified 2026-06-19. Decision log: DEC-025 (PWA standalone Vite + Option A nginx routing), DEC-027 (obligation_type 8 categories), DEC-028 (chat learning + compliance debt), DEC-029 (doc_type_group taxonomy + schema v2), DEC-030 (direction/Quyền lợi/legal_name). Sprint 2 backlog filed: re-extraction script, Document.provider column ratify, monthly recurrence expansion, NĐ 13 chat consent close pre-prod, CONTRACT_LOGIC_Khe.md skeleton (lawyer-partner kickoff). |
@@ -179,6 +180,23 @@ Tasks:
 - [ ] **CONTRACT_LOGIC_Khe.md (#147)** — Lawyer kickoff Sprint 5/6
 - [ ] **Open observability items:** VPS timezone re-verify post-promote; inverted-range guard `due_from > due_to` (FR-CQ-02); Vietnamese accent-folding for chat NOT_FOUND patterns
 - [ ] **2-firm pilot expansion (DEC-013)** — second firm sign + 10 SME each, 90-day evaluation per Kill Signals K-1..K-3
+- [x] **Bulk complete + obligation reorg** (cycle 7 shipped) — Backend PR #475 (PATCH /obligations/bulk + penalty enum tenant_030) + FE PR #476 (3-axis IA reorg per DEC-055)
+- [ ] **D-02 readback modal for bulk complete** — Kevin/QC decision pre-prod (flagged in FE PR #476)
+- [ ] **KHE_AI `Party.aliases` LLM schema fold** — root cause block for D-13 alias-match (PR #475 gap). Filed relay for KHE_AI.
+- [ ] **CompletenessVerifier LLM impl** — populate `may_have_unextracted_obligations` (schema wired PR #492, verifier fast-follow). D-03 honest completeness.
+- [ ] **Two-pass metadata recovery** (issue #464) — extend PR #463 auto-two-pass to also recover fields/parties/obligations/definitions/cross_refs/signature. Current: clauses-only.
+
+## Sprint 6 backlog — DEC-056 Obligation OS validation (post-Sprint 5)
+
+**Goal:** Validate compliance-as-source-2 thesis cheap. NO Sprint push-in per §5c.6.
+
+Tasks:
+- [ ] **DEC-056 pilot rule pack v1** — với 1 đại lý thuế (DEC-013 existing pilot firm): thuế GTGT + BHXH cơ bản theo loại hình DN. Structured rule pack format finalize (schema TBD).
+- [ ] **`Obligation.document_id` nullable** or NEW **`compliance_dossier` container entity** — Backend BA khi rule pack v1 stable
+- [ ] **Rule engine expander** — lịch luật định ("ngày 20 tháng sau", "quý +30 ngày", dời ngày nghỉ lễ)
+- [ ] **Firm portfolio view** — DEC-056 §5c.4 gap (b): firm sees compliance obligations across all their SME clients in 1 place
+- [ ] **Kill signal check DEC-056** — firm không dùng rule pack v1 sau 30 ngày → thesis chết sớm, save effort
+- [ ] **DEC-016 pricing pin-down** — sử dụng DEC-055 tier shape đã có + rule pack tier positioning (Ledger free hay AI-adjacent paid?)
 
 ## Sprint 2 backlog — EPIC #397 (PM filed 2026-06-29)
 
@@ -216,6 +234,9 @@ Tasks:
 | DEC-047 | 2026-06-20 | PR Scope-Lock Enforcement — PR chỉ chứa files trong session lane; cross-lane = file issue. Trigger: PR #288 incident. | PM operational |
 | DEC-048 | 2026-06-27 | Obligation Fulfillment + Dependency Chain (EPIC #300 production `ce48bbd`). `fulfilled_at` G1 anchor (NOT date.today()), `awaiting_confirmation` status cascade-past D-02. `source_clause_num` provenance (Kevin Option B 0a). `is_evidence` skip-extraction P2. ClauseEditEvent + re-read flow §13 addendum. P1 source-aware merge guard + derive delete path-2 (PR #311 V1). Date-anchored resolver (FR-OB-13). | Kevin ratify |
 | DEC-049 | 2026-06-27 | Hybrid OCR pipeline (KHE_AI PR #341 staging). 2-pass: scan_detect → Document AI/pdftotext → Gemini text-mode. 4th provider trong factory `_REGISTRY`. System dep VPS `poppler-utils` + `GOOGLE_APPLICATION_CREDENTIALS` gate. Routing default policy (auto vs opt-in) **OPEN**. | Kevin ratify decision; routing default open |
+| DEC-055 | 2026-07-02 | **Servanda brand** (R-7 resolved) + **Ledger/AI 2-tier structure** (Ledger free với full core loop + AI paid với per-doc quota) + **D-16 no-paywall-safety** (renumbered from PM D-11 collision). Design System "Sổ cái" v1.0 companion (upgraded → v1.1 2026-07-03). | Kevin ratify |
+| DEC-056 | 2026-07-03 | **Obligation OS North Star** — compliance obligations (thuế/BHXH/ngành dọc) = source 2. Engine treats obligation-source-agnostic (P-6 BRD). Rule pack curated (NO AI reads laws). **D-17 firm-confirms-compliance** (renumbered from PM D-12 collision). DEC-018 wedge candidate: wedge = obligation TYPE not vertical. | Kevin ratify |
+| DS v1.1 | 2026-07-03 | Design System "Sổ cái" v1.1 supersedes v1.0. Measured contrast (WCAG 2.1 formula). +`border-strong #7E8983` token (WCAG 3:1). Hợp đồng A11y binding. 4 ratified components. Elevation e0-e3. Lục Khế `#1E5C49` primary + Be Vietnam Pro + Source Serif 4 fonts self-host. | Kevin ratify |
 | DEC-050 | 2026-06-28 | Contract Extraction & Display Depth — 10 requirements (R1-R10): R1 title+number, R2 party details, R3 clause hierarchy, R4 annex relationship + ingest-split (R4a only; R4b defer), R5 table/signature, R6 date taxonomy, R7 auto-renewal, R8 lifecycle status enum 5-state, R9 definitions glossary, R10 cross-references. 8 tenant migrations (`tenant_021..028`) + 2 NEW entities (Definition, CrossReference). EPIC #362 production PR #402 2026-06-29 (11/13 shipped). | Kevin ratify |
 
 ---
@@ -304,6 +325,8 @@ Exit criteria:
 | Policy O-3 | `thoi_han_hd` phi-số (a/b/c) | PM |
 
 ---
+
+*Hết v0.7 — cycle 7 fold. DEC-055 Servanda tier + DEC-056 Obligation OS + DS v1.1 ratified. Sprint 5 partial done (bulk endpoint + obligation reorg). Sprint 6 backlog filed for DEC-056 rule pack v1 pilot with existing DEC-013 firm. Next: DEC-016 pricing pin-down with tier shape resolved.*
 
 *Hết v0.6 — cycle 6 fold. EPIC #362 (DEC-050) production live PR #402 2026-06-29. 11/13 R1-R10 shipped (R4b + Nhóm B defer Sprint 2). DEC-049 hybrid OCR staging opt-in. Sprint 2 EPIC #397 filed (4 priority tiers). Next: DEC-049 routing default ratify, Sprint 2 P0 promote audit + DEC-002 revision, NĐ 13 chat consent close.*
 
