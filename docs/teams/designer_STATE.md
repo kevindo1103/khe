@@ -325,7 +325,11 @@ PM relay history on #467/#469 was messy (v1.0 proposed → retracted as unratifi
 - **IA structure:** Cần xác nhận (NULL, top) → Nghĩa vụ (Quá hạn → Tuần này → Sắp tới) → Quyền lợi → Chờ kích hoạt → Đã hoàn thành (collapsed)
 - **Design tokens:** DS v0.2 canonical. "Servanda" brand voice (DEC-055).
 - **Sample data:** HĐ mua bán căn hộ Sunrise Tower — 14-installment series, overdue, upcoming, triggers, penalties, NULL direction, parseable + unparseable amounts.
-- Awaiting Kevin review.
+- **Kevin review (2026-07-03) — PASS.** Verified: 3 commits = 1 real fix (series-card dedupe, `6898cce`, landed before Kevin's review) + 1 STATE.md-only doc commit (`24a06fb`, zero code). No further mockup changes requested.
+- **2 items carried forward to Frontend kickoff (gate step 4) — open decisions, NOT blockers for this mockup or #468 merge:**
+  1. **Bulk-complete has no confirm step.** `handleBulkComplete` (`mockup_obligation_tab_v3.jsx` ~L610) fires immediately on click — no `ReadbackModal`/confirm gate before marking N obligations done. Kevin: open Frontend decision, not a hard blocker — Backend endpoint shape is unaffected either way (bulk PATCH takes an ID array regardless of whether FE confirms first).
+  2. **Phạt badge styling — mockup uses v0.2-era solid fill** (`TextBadge bg={danger_soft} fg={danger}`, no `border` prop → solid pill), but **DS v1.1 canonical requires outline** (transparent bg, red border) to stay visually distinct from solid-fill `overdue` (see `mockup_design_system_v1.1.jsx` `Badge` `penalty` kind, #470). Frontend should build the "Phạt" badge per v1.1 spec, NOT copy this mockup's solid-fill treatment verbatim — this PR is grandfathered on v0.2 tokens and won't be touched to fix this.
+- Status: Kevin-approved. Next: QC verify (gate step 3), then Frontend/Backend kickoff can file (gate step 4) — kickoff issue should carry both items above.
 
 ## Inbox
 - issue #24 (`for:designer`, `task-assignment`, GATING #30 + #31) — Sprint 1
