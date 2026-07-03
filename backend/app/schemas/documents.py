@@ -76,6 +76,7 @@ class TermOut(BaseModel):
     field_value: str | None = None
     confidence: float | None = None
     needs_review: bool = False
+    source: str | None = None    # "extracted" | "remap" | "manual" | NULL(legacy)
     # Stage 3 review ref-link trust gate (#217, FR-EX-05). All optional → FE
     # graceful-degrades to plain text when absent (no dead link).
     ref: str | None = None             # display label, e.g. "Điều 8" / "tr.1 §A"
