@@ -25,6 +25,7 @@ import type {
   CrossRefResolveOut,
 } from '../../types/documents';
 import type { ObligationOut, ObligationPatchOut, BulkCompleteIn, BulkCompleteOut } from '../../types/obligations';
+import type { LegalNameOut } from '../../types/tenant';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
 import {
@@ -537,21 +538,29 @@ function WaitingTriggerRow({
 }
 
 // ── #472 Q1: Settings nudge — replaces per-doc SelfPartyGate dropdown ─────────
-function SettingsNudge() {
+function SettingsNudge({ hasLegalName }: { hasLegalName: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 flex-wrap p-4 rounded-lg bg-warning-soft border border-warning/20 mb-4">
       <div>
-        <div className="text-sm font-semibold text-ink">Chưa xác định được chiều nghĩa vụ</div>
+        <div className="text-sm font-semibold text-ink">
+          {hasLegalName
+            ? 'Xác nhận tài liệu để áp dụng chiều nghĩa vụ'
+            : 'Chưa xác định được chiều nghĩa vụ'}
+        </div>
         <div className="text-xs text-ink-muted mt-0.5">
-          Servanda cần biết tên pháp nhân của bạn để tự phân biệt nghĩa vụ và quyền lợi.
+          {hasLegalName
+            ? 'Pháp nhân đã được đặt — nhấn "Xác nhận tài liệu này" ở cuối trang để phân biệt nghĩa vụ và quyền lợi.'
+            : 'Servanda cần biết tên pháp nhân của bạn để tự phân biệt nghĩa vụ và quyền lợi.'}
         </div>
       </div>
-      <Link
-        to="/admin/settings"
-        className="px-4 py-2 rounded-md text-sm font-semibold text-primary bg-surface border border-border-strong hover:bg-surface-alt"
-      >
-        Sửa pháp nhân trong Cài đặt
-      </Link>
+      {!hasLegalName && (
+        <Link
+          to="/admin/settings"
+          className="px-4 py-2 rounded-md text-sm font-semibold text-primary bg-surface border border-border-strong hover:bg-surface-alt"
+        >
+          Sửa pháp nhân trong Cài đặt
+        </Link>
+      )}
     </div>
   );
 }
@@ -1305,12 +1314,14 @@ function TabObligations({
   onBulkComplete,
   bulkCompleting,
   onJumpToClause,
+  hasLegalName,
 }: {
   doc: DocumentDetailOut;
   onFulfill: (ob: ObligationOut) => void;
   onBulkComplete: (ids: number[]) => Promise<void>;
   bulkCompleting: boolean;
   onJumpToClause: (clauseNum: string) => void;
+  hasLegalName: boolean;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showDone, setShowDone] = useState(false);
@@ -1415,7 +1426,7 @@ function TabObligations({
     <div>
       {nullDir.length > 0 && (
         <div className="mb-5">
-          <SettingsNudge />
+          <SettingsNudge hasLegalName={hasLegalName} />
           <SectionHeader
             title="Cần xác nhận chiều"
             count={nullDir.length}
@@ -2035,6 +2046,7 @@ export default function DocumentDetail() {
   const [reReading, setReReading] = useState(false);
   const [reReadDiffs, setReReadDiffs] = useState<ReReadDiff[] | null>(null);
   const [applyingDiffs, setApplyingDiffs] = useState(false);
+  const [legalName, setLegalName] = useState<string>('');
   const { refetch: refetchJourney } = useJourney();
 
   const showToast = (msg: string, kind: ToastKind = 'success') => {
@@ -2110,6 +2122,12 @@ export default function DocumentDetail() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    apiFetch<LegalNameOut>('/tenants/me/legal_name')
+      .then((res) => setLegalName(res.legal_name || ''))
+      .catch(() => {});
+  }, []);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -2569,6 +2587,7 @@ export default function DocumentDetail() {
                 onBulkComplete={bulkCompleteObligations}
                 bulkCompleting={bulkCompleting}
                 onJumpToClause={jumpToClause}
+                hasLegalName={legalName.trim().length > 0}
               />
             </>
           )}
