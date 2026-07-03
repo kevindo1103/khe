@@ -84,8 +84,9 @@ function ExtractionProgress({ stage, progress }: { stage: string | null | undefi
 }
 
 // ── #472 R472: obligation tab helpers — temporal bucket + currency format ────
-function daysDiff(dateStr: string): number {
+function daysDiff(dateStr: string): number | null {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return null;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   return Math.round((d.getTime() - now.getTime()) / 86400000);
@@ -96,20 +97,23 @@ function temporalBucket(ob: ObligationOut): 'overdue' | 'this_week' | 'upcoming'
   if (ob.status === 'done' || ob.status === 'cancelled') return 'done';
   if (!ob.due_date) return 'upcoming';
   const days = daysDiff(ob.due_date);
+  if (days === null) return 'upcoming';
   if (days < 0) return 'overdue';
   if (days <= 7) return 'this_week';
   return 'upcoming';
 }
 
 function overdueLabel(dateStr: string): string {
-  const days = Math.abs(daysDiff(dateStr));
+  const days = daysDiff(dateStr);
+  if (days === null) return 'Không thời hạn';
   const dateFmt = new Date(dateStr).toLocaleDateString('vi-VN');
-  if (days === 0) return `Hôm nay · ${dateFmt}`;
-  return `Quá hạn ${days} ngày · ${dateFmt}`;
+  if (Math.abs(days) === 0) return `Hôm nay · ${dateFmt}`;
+  return `Quá hạn ${Math.abs(days)} ngày · ${dateFmt}`;
 }
 
 function dueLabel(dateStr: string): string {
   const days = daysDiff(dateStr);
+  if (days === null) return 'Không thời hạn';
   const dateFmt = new Date(dateStr).toLocaleDateString('vi-VN');
   if (days === 0) return `Hôm nay · ${dateFmt}`;
   if (days === 1) return `Ngày mai · ${dateFmt}`;
@@ -119,6 +123,7 @@ function dueLabel(dateStr: string): string {
 
 function formatCurrency(raw: string | null): string | null {
   if (!raw) return null;
+  if (/%/.test(raw)) return null;
   const cleaned = raw.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
   const num = parseFloat(cleaned);
   if (isNaN(num) || num <= 0) return null;
