@@ -24,7 +24,7 @@ import type {
   CrossRefListOut,
   CrossRefResolveOut,
 } from '../../types/documents';
-import type { ObligationOut, ObligationPatchOut } from '../../types/obligations';
+import type { ObligationOut, ObligationPatchOut, BulkCompleteIn, BulkCompleteOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
 import {
@@ -128,10 +128,13 @@ function formatCurrency(raw: string | null): string | null {
 const RECURRENCE_LABEL: Record<string, string> = { open_ended_review: 'Rà soát định kỳ' };
 
 // ── #472: text+color badge atom (Q7 — no icon/emoji, DEC-055) ────────────────
-function TextBadge({ className = '', children }: { className?: string; children: React.ReactNode }) {
+function TextBadge({ className, children }: { className?: string; children: React.ReactNode }) {
+  // Tone classes are always passed as a complete bg-*/text-*/border-* set —
+  // never combined with the default, since Tailwind resolves same-specificity
+  // utility conflicts by stylesheet source order, not by className order.
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-semibold whitespace-nowrap bg-surface-sunken text-ink-muted ${className}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-semibold whitespace-nowrap ${className || 'bg-surface-sunken text-ink-muted'}`}
     >
       {children}
     </span>
@@ -152,7 +155,13 @@ function StatusBadge({ status }: { status: ObligationOut['status'] }) {
 }
 
 function CategoryChip({ obligationType }: { obligationType: string }) {
-  return <TextBadge>{labelFor(OBLIGATION_TYPE_LABELS, obligationType)}</TextBadge>;
+  const label = labelFor(OBLIGATION_TYPE_LABELS, obligationType);
+  // Penalty: outline treatment (border-danger, transparent bg) — distinct from
+  // the solid-fill "Quá hạn" badge (DS v1.1 penalty kind, PR #474 follow-up).
+  if (obligationType === 'penalty') {
+    return <TextBadge className="bg-transparent border border-danger text-danger">{label}</TextBadge>;
+  }
+  return <TextBadge>{label}</TextBadge>;
 }
 
 function AmountDisplay({ raw }: { raw: string | null }) {
@@ -2166,26 +2175,26 @@ export default function DocumentDetail() {
   const bulkCompleteObligations = async (ids: number[]) => {
     if (ids.length === 0) return;
     setBulkCompleting(true);
-    const today = new Date().toISOString().slice(0, 10);
-    let okCount = 0;
-    for (const obId of ids) {
-      try {
-        await apiFetch<ObligationPatchOut>(`/obligations/${obId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'done', fulfilled_at: `${today}T00:00:00` }),
-        });
-        okCount += 1;
-      } catch {
-        // continue — report partial success below
-      }
+    try {
+      const res = await apiFetch<BulkCompleteOut>('/obligations/bulk', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ids,
+          status: 'done',
+          fulfilled_at: new Date().toISOString(),
+        } as BulkCompleteIn),
+      });
+      showToast(
+        res.skipped === 0
+          ? `Đã đánh dấu hoàn thành ${res.updated} mục.`
+          : `Hoàn thành ${res.updated}/${ids.length} mục — ${res.skipped} mục lỗi.`,
+        res.skipped === 0 ? 'success' : 'error'
+      );
+    } catch (err) {
+      showToast((err as ApiError).message || 'Hoàn thành hàng loạt thất bại', 'error');
+    } finally {
+      setBulkCompleting(false);
     }
-    setBulkCompleting(false);
-    showToast(
-      okCount === ids.length
-        ? `Đã đánh dấu hoàn thành ${okCount} mục.`
-        : `Hoàn thành ${okCount}/${ids.length} mục — một số mục lỗi.`,
-      okCount === ids.length ? 'success' : 'error'
-    );
     await load();
   };
 

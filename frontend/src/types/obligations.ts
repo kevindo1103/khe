@@ -65,6 +65,26 @@ export interface ObligationPatchOut {
   activated_count: number;
 }
 
+// PATCH /obligations/bulk (#471/#472 Q2 — multi-select bulk complete)
+export interface BulkCompleteIn {
+  ids: number[];
+  status: 'done' | 'cancelled';
+  fulfilled_at?: string | null;
+  fulfilled_by?: string | null;
+}
+
+export interface BulkCompleteItemOut {
+  id: number;
+  ok: boolean;
+  error?: string | null;
+}
+
+export interface BulkCompleteOut {
+  updated: number;
+  skipped: number;
+  items: BulkCompleteItemOut[];
+}
+
 // GET /obligations/summary (#253/#254) — server-side dashboard aggregate.
 // Default group_by=direction, active_only=true (excludes done/cancelled; overdue kept).
 // Single source of truth shared with the #199 chat aggregate.
