@@ -1,4 +1,4 @@
-"""tenant_029: add 'penalty' to obligation_type enum (#471, DEC-027).
+"""tenant_030: add 'penalty' to obligation_type enum (#471, DEC-027).
 
 obligation_type is a TEXT column with no DB-level CHECK constraint — the enum
 is enforced in application code. This migration is a no-op in SQLite (no ALTER
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Union
 
-revision: str = "tenant_029"
-down_revision: Union[str, None] = "tenant_028"
+revision: str = "tenant_030"
+down_revision: Union[str, None] = "tenant_029"
 branch_labels = None
 depends_on = None
 
@@ -23,5 +23,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Non-destructive — rows with obligation_type='penalty' remain after downgrade.
     pass
