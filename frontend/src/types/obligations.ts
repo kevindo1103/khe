@@ -41,6 +41,8 @@ export interface ObligationOut {
   // Fulfillment fields (Backend #302)
   fulfilled_at: string | null;
   fulfilled_by: string | null;
+  // Clause provenance (#303, #472 — jump-to-clause link)
+  source_clause_num: string | null;
 }
 
 export interface ObligationListOut {
@@ -61,6 +63,26 @@ export interface ObligationPatchOut {
   ok: boolean;
   obligation: ObligationOut;
   activated_count: number;
+}
+
+// PATCH /obligations/bulk (#471/#472 Q2 — multi-select bulk complete)
+export interface BulkCompleteIn {
+  ids: number[];
+  status: 'done' | 'cancelled';
+  fulfilled_at?: string | null;
+  fulfilled_by?: string | null;
+}
+
+export interface BulkCompleteItemOut {
+  id: number;
+  ok: boolean;
+  error?: string | null;
+}
+
+export interface BulkCompleteOut {
+  updated: number;
+  skipped: number;
+  items: BulkCompleteItemOut[];
 }
 
 // GET /obligations/summary (#253/#254) — server-side dashboard aggregate.
