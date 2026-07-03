@@ -632,6 +632,18 @@ def get_document(
         .count()
     )
 
+    # #274: count standing obligations (in_progress, no due_date) for "Cam kết đang hiệu lực"
+    standing_count = (
+        db.query(Obligation)
+        .filter(
+            Obligation.document_id == doc_id,
+            Obligation.tenant_id == user.tenant_id,
+            Obligation.obligation_type.in_(["standing", "reporting"]),
+            Obligation.status == "in_progress",
+        )
+        .count()
+    )
+
     # When the doc failed extraction (terminal) OR needs a retry (transient outage /
     # MAX_TOKENS, #436/#446), surface the reason from the latest matching Event
     # (#79 follow-up — UAT/FE self-diagnosis; widened per QC review on PR #458 —
@@ -679,6 +691,7 @@ def get_document(
         has_signature=doc.has_signature,
         signature_pages=doc.signature_pages,
         may_have_unextracted_obligations=doc.may_have_unextracted_obligations,
+        standing_count=standing_count,
     )
 
 

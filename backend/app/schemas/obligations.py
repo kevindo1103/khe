@@ -74,7 +74,7 @@ class ObligationSummaryOut(BaseModel):
     total: int
     group_by: str
     groups: list[dict]              # [{key, label, count, nearest?}]
-    status_breakdown: dict          # {waiting_trigger, overdue, due_soon}
+    status_breakdown: dict          # {waiting_trigger, overdue, due_soon, standing}
     source: dict                    # {obligation_count, doc_count, label}
 
 
