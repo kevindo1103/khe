@@ -148,7 +148,7 @@ function TextBadge({ className, children }: { className?: string; children: Reac
 
 function StatusBadge({ status }: { status: ObligationOut['status'] }) {
   const MAP: Record<string, { label: string; className: string }> = {
-    done: { label: 'Hoàn thành', className: 'bg-success-soft text-success' },
+    done: { label: 'Hoàn thành', className: 'bg-done-soft text-done' },
     pending: { label: 'Chưa làm', className: 'bg-surface-sunken text-ink-muted' },
     in_progress: { label: 'Đang làm', className: 'bg-info-soft text-info' },
     partial: { label: 'Một phần', className: 'bg-info-soft text-info' },
@@ -404,7 +404,7 @@ function ObligationRow({
           )}
           <AmountDisplay raw={ob.amount_raw} />
           {ob.fulfilled_at && (
-            <TextBadge className="bg-success-soft text-success">
+            <TextBadge className="bg-done-soft text-done">
               Hoàn thành {new Date(ob.fulfilled_at).toLocaleDateString('vi-VN')}
               {ob.fulfilled_by ? ` · ${ob.fulfilled_by}` : ''}
             </TextBadge>
@@ -474,7 +474,7 @@ function SeriesCard({
           {nextItem && (
             <div className="mt-2 text-sm text-ink-muted">
               Kế tiếp: Đợt {nextItem.milestone_index} — {nextItem.due_date ? new Date(nextItem.due_date).toLocaleDateString('vi-VN') : 'chưa có hạn'}
-              {nextAmount && <span className="text-success font-medium"> · {nextAmount}</span>}
+              {nextAmount && <span className="text-ink font-medium"> · {nextAmount}</span>}
             </div>
           )}
         </div>
@@ -1470,8 +1470,8 @@ function TabObligations({
           <SectionHeader
             title="Đã hoàn thành"
             count={done.length}
-            dotClassName="bg-success"
-            badgeClassName="bg-success-soft text-success"
+            dotClassName="bg-done"
+            badgeClassName="bg-done-soft text-done"
             collapsed={!showDone}
             onToggle={() => setShowDone((v) => !v)}
           />
