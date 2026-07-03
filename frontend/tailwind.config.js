@@ -51,7 +51,9 @@ export default {
         },
         border: {
           DEFAULT: '#DADEDC',
-          strong: '#C2C8C5',
+          // v1.1 (#472 / #467): bumped from #C2C8C5 to meet WCAG 1.4.11 3:1 on
+          // interactive component borders (input/button/checkbox) — verified.
+          strong: '#7E8983',
         },
         surface: {
           DEFAULT: '#FFFFFF',

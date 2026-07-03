@@ -10,7 +10,6 @@ import type {
   DocumentDetailOut,
   PartyOut,
   TermOut,
-  SelfPartyConfirmOut,
   ConfirmDocumentOut,
   RemapTypeOut,
   ClauseOut,
@@ -84,24 +83,163 @@ function ExtractionProgress({ stage, progress }: { stage: string | null | undefi
   );
 }
 
-// ── Direction badge ──────────────────────────────────────────────────────────
-function DirectionBadge({ direction }: { direction: ObligationOut['direction'] }) {
-  if (direction === 'nghĩa_vụ')
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-ink-muted/10 text-ink-muted">
-        ↑ Phải làm
-      </span>
-    );
-  if (direction === 'quyền_lợi')
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-primary/10 text-primary">
-        ↓ Được hưởng
-      </span>
-    );
+// ── #472 R472: obligation tab helpers — temporal bucket + currency format ────
+function daysDiff(dateStr: string): number {
+  const d = new Date(dateStr);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - now.getTime()) / 86400000);
+}
+
+function temporalBucket(ob: ObligationOut): 'overdue' | 'this_week' | 'upcoming' | 'waiting' | 'done' {
+  if (ob.status === 'waiting_trigger') return 'waiting';
+  if (ob.status === 'done' || ob.status === 'cancelled') return 'done';
+  if (!ob.due_date) return 'upcoming';
+  const days = daysDiff(ob.due_date);
+  if (days < 0) return 'overdue';
+  if (days <= 7) return 'this_week';
+  return 'upcoming';
+}
+
+function overdueLabel(dateStr: string): string {
+  const days = Math.abs(daysDiff(dateStr));
+  const dateFmt = new Date(dateStr).toLocaleDateString('vi-VN');
+  if (days === 0) return `Hôm nay · ${dateFmt}`;
+  return `Quá hạn ${days} ngày · ${dateFmt}`;
+}
+
+function dueLabel(dateStr: string): string {
+  const days = daysDiff(dateStr);
+  const dateFmt = new Date(dateStr).toLocaleDateString('vi-VN');
+  if (days === 0) return `Hôm nay · ${dateFmt}`;
+  if (days === 1) return `Ngày mai · ${dateFmt}`;
+  if (days <= 7) return `Còn ${days} ngày · ${dateFmt}`;
+  return `Hạn: ${dateFmt}`;
+}
+
+function formatCurrency(raw: string | null): string | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+  const num = parseFloat(cleaned);
+  if (isNaN(num) || num <= 0) return null;
+  return num.toLocaleString('vi-VN') + ' đ';
+}
+
+const RECURRENCE_LABEL: Record<string, string> = { open_ended_review: 'Rà soát định kỳ' };
+
+// ── #472: text+color badge atom (Q7 — no icon/emoji, DEC-055) ────────────────
+function TextBadge({ className = '', children }: { className?: string; children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-amber-100 text-amber-700">
-      ? Chưa rõ — chọn bên
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-semibold whitespace-nowrap bg-surface-sunken text-ink-muted ${className}`}
+    >
+      {children}
     </span>
+  );
+}
+
+function StatusBadge({ status }: { status: ObligationOut['status'] }) {
+  const MAP: Record<string, { label: string; className: string }> = {
+    done: { label: 'Hoàn thành', className: 'bg-success-soft text-success' },
+    pending: { label: 'Chưa làm', className: 'bg-surface-sunken text-ink-muted' },
+    in_progress: { label: 'Đang làm', className: 'bg-info-soft text-info' },
+    partial: { label: 'Một phần', className: 'bg-info-soft text-info' },
+    cancelled: { label: 'Đã hủy', className: 'bg-surface-sunken text-ink-subtle' },
+    waiting_trigger: { label: 'Chờ kích hoạt', className: 'bg-warning-soft text-warning' },
+  };
+  const s = MAP[status] || MAP.pending;
+  return <TextBadge className={s.className}>{s.label}</TextBadge>;
+}
+
+function CategoryChip({ obligationType }: { obligationType: string }) {
+  return <TextBadge>{labelFor(OBLIGATION_TYPE_LABELS, obligationType)}</TextBadge>;
+}
+
+function AmountDisplay({ raw }: { raw: string | null }) {
+  const formatted = formatCurrency(raw);
+  if (!formatted) return null;
+  return <TextBadge className="bg-success-soft text-success">{formatted}</TextBadge>;
+}
+
+function SourceClauseLink({
+  clauseNum,
+  onJump,
+}: {
+  clauseNum: string | null;
+  onJump: (clauseNum: string) => void;
+}) {
+  if (!clauseNum) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onJump(clauseNum)}
+      className="text-2xs font-medium text-primary underline hover:text-primary-hover"
+      title={`Nhảy đến Điều ${clauseNum} trong tab Nội dung hợp đồng`}
+    >
+      Điều {clauseNum}
+    </button>
+  );
+}
+
+// ── #472 Q2: checkbox + floating action bar (multi-select bulk complete) ─────
+function ObligationCheckbox({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
+      className={`w-[18px] h-[18px] rounded-xs shrink-0 flex items-center justify-center border-2
+        ${checked ? 'border-primary bg-primary' : 'border-border-strong bg-surface'}
+        ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
+      {checked && <span className="text-white text-[11px] font-bold leading-none">✓</span>}
+    </button>
+  );
+}
+
+function ObligationActionBar({
+  count,
+  completing,
+  onComplete,
+  onCancel,
+}: {
+  count: number;
+  completing: boolean;
+  onComplete: () => void;
+  onCancel: () => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-surface rounded-lg px-5 py-3 flex items-center gap-4 shadow-lg z-toast min-w-80">
+      <span className="text-sm font-medium">{count} mục đã chọn</span>
+      <div className="flex-1" />
+      <button
+        type="button"
+        onClick={onComplete}
+        disabled={completing}
+        className="bg-primary text-white px-4 py-2 rounded-md text-sm font-semibold disabled:opacity-60"
+      >
+        {completing ? 'Đang xử lý…' : `Hoàn thành đã chọn (${count})`}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={completing}
+        className="border border-ink-muted text-ink-muted px-3 py-2 rounded-md text-sm"
+      >
+        Bỏ chọn
+      </button>
+    </div>
   );
 }
 
@@ -121,29 +259,6 @@ function SignatureBadge({ hasSig, pages }: { hasSig?: boolean | null; pages?: nu
       Chưa ký
     </span>
   );
-}
-
-// ── Due date display ─────────────────────────────────────────────────────────
-function ObligationDue({ ob }: { ob: ObligationOut }) {
-  if (ob.status === 'waiting_trigger') {
-    return (
-      <span className="text-xs text-ink-muted">
-        ⏳ Chờ mốc: {ob.trigger_condition || ob.milestone_trigger || '—'}
-      </span>
-    );
-  }
-  if (!ob.due_date) {
-    return <span className="text-xs text-ink-muted italic">Cam kết đang hiệu lực</span>;
-  }
-  const diff = Math.ceil((new Date(ob.due_date).getTime() - Date.now()) / 86400000);
-  const dateStr = new Date(ob.due_date).toLocaleDateString('vi-VN');
-  if (diff < 0)
-    return <span className="text-xs font-medium text-red-600">Quá hạn {-diff} ngày · {dateStr}</span>;
-  if (diff === 0)
-    return <span className="text-xs font-medium text-orange-600">Hôm nay · {dateStr}</span>;
-  if (diff <= 7)
-    return <span className="text-xs font-medium text-orange-500">Còn {diff} ngày · {dateStr}</span>;
-  return <span className="text-xs text-ink-muted">Hạn: {dateStr}</span>;
 }
 
 // ── Fulfillment modal ────────────────────────────────────────────────────────
@@ -218,162 +333,264 @@ function FulfillModal({
   );
 }
 
-// ── Single obligation row ────────────────────────────────────────────────────
+// ── #472: single obligation row — checkbox + no-emoji badges ─────────────────
 function ObligationRow({
   ob,
+  checked,
+  onCheck,
   onFulfill,
+  onJumpToClause,
+  dim,
 }: {
   ob: ObligationOut;
+  checked: boolean;
+  onCheck: (v: boolean) => void;
   onFulfill: (ob: ObligationOut) => void;
+  onJumpToClause: (clauseNum: string) => void;
+  dim?: boolean;
 }) {
-  const canFulfill = ['pending', 'in_progress', 'partial'].includes(ob.status);
+  const isDone = ob.status === 'done' || ob.status === 'cancelled';
+  const isOverdue = temporalBucket(ob) === 'overdue';
+  const canCheck = !isDone && ob.status !== 'waiting_trigger';
+  const canFulfill = !isDone && ob.status !== 'waiting_trigger';
+  const hasRecurrence = !!ob.recurrence && ob.recurrence !== 'once';
+
   return (
-    <div className="py-3 border-b border-border last:border-0">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <DirectionBadge direction={ob.direction} />
-            <Badge kind="neutral" className="text-2xs">
-              {labelFor(OBLIGATION_TYPE_LABELS, ob.obligation_type)}
-            </Badge>
-            {ob.milestone_total && ob.milestone_total > 1 && ob.milestone_index != null && (
-              <span className="text-2xs text-ink-muted">
-                Đợt {ob.milestone_index}/{ob.milestone_total}
-              </span>
-            )}
-          </div>
-          <div className="text-sm text-ink leading-snug">{ob.description}</div>
-          <div className="mt-1 flex items-center gap-3 flex-wrap">
-            <ObligationDue ob={ob} />
-            {ob.amount_raw && (
-              <span className="text-xs text-ink-muted">💰 {ob.amount_raw}</span>
-            )}
-            {ob.fulfilled_at && (
-              <span className="text-xs text-ink-muted">
-                ✓ {new Date(ob.fulfilled_at).toLocaleDateString('vi-VN')}
-                {ob.fulfilled_by && ` · ${ob.fulfilled_by}`}
-              </span>
-            )}
-          </div>
+    <div
+      className={`flex items-start gap-3 px-4 py-3 border-b border-border last:border-0
+        ${dim || isDone ? 'opacity-55' : ''} ${checked ? 'bg-primary-soft/40' : ''}`}
+    >
+      <div className="pt-0.5">
+        <ObligationCheckbox checked={checked} onChange={onCheck} disabled={!canCheck} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`text-sm font-medium text-ink ${isDone ? 'line-through' : ''}`}>
+            {ob.description}
+          </span>
+          {isOverdue && ob.due_date && (
+            <TextBadge className="bg-danger-soft text-danger">{overdueLabel(ob.due_date)}</TextBadge>
+          )}
+          {isDone && <StatusBadge status={ob.status} />}
         </div>
-        <div className="flex-shrink-0 mt-0.5 flex items-center gap-2">
-          {ob.status === 'done' ? (
-            <Badge kind="done">✓ hoàn thành</Badge>
-          ) : ob.status === 'cancelled' ? (
-            <Badge kind="neutral">đã hủy</Badge>
-          ) : (
-            <>
-              {canFulfill && (
-                <Button size="sm" variant="ghost" onClick={() => onFulfill(ob)}>
-                  Hoàn thành →
-                </Button>
-              )}
-              {!canFulfill && (
-                <Link to="/admin/obligations" className="text-xs text-primary hover:underline">
-                  Quản lý →
-                </Link>
-              )}
-            </>
+        <div className="flex items-center gap-2 flex-wrap mt-1">
+          <CategoryChip obligationType={ob.obligation_type} />
+          {ob.milestone_total && ob.milestone_total > 1 && ob.milestone_index != null && (
+            <TextBadge>Đợt {ob.milestone_index}/{ob.milestone_total}</TextBadge>
+          )}
+          {ob.due_date && !isOverdue && !isDone && <TextBadge>{dueLabel(ob.due_date)}</TextBadge>}
+          {!ob.due_date && hasRecurrence && (
+            <TextBadge>{RECURRENCE_LABEL[ob.recurrence] || ob.recurrence}</TextBadge>
+          )}
+          {!ob.due_date && !hasRecurrence && !isDone && ob.status !== 'waiting_trigger' && (
+            <TextBadge>Không thời hạn</TextBadge>
+          )}
+          <AmountDisplay raw={ob.amount_raw} />
+          {ob.fulfilled_at && (
+            <TextBadge className="bg-success-soft text-success">
+              Hoàn thành {new Date(ob.fulfilled_at).toLocaleDateString('vi-VN')}
+              {ob.fulfilled_by ? ` · ${ob.fulfilled_by}` : ''}
+            </TextBadge>
+          )}
+          <SourceClauseLink clauseNum={ob.source_clause_num} onJump={onJumpToClause} />
+        </div>
+      </div>
+      {canFulfill && (
+        <div className="shrink-0">
+          <button
+            type="button"
+            onClick={() => onFulfill(ob)}
+            className="border border-border-strong bg-surface text-ink-body px-3 py-1 rounded-md text-2xs font-semibold hover:bg-surface-alt"
+          >
+            Hoàn thành
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── #472 Q3: series card — collapsible, progress bar, next installment ───────
+function SeriesCard({
+  items,
+  selected,
+  onCheck,
+  onFulfill,
+  onJumpToClause,
+}: {
+  items: ObligationOut[];
+  selected: Set<number>;
+  onCheck: (id: number, v: boolean) => void;
+  onFulfill: (ob: ObligationOut) => void;
+  onJumpToClause: (clauseNum: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const total = items[0].milestone_total || items.length;
+  const doneCount = items.filter((o) => o.status === 'done').length;
+  const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+  const sorted = [...items].sort((a, b) => (a.milestone_index || 0) - (b.milestone_index || 0));
+  const nextItem = sorted.find((o) => o.status !== 'done' && o.status !== 'cancelled');
+  const nextOverdue = !!nextItem && temporalBucket(nextItem) === 'overdue';
+  const nextAmount = nextItem ? formatCurrency(nextItem.amount_raw) : null;
+
+  return (
+    <div className="border border-border rounded-lg mb-3 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-surface-alt text-left"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-ink">
+              {labelFor(OBLIGATION_TYPE_LABELS, items[0].obligation_type)}
+            </span>
+            <TextBadge className="bg-primary-soft text-primary">{doneCount}/{total} hoàn thành</TextBadge>
+            {nextOverdue && <TextBadge className="bg-danger-soft text-danger">Có đợt quá hạn</TextBadge>}
+          </div>
+          <div className="mt-2 h-1 rounded-full bg-surface-sunken overflow-hidden max-w-[200px]">
+            <div
+              className={`h-full rounded-full transition-all duration-base ${nextOverdue ? 'bg-danger' : 'bg-primary'}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {nextItem && (
+            <div className="mt-2 text-sm text-ink-muted">
+              Kế tiếp: Đợt {nextItem.milestone_index} — {nextItem.due_date ? new Date(nextItem.due_date).toLocaleDateString('vi-VN') : 'chưa có hạn'}
+              {nextAmount && <span className="text-success font-medium"> · {nextAmount}</span>}
+            </div>
           )}
         </div>
-      </div>
+        <span className="text-sm text-ink-muted shrink-0">{expanded ? 'Thu gọn' : 'Xem chi tiết'}</span>
+      </button>
+      {expanded && (
+        <div>
+          {sorted.map((ob) => (
+            <ObligationRow
+              key={ob.id}
+              ob={ob}
+              checked={selected.has(ob.id)}
+              onCheck={(v) => onCheck(ob.id, v)}
+              onFulfill={onFulfill}
+              onJumpToClause={onJumpToClause}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Self-party gate (blocking prompt when direction=null) ────────────────────
-function SelfPartyGate({
-  parties,
-  selectedRole,
-  onSelect,
-  onConfirm,
-  confirming,
+// ── #472 Q4: "Chờ kích hoạt" row — waiting_trigger, separate from today's work ──
+function WaitingTriggerRow({
+  ob,
+  onJumpToClause,
 }: {
-  parties: { name: string; role_label: string | null }[];
-  selectedRole: string;
-  onSelect: (v: string) => void;
-  onConfirm: () => void;
-  confirming: boolean;
+  ob: ObligationOut;
+  onJumpToClause: (clauseNum: string) => void;
 }) {
+  const amount = formatCurrency(ob.amount_raw);
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mb-6">
-      <div className="flex items-start gap-3">
-        <span className="text-xl" aria-hidden="true">⚠️</span>
-        <div className="flex-1">
-          <div className="text-sm font-semibold text-ink mb-1">
-            Bên nào trong hợp đồng này là bạn?
-          </div>
-          <p className="text-xs text-ink-muted mb-3">
-            Chọn bên bạn đại diện để Khế phân loại nghĩa vụ (phải làm / được hưởng).
-            Chưa chọn → tất cả nghĩa vụ hiển thị "Chưa rõ".
-          </p>
-          <div className="flex gap-2 items-end flex-wrap">
-            <select
-              value={selectedRole}
-              onChange={(e) => onSelect(e.target.value)}
-              className="flex-1 min-w-[180px] px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="">▼ Chọn bên...</option>
-              {parties.map((p, i) => (
-                <option key={i} value={p.role_label || p.name}>
-                  {p.name}{p.role_label ? ` (${p.role_label})` : ''}
-                </option>
-              ))}
-            </select>
-            <Button onClick={onConfirm} loading={confirming} disabled={!selectedRole}>
-              Xác nhận bên
-            </Button>
-          </div>
+    <div className="flex items-start gap-3 px-4 py-3 border-b border-border last:border-0">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-ink">{ob.description}</span>
+        </div>
+        <div className="text-sm text-ink-muted mt-1">
+          Nếu &quot;{ob.trigger_condition || ob.milestone_trigger || '—'}&quot;
+          {ob.trigger_delay_days != null && <span> — trong {ob.trigger_delay_days} ngày</span>}
+        </div>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <CategoryChip obligationType={ob.obligation_type} />
+          {amount && <AmountDisplay raw={ob.amount_raw} />}
+          {ob.obligor && <TextBadge>{ob.obligor}</TextBadge>}
+          <SourceClauseLink clauseNum={ob.source_clause_num} onJump={onJumpToClause} />
         </div>
       </div>
+      <button
+        type="button"
+        disabled
+        title="Chưa hỗ trợ — cần API xác nhận sự kiện kích hoạt (Backend kickoff riêng)"
+        className="border border-border-strong bg-surface text-ink-body px-3 py-1 rounded-md text-2xs font-semibold shrink-0 opacity-50 cursor-not-allowed"
+      >
+        Sự kiện đã xảy ra
+      </button>
     </div>
   );
 }
 
-// ── Self-party confirmed chip ────────────────────────────────────────────────
-function SelfPartyConfirmed({ confirmedAt }: { confirmedAt: string }) {
+// ── #472 Q1: Settings nudge — replaces per-doc SelfPartyGate dropdown ─────────
+function SettingsNudge() {
   return (
-    <div className="flex items-center gap-2 text-xs text-ink-muted mb-4">
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-        ✓ Đã chọn bên
-      </span>
-      <span>{new Date(confirmedAt).toLocaleDateString('vi-VN')}</span>
+    <div className="flex items-center justify-between gap-3 flex-wrap p-4 rounded-lg bg-warning-soft border border-warning/20 mb-4">
+      <div>
+        <div className="text-sm font-semibold text-ink">Chưa xác định được chiều nghĩa vụ</div>
+        <div className="text-xs text-ink-muted mt-0.5">
+          Servanda cần biết tên pháp nhân của bạn để tự phân biệt nghĩa vụ và quyền lợi.
+        </div>
+      </div>
+      <Link
+        to="/admin/settings"
+        className="px-4 py-2 rounded-md text-sm font-semibold text-primary bg-surface border border-border-strong hover:bg-surface-alt"
+      >
+        Sửa pháp nhân trong Cài đặt
+      </Link>
     </div>
   );
 }
 
-// ── Completeness banner ──────────────────────────────────────────────────────
-function CompletenessBanner({ doc }: { doc: DocumentDetailOut }) {
-  const nullDirs = doc.obligations.filter((o) => o.direction === null).length;
-  const confirmed = !!doc.confirmed_by_user_at;
-  const mayHaveMore = (doc as DocumentDetailOut & { may_have_unextracted_obligations?: boolean | null })
-    .may_have_unextracted_obligations;
+// ── #472: collapsible section header ──────────────────────────────────────────
+function SectionHeader({
+  title,
+  subtitle,
+  count,
+  dotClassName,
+  badgeClassName,
+  collapsed,
+  onToggle,
+}: {
+  title: string;
+  subtitle?: string;
+  count?: number;
+  dotClassName?: string;
+  badgeClassName?: string;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={!onToggle}
+      className="w-full flex items-center gap-2 py-3 bg-transparent text-left disabled:cursor-default"
+    >
+      {dotClassName && <span className={`w-2 h-2 rounded-full shrink-0 ${dotClassName}`} />}
+      <span className="text-lg font-semibold text-ink">{title}</span>
+      {count !== undefined && <TextBadge className={badgeClassName}>{count}</TextBadge>}
+      {subtitle && <span className="text-sm text-ink-muted font-normal">{subtitle}</span>}
+      {onToggle && (
+        <span className="ml-auto text-sm text-ink-muted">{collapsed ? 'Mở rộng' : 'Thu gọn'}</span>
+      )}
+    </button>
+  );
+}
 
-  if (confirmed && nullDirs === 0 && !mayHaveMore) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-success font-medium mb-4">
-        <span>✅</span>
-        <span>Nghĩa vụ đầy đủ — Khế đang theo dõi</span>
-      </div>
-    );
-  }
-  if (nullDirs > 0) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-amber-700 mb-4">
-        <span>⚠️</span>
-        <span>{nullDirs} nghĩa vụ chưa rõ hướng — hãy chọn bên để Khế phân loại.</span>
-      </div>
-    );
-  }
-  if (mayHaveMore) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-ink-muted mb-4">
-        <span>ℹ️</span>
-        <span>Có thể còn nghĩa vụ chưa bóc — xem nội dung điều khoản để xác nhận.</span>
-      </div>
-    );
-  }
-  return null;
+// ── #472: temporal sub-header (Quá hạn / Tuần này / Sắp tới) ─────────────────
+function BucketHeader({ bucket, count }: { bucket: 'overdue' | 'this_week' | 'upcoming'; count: number }) {
+  const MAP: Record<string, { label: string; dot: string; text: string }> = {
+    overdue: { label: 'Quá hạn', dot: 'bg-danger', text: 'text-danger' },
+    this_week: { label: 'Tuần này', dot: 'bg-warning', text: 'text-warning' },
+    upcoming: { label: 'Sắp tới', dot: 'bg-info', text: 'text-info' },
+  };
+  const b = MAP[bucket];
+  if (!b || count === 0) return null;
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
+      <span className={`w-1.5 h-1.5 rounded-full ${b.dot}`} />
+      <span className={`text-sm font-semibold ${b.text}`}>{b.label}</span>
+      <span className="text-xs text-ink-muted">{count}</span>
+    </div>
+  );
 }
 
 // ── #373 R10: Cross-ref inline rendering ─────────────────────────────────────
@@ -1052,92 +1269,210 @@ function TabOverview({
   );
 }
 
-// ── Tab: Nghĩa vụ & Quyền lợi ────────────────────────────────────────────────
+// ── Tab: Nghĩa vụ & Quyền lợi (#472 R472 — 3-axis IA: direction × temporal × series) ──
 function TabObligations({
   doc,
-  selectedRole,
-  confirming,
-  onSelectRole,
-  onConfirmSelfParty,
   onFulfill,
+  onBulkComplete,
+  bulkCompleting,
+  onJumpToClause,
 }: {
   doc: DocumentDetailOut;
-  selectedRole: string;
-  confirming: boolean;
-  onSelectRole: (v: string) => void;
-  onConfirmSelfParty: () => void;
   onFulfill: (ob: ObligationOut) => void;
+  onBulkComplete: (ids: number[]) => void;
+  bulkCompleting: boolean;
+  onJumpToClause: (clauseNum: string) => void;
 }) {
-  const hasNullDirection = doc.obligations.some((o) => o.direction === null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showDone, setShowDone] = useState(false);
+  const [showWaiting, setShowWaiting] = useState(true);
+  const [showNull, setShowNull] = useState(true);
 
-  const nghiaVu = doc.obligations.filter(
-    (o) => o.direction === 'nghĩa_vụ' && o.obligation_type !== 'review'
-  );
-  const quyenLoi = doc.obligations.filter(
-    (o) => o.direction === 'quyền_lợi' && o.obligation_type !== 'review'
-  );
-  const chuaRo = doc.obligations.filter((o) => o.direction === null);
-  const reviewObs = doc.obligations.filter((o) => o.obligation_type === 'review');
+  const toggleCheck = (id: number, val: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (val) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
 
   if (doc.obligations.length === 0) {
     return (
       <EmptyState
-        icon="📋"
+        icon=""
         title="Chưa có nghĩa vụ nào"
         description="Tài liệu chưa có nghĩa vụ được bóc tách."
       />
     );
   }
 
+  const obligations = doc.obligations;
+  const nghiaVu = obligations.filter(
+    (o) => o.direction === 'nghĩa_vụ' && o.status !== 'waiting_trigger' && o.status !== 'done' && o.status !== 'cancelled'
+  );
+  const quyenLoi = obligations.filter(
+    (o) => o.direction === 'quyền_lợi' && o.status !== 'waiting_trigger' && o.status !== 'done' && o.status !== 'cancelled'
+  );
+  const waiting = obligations.filter((o) => o.status === 'waiting_trigger');
+  const done = obligations.filter((o) => o.status === 'done' || o.status === 'cancelled');
+  const nullDir = obligations.filter(
+    (o) => o.direction === null && o.status !== 'waiting_trigger' && o.status !== 'done' && o.status !== 'cancelled'
+  );
+
+  const BUCKETS: Array<'overdue' | 'this_week' | 'upcoming'> = ['overdue', 'this_week', 'upcoming'];
+
+  // Series render ONCE, positioned by its next actionable item's temporal bucket
+  // (a 14-installment series can have members across all 3 buckets).
+  function renderDirectionSection(items: ObligationOut[], title: string, subtitle: string) {
+    if (items.length === 0) return null;
+
+    const seriesIds = [...new Set(items.filter((o) => o.milestone_series_id).map((o) => o.milestone_series_id as string))];
+    const standaloneItems = items.filter((o) => !o.milestone_series_id);
+
+    const seriesByBucket: Record<string, string[]> = { overdue: [], this_week: [], upcoming: [] };
+    seriesIds.forEach((sid) => {
+      const allSeriesItems = obligations.filter((o) => o.milestone_series_id === sid);
+      const sorted = [...allSeriesItems].sort((a, b) => (a.milestone_index || 0) - (b.milestone_index || 0));
+      const next = sorted.find((o) => o.status !== 'done' && o.status !== 'cancelled');
+      const bucket = next ? temporalBucket(next) : 'upcoming';
+      seriesByBucket[BUCKETS.includes(bucket as 'overdue' | 'this_week' | 'upcoming') ? bucket : 'upcoming'].push(sid);
+    });
+
+    const standaloneByBucket: Record<string, ObligationOut[]> = {};
+    BUCKETS.forEach((b) => { standaloneByBucket[b] = standaloneItems.filter((o) => temporalBucket(o) === b); });
+
+    return (
+      <div className="mb-6">
+        <SectionHeader title={title} subtitle={subtitle} count={items.length} />
+        <div className="border border-border rounded-lg overflow-hidden">
+          {BUCKETS.map((bk) => {
+            const seriesInBucket = seriesByBucket[bk];
+            const standalone = standaloneByBucket[bk];
+            const visibleCount = seriesInBucket.length + standalone.length;
+            if (visibleCount === 0) return null;
+            return (
+              <div key={bk}>
+                <BucketHeader bucket={bk} count={visibleCount} />
+                {seriesInBucket.map((sid) => (
+                  <div key={sid} className="px-3 py-2">
+                    <SeriesCard
+                      items={obligations.filter((o) => o.milestone_series_id === sid)}
+                      selected={selected}
+                      onCheck={toggleCheck}
+                      onFulfill={onFulfill}
+                      onJumpToClause={onJumpToClause}
+                    />
+                  </div>
+                ))}
+                {standalone.map((ob) => (
+                  <ObligationRow
+                    key={ob.id}
+                    ob={ob}
+                    checked={selected.has(ob.id)}
+                    onCheck={(v) => toggleCheck(ob.id, v)}
+                    onFulfill={onFulfill}
+                    onJumpToClause={onJumpToClause}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <CompletenessBanner doc={doc} />
-
-      {hasNullDirection && doc.parties && doc.parties.length > 0 && (
-        <SelfPartyGate
-          parties={doc.parties}
-          selectedRole={selectedRole}
-          onSelect={onSelectRole}
-          onConfirm={onConfirmSelfParty}
-          confirming={confirming}
-        />
+      {nullDir.length > 0 && (
+        <div className="mb-5">
+          <SettingsNudge />
+          <SectionHeader
+            title="Cần xác nhận chiều"
+            count={nullDir.length}
+            dotClassName="bg-warning"
+            badgeClassName="bg-warning-soft text-warning"
+            collapsed={!showNull}
+            onToggle={() => setShowNull((v) => !v)}
+          />
+          {showNull && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              {nullDir.map((ob) => (
+                <ObligationRow
+                  key={ob.id}
+                  ob={ob}
+                  checked={selected.has(ob.id)}
+                  onCheck={(v) => toggleCheck(ob.id, v)}
+                  onFulfill={onFulfill}
+                  onJumpToClause={onJumpToClause}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
-      {!hasNullDirection && doc.confirmed_by_user_at && (
-        <SelfPartyConfirmed confirmedAt={doc.confirmed_by_user_at} />
+      {renderDirectionSection(nghiaVu, 'Nghĩa vụ của bạn', 'phải làm')}
+      {renderDirectionSection(quyenLoi, 'Quyền lợi của bạn', 'được hưởng')}
+
+      {waiting.length > 0 && (
+        <div className="mb-6">
+          <SectionHeader
+            title="Chờ kích hoạt"
+            subtitle="khi điều kiện xảy ra"
+            count={waiting.length}
+            dotClassName="bg-warning"
+            badgeClassName="bg-warning-soft text-warning"
+            collapsed={!showWaiting}
+            onToggle={() => setShowWaiting((v) => !v)}
+          />
+          {showWaiting && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              {waiting.map((ob) => (
+                <WaitingTriggerRow key={ob.id} ob={ob} onJumpToClause={onJumpToClause} />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
-      {nghiaVu.length > 0 && (
-        <Card title={`Phải làm (${nghiaVu.length})`} className="mb-4">
-          {nghiaVu.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
-          ))}
-        </Card>
+      {done.length > 0 && (
+        <div className="mb-6">
+          <SectionHeader
+            title="Đã hoàn thành"
+            count={done.length}
+            dotClassName="bg-success"
+            badgeClassName="bg-success-soft text-success"
+            collapsed={!showDone}
+            onToggle={() => setShowDone((v) => !v)}
+          />
+          {showDone && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              {done.map((ob) => (
+                <ObligationRow
+                  key={ob.id}
+                  ob={ob}
+                  checked={false}
+                  onCheck={() => {}}
+                  onFulfill={onFulfill}
+                  onJumpToClause={onJumpToClause}
+                  dim
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
-      {quyenLoi.length > 0 && (
-        <Card title={`Được hưởng (${quyenLoi.length})`} className="mb-4">
-          {quyenLoi.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
-          ))}
-        </Card>
-      )}
-
-      {chuaRo.length > 0 && (
-        <Card title={`Chưa rõ hướng (${chuaRo.length})`} className="mb-4">
-          {chuaRo.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
-          ))}
-        </Card>
-      )}
-
-      {reviewObs.length > 0 && (
-        <Card title={`Review / kiểm tra định kỳ (${reviewObs.length})`} className="mb-4">
-          {reviewObs.map((ob) => (
-            <ObligationRow key={ob.id} ob={ob} onFulfill={onFulfill} />
-          ))}
-        </Card>
-      )}
+      <ObligationActionBar
+        count={selected.size}
+        completing={bulkCompleting}
+        onComplete={() => {
+          onBulkComplete([...selected]);
+          setSelected(new Set());
+        }}
+        onCancel={() => setSelected(new Set())}
+      />
     </div>
   );
 }
@@ -1651,9 +1986,9 @@ export default function DocumentDetail() {
   const [editingTermId, setEditingTermId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [saving, setSaving] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string>('');
-  const [confirming, setConfirming] = useState(false);
   const [confirmingDoc, setConfirmingDoc] = useState(false);
+  const [pendingClauseJump, setPendingClauseJump] = useState<string | null>(null);
+  const [bulkCompleting, setBulkCompleting] = useState(false);
   const [clauses, setClauses] = useState<ClauseOut[]>([]);
   const [clausesLoading, setClausesLoading] = useState(false);
   const [clausesLoaded, setClausesLoaded] = useState(false);
@@ -1771,6 +2106,18 @@ export default function DocumentDetail() {
     }
   }, [activeTab, loadClauses, loadDefinitions, loadCrossRefs]);
 
+  // #472: obligation "Điều X" link jumps to clauses tab + scrolls to target
+  // once clauses finish loading (source_clause_num is a clause_num string like
+  // "4.1", not the numeric clause id used in the clause-{id} DOM anchor).
+  useEffect(() => {
+    if (activeTab !== 'clauses' || !pendingClauseJump || !clausesLoaded) return;
+    const match = clauses.find((c) => c.clause_num === pendingClauseJump);
+    if (match) {
+      document.getElementById(`clause-${match.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    setPendingClauseJump(null);
+  }, [activeTab, pendingClauseJump, clausesLoaded, clauses]);
+
   const startEdit = (term: TermOut) => {
     setEditingTermId(term.id);
     setEditValue(term.field_value || '');
@@ -1808,27 +2155,38 @@ export default function DocumentDetail() {
     }
   };
 
-  const confirmSelfParty = async () => {
-    if (!docId || !selectedRole) return;
-    setConfirming(true);
-    setError('');
-    try {
-      const res = await apiFetch<SelfPartyConfirmOut>(
-        `/documents/${docId}/confirm_self_party`,
-        { method: 'POST', body: JSON.stringify({ role_label: selectedRole }) }
-      );
-      showToast(
-        res.updated > 0
-          ? `Đã ghi nhận bên bạn — ${res.updated} nghĩa vụ đã cập nhật hướng.`
-          : 'Đã ghi nhận bên bạn — chưa có nghĩa vụ nào khớp để suy ra hướng.'
-      );
-      setSelectedRole('');
-      await load();
-    } catch (err) {
-      setError((err as ApiError).message || 'Xác nhận thất bại');
-    } finally {
-      setConfirming(false);
+  // #472 Q1: per-doc self-party dropdown removed — direction now fixed via
+  // tenant-level legal_name in Settings (SettingsNudge links there).
+
+  const jumpToClause = (clauseNum: string) => {
+    setActiveTab('clauses');
+    setPendingClauseJump(clauseNum);
+  };
+
+  const bulkCompleteObligations = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    setBulkCompleting(true);
+    const today = new Date().toISOString().slice(0, 10);
+    let okCount = 0;
+    for (const obId of ids) {
+      try {
+        await apiFetch<ObligationPatchOut>(`/obligations/${obId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'done', fulfilled_at: `${today}T00:00:00` }),
+        });
+        okCount += 1;
+      } catch {
+        // continue — report partial success below
+      }
     }
+    setBulkCompleting(false);
+    showToast(
+      okCount === ids.length
+        ? `Đã đánh dấu hoàn thành ${okCount} mục.`
+        : `Hoàn thành ${okCount}/${ids.length} mục — một số mục lỗi.`,
+      okCount === ids.length ? 'success' : 'error'
+    );
+    await load();
   };
 
   const confirmDocument = async () => {
@@ -2176,11 +2534,10 @@ export default function DocumentDetail() {
               )}
               <TabObligations
                 doc={doc}
-                selectedRole={selectedRole}
-                confirming={confirming}
-                onSelectRole={setSelectedRole}
-                onConfirmSelfParty={confirmSelfParty}
                 onFulfill={setFulfillTarget}
+                onBulkComplete={bulkCompleteObligations}
+                bulkCompleting={bulkCompleting}
+                onJumpToClause={jumpToClause}
               />
             </>
           )}

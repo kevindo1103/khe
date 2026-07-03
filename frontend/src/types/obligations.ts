@@ -41,6 +41,8 @@ export interface ObligationOut {
   // Fulfillment fields (Backend #302)
   fulfilled_at: string | null;
   fulfilled_by: string | null;
+  // Clause provenance (#303, #472 — jump-to-clause link)
+  source_clause_num: string | null;
 }
 
 export interface ObligationListOut {
