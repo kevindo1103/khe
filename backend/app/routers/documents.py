@@ -562,7 +562,7 @@ def list_documents(
                 nghia_vu_count=nghia_vu or 0,
                 quyen_loi_count=quyen_loi or 0,
                 direction_null_count=dir_null or 0,
-                may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
+                may_have_unextracted_obligations=doc.may_have_unextracted_obligations,
                 processing_stage=doc.processing_stage,
                 processing_progress=doc.processing_progress,
                 title=doc.title,
@@ -678,6 +678,7 @@ def get_document(
         definition_count=definition_count,
         has_signature=doc.has_signature,
         signature_pages=doc.signature_pages,
+        may_have_unextracted_obligations=doc.may_have_unextracted_obligations,
     )
 
 

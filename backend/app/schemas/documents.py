@@ -122,7 +122,7 @@ class DocumentListItem(BaseModel):
     nghia_vu_count: int = 0
     quyen_loi_count: int = 0
     direction_null_count: int = 0
-    may_have_unextracted_obligations: bool | None = None   # #276 column — NULL until that migration lands
+    may_have_unextracted_obligations: bool | None = None   # #276 honest completeness flag; NULL until verifier runs
     # R1 (#363): contract title/number — null for pre-migration docs (FE falls back to file_name)
     title: str | None = None
     contract_number: str | None = None
@@ -193,6 +193,8 @@ class DocumentDetailOut(BaseModel):
     # R5 (#368): signature detection — null for pre-migration docs
     has_signature: bool | None = None
     signature_pages: list[int] | None = None
+    # #276 honest completeness flag — null until verifier runs, True/False set by fast-follow CompletenessVerifier
+    may_have_unextracted_obligations: bool | None = None
     model_config = ConfigDict(from_attributes=True)
 
     _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
