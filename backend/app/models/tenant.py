@@ -104,7 +104,7 @@ class Obligation(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     description = Column(Text, nullable=False)
     recurrence = Column(String, default="once")          # cadence: "once" | "open_ended_review"
-    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "other"
+    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "penalty" | "other"
     direction = Column(String, nullable=True)            # DEC-030: "nghĩa_vụ" | "quyền_lợi" | NULL (needs_review)
     obligor = Column(String, nullable=True)              # DEC-030: role_label from parties[]
     due_date = Column(String, nullable=True)
