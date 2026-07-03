@@ -327,7 +327,7 @@ Kevin ratified v1.1 "Sổ cái" on #467/#469 (2026-07-03) via comment relay (mes
 - Awaiting Kevin review.
 
 ## Issue #481 — Document list v3 on DS v1.1 (rollout gap 3/3) — branch `claude/design-documents-list-v1.1-481`
-QC filed #481: after PR #476 shipped DS v1.1 only for the obligation tab, the other 3 screens felt visually inconsistent. Gap 1+2 (doc-detail Tổng quan + Nội dung hợp đồng tabs) closed by `mockup_document_detail_v4.jsx` / PR #480 (#478, awaiting ratify). This closes **gap 3/3: document list page** (`/admin/documents`).
+QC filed #481: after PR #476 shipped DS v1.1 only for the obligation tab, the other 3 screens felt visually inconsistent. Gap 1+2 (doc-detail Tổng quan + Nội dung hợp đồng tabs) closed by `mockup_document_detail_v4.jsx` — **PR #480 MERGED** (QC re-verified all 3 fixes correct, approved as-is). This closes **gap 3/3: document list page** (`/admin/documents`) — **PR #483**.
 - **Delivered:** `mockup_documents_list_v3.jsx` — real import from v1.1 (`tokens, Button, Card, Table, EmptyState`), esbuild-clean, every `t.*` token reference audited against real v1.1 exports (caught + fixed one typo: `t.font.weight.bold` doesn't exist, v1.1 only has regular/medium/semibold — fixed to `semibold`).
 - **Research (Explore agent) against real `DocumentList.tsx` (634 lines) + backend `routers/documents.py`/`schemas/documents.py` + `AdminShell.tsx`.** Findings beyond a naive re-skin:
   - `StatusPill` confirmed ad-hoc (doesn't use the app's own `Badge.tsx` atom) — but `LifecycleBadge.tsx` IS a proper shared atom already (just uses its own unrelated 5-color scheme).
@@ -339,7 +339,8 @@ QC filed #481: after PR #476 shipped DS v1.1 only for the obligation tab, the ot
   - **`LifecycleBadge.tsx` (real, shared) also uses `bg-success-soft`** — extends #478's Q1 (ConfidenceMeter/SignatureBadge green conflict with v1.1's no-success-token philosophy) to a 3rd component. Reused v4's exact `LifecycleBadge` local component verbatim for consistency — one open question, one answer, not two mockups disagreeing.
 - **4 open decisions** (all framed as dashed-callout, default-off toggles): Q1-ext (LifecycleBadge success color, tie to #478's Q1), Q-Status-Failed (real bug), Q-CompletenessIcon (dead field, needs #276 first), Q-Width (AdminShell constraint).
 - No pagination proposed (app has none anywhere today, out of scope). Mobile `DocCard` view not rebuilt (unchanged pattern, not what #481 flagged).
-- Awaiting Kevin review.
+- **QC review (PR #483) — 1 finding, fixed:** `fixFailedState` toggle recolored `StatusPill` but didn't propagate to the "Cần xác nhận" filter chip count or actual filter results (`FilterBar` never received the prop). Fix: extracted shared `isPendingDoc(doc, fixFailedState)` helper, used by both the count calc and the filter logic — single source of truth, can't drift apart again. QC also independently re-verified all 5 major research claims in this file against real code — all confirmed accurate.
+- Awaiting re-verify.
 
 ## Issue #478 — Doc-detail v4, 3-tab reorg on DS v1.1 — branch `claude/design-doc-detail-v4-478`
 Scope: chỉ 3 tab (Tổng quan / Nội dung hợp đồng / Bên ký kết). Tab Nghĩa vụ & Quyền lợi KHÔNG đụng — đã có #466/#467/#468/#472, tránh 2 nguồn sự thật song song.

@@ -157,6 +157,18 @@ function SignatureBadge({ hasSig, variant }) {
     : <span style={{ fontSize: t.font.size.xs, fontWeight: t.font.weight.medium, padding: `2px ${t.space[2]}px`, borderRadius: t.radius.pill, background: t.color.warning_soft, color: t.color.warning, fontFamily: t.font.family }}>Chưa ký</span>;
 }
 
+/* isPendingDoc — single source of truth for "Cần xác nhận" membership, used
+ * by BOTH the filter-chip count and the actual filter logic below. Kept as
+ * one function (not duplicated inline in two places) specifically so the
+ * fixFailedState toggle can't drift between what StatusPill *shows* and
+ * what the "Cần xác nhận" filter actually *includes* — that drift was a
+ * real QC finding on an earlier version of this file. */
+function isPendingDoc(doc, fixFailedState) {
+  if (doc.status === "processing") return false;
+  if (fixFailedState && doc.status === "failed") return false; // now its own state, not "pending"
+  return !doc.confirmed_by_user_at;
+}
+
 /* StatusPill — 3 real states + optional 4th "failed" state (Q-Status-Failed
  * proposal, opt-in toggle — NOT default, since fixing this is a behavior
  * change beyond a visual re-skin). Default (toggle off) mirrors today's
@@ -267,12 +279,12 @@ const PIPELINE_FILTERS = [
   { key: "needs_review", label: "Cần kiểm tra" },
 ];
 
-function FilterBar({ filter, onFilter, query, onQuery, showPipeline, onTogglePipeline }) {
+function FilterBar({ filter, onFilter, query, onQuery, showPipeline, onTogglePipeline, fixFailedState }) {
   const counts = {
     all: DOCS.length,
     due7: DOCS.filter((d) => d.next_due_date && Math.round((new Date(d.next_due_date) - TODAY) / 86400000) <= 7 && Math.round((new Date(d.next_due_date) - TODAY) / 86400000) >= 0).length,
     overdue: DOCS.filter((d) => d.next_due_date && new Date(d.next_due_date) < TODAY).length,
-    pending: DOCS.filter((d) => !d.confirmed_by_user_at && d.status !== "processing").length,
+    pending: DOCS.filter((d) => isPendingDoc(d, fixFailedState)).length,
     rights: DOCS.filter((d) => (d.quyen_loi_count || 0) > 0).length,
   };
   return (
@@ -317,7 +329,7 @@ export default function DocumentsListV3() {
   }
   if (filter === "due7") filtered = filtered.filter((d) => d.next_due_date && (new Date(d.next_due_date) - TODAY) / 86400000 <= 7 && (new Date(d.next_due_date) - TODAY) / 86400000 >= 0);
   else if (filter === "overdue") filtered = filtered.filter((d) => d.next_due_date && new Date(d.next_due_date) < TODAY);
-  else if (filter === "pending") filtered = filtered.filter((d) => !d.confirmed_by_user_at && d.status !== "processing");
+  else if (filter === "pending") filtered = filtered.filter((d) => isPendingDoc(d, fixFailedState));
   else if (filter === "rights") filtered = filtered.filter((d) => (d.quyen_loi_count || 0) > 0);
   else if (filter === "processing") filtered = filtered.filter((d) => d.status === "processing");
   else if (filter === "extracted") filtered = filtered.filter((d) => d.status === "extracted");
@@ -382,7 +394,7 @@ export default function DocumentsListV3() {
           </label>
         </div>
 
-        <FilterBar filter={filter} onFilter={setFilter} query={query} onQuery={setQuery} showPipeline={showPipeline} onTogglePipeline={() => setShowPipeline(!showPipeline)} />
+        <FilterBar filter={filter} onFilter={setFilter} query={query} onQuery={setQuery} showPipeline={showPipeline} onTogglePipeline={() => setShowPipeline(!showPipeline)} fixFailedState={fixFailedState} />
 
         <div style={{ background: t.color.surface, borderRadius: t.radius.card, border: `1px solid ${t.color.n200}`, boxShadow: t.elevation.e1, padding: t.space[2] }}>
           {rows.length === 0 ? (
@@ -412,7 +424,7 @@ export default function DocumentsListV3() {
           <div style={{ border: `2px dashed ${t.color.warning}`, borderRadius: t.radius.card, padding: t.space[4], background: t.color.warning_soft, marginBottom: t.space[4] }}>
             <div style={{ fontSize: t.font.size.label, fontWeight: t.font.weight.semibold, color: t.color.warning, textTransform: "uppercase", letterSpacing: t.font.tracking.label, marginBottom: t.space[2] }}>Q-Status-Failed — chờ Kevin ratify</div>
             <div style={{ fontSize: t.font.size.sm, color: t.color.ink, lineHeight: t.font.lineHeight.relaxed }}>
-              <code>StatusPill</code> (DocumentList.tsx:137-158) không phân biệt <code>status==="failed"</code> — tài liệu lỗi trích xuất hiện nhầm thành "Cần xác nhận" (vì <code>confirmed_by_user_at</code> cũng null). Đây là bug thật, phát hiện khi research, không nằm trong scope #481 gốc (thuần visual re-skin). Toggle "Sửa StatusPill failed" ở trên demo phương án: badge đỏ riêng "Lỗi trích xuất". Mặc định TẮT — mockup mặc định phản ánh đúng hành vi thật hôm nay (kể cả khi sai), không tự sửa logic production trong 1 PR visual.
+              <code>StatusPill</code> (DocumentList.tsx:137-158) không phân biệt <code>status==="failed"</code> — tài liệu lỗi trích xuất hiện nhầm thành "Cần xác nhận" (vì <code>confirmed_by_user_at</code> cũng null). Đây là bug thật, phát hiện khi research, không nằm trong scope #481 gốc (thuần visual re-skin). Toggle "Sửa StatusPill failed" ở trên demo phương án: badge đỏ riêng "Lỗi trích xuất" — và (QC fix) toggle này giờ propagate đúng vào cả chip đếm "Cần xác nhận" lẫn kết quả lọc thật (dùng chung 1 hàm <code>isPendingDoc()</code>, không tách logic 2 nơi). Mặc định TẮT — mockup mặc định phản ánh đúng hành vi thật hôm nay (kể cả khi sai), không tự sửa logic production trong 1 PR visual.
             </div>
           </div>
 
