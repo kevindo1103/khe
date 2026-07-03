@@ -172,7 +172,9 @@ function CategoryChip({ obligationType }: { obligationType: string }) {
 function AmountDisplay({ raw }: { raw: string | null }) {
   const formatted = formatCurrency(raw);
   if (!formatted) return null;
-  return <TextBadge className="bg-success-soft text-success">{formatted}</TextBadge>;
+  // #485 Q1 (green-creep cleanup): amount is data, not a status — plain text,
+  // no badge, no green.
+  return <span className="text-xs text-ink font-medium">{formatted}</span>;
 }
 
 function SourceClauseLink({
@@ -262,8 +264,9 @@ function SignatureBadge({ hasSig, pages }: { hasSig?: boolean | null; pages?: nu
   if (hasSig == null) return null;
   if (hasSig) {
     const pageText = pages && pages.length > 0 ? `trang ${pages.join(', ')}` : '';
+    // #485 Q1 (green-creep cleanup): "done" state = quiet gray, not celebratory green.
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-soft text-success">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-done-soft text-done">
         Đã ký{pageText && <span className="text-2xs opacity-75"> ({pageText})</span>}
       </span>
     );
@@ -696,8 +699,11 @@ function OrphanRefPanel({
   onResolve: () => void;
   resolving: boolean;
 }) {
+  const [showAll, setShowAll] = useState(false);
   if (orphanRefs.length === 0) return null;
   const clauseMap = new Map(clauses.map((c) => [c.id, c]));
+  const visible = showAll ? orphanRefs : orphanRefs.slice(0, 5);
+  const hasMore = orphanRefs.length > 5;
   return (
     <div className="mb-4 rounded-lg bg-danger-soft border border-danger/30 p-4">
       <div className="flex items-start gap-3">
@@ -706,8 +712,8 @@ function OrphanRefPanel({
           <div className="text-sm font-medium text-ink mb-2">
             {orphanRefs.length} tham chiếu không tìm thấy
           </div>
-          <div className="space-y-1">
-            {orphanRefs.map((ref) => {
+          <div className={`space-y-1 ${!showAll && hasMore ? 'max-h-40 overflow-hidden' : ''}`}>
+            {visible.map((ref) => {
               const srcClause = clauseMap.get(ref.source_clause_id);
               const srcLabel = srcClause
                 ? (srcClause.clause_num && srcClause.title
@@ -723,6 +729,15 @@ function OrphanRefPanel({
               );
             })}
           </div>
+          {hasMore && (
+            <button
+              type="button"
+              className="mt-2 text-2xs text-danger hover:underline"
+              onClick={() => setShowAll((v) => !v)}
+            >
+              {showAll ? 'Thu gọn' : `Xem tất cả (${orphanRefs.length})`}
+            </button>
+          )}
           <button
             type="button"
             className="mt-3 text-2xs text-danger hover:underline disabled:opacity-50"
@@ -1244,7 +1259,7 @@ function TabOverview({
       )}
 
       {doc.contract_term && (
-        <Card className="mb-4 bg-surface-alt border-border">
+        <Card className="mb-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="text-2xs text-ink-muted uppercase tracking-wide font-medium mb-1">
