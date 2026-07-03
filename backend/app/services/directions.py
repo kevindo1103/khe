@@ -19,11 +19,14 @@ match so abbreviated names stored as aliases are treated as self-party identifie
 from __future__ import annotations
 
 import json
+import logging
 import unicodedata
 
 from sqlalchemy.orm import Session
 
 from app.models.tenant import Obligation, Party
+
+logger = logging.getLogger(__name__)
 
 
 def _norm(s: str) -> str:
@@ -41,7 +44,7 @@ def _party_names(p: Party) -> list[str]:
             if isinstance(parsed, list):
                 names.extend(str(a) for a in parsed if a)
         except (ValueError, TypeError):
-            pass
+            logger.warning("Party %d has corrupt aliases JSON — skipping aliases for direction match", p.id)
     return [n for n in names if n]
 
 
