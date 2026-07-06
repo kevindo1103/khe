@@ -57,7 +57,8 @@ def db():
 
 
 def _make_ob(db, due_offset_days=5, status="pending"):
-    doc = Document(tenant_id=TENANT, file_name="s.pdf", file_path="x/y.pdf", status="extracted")
+    doc = Document(tenant_id=TENANT, file_name="s.pdf", file_path="x/y.pdf", status="extracted",
+                   confirmed_by_user_at=datetime.utcnow())
     db.add(doc)
     db.commit()
     db.refresh(doc)

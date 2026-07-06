@@ -114,6 +114,10 @@ class TestM0VerticalSlice:
         assert pay_obs[0]["direction"] == "nghĩa_vụ"
         assert pay_obs[0]["obligor"] == "Bên thuê"
 
+        # ── 3b. Confirm document (required for compute_due_window / _flip_overdue_status)
+        r_confirm = auth_client.post(f"/documents/{doc_id}/confirm")
+        assert r_confirm.status_code == 200
+
         # ── 4. Chat query ─────────────────────────────────────────────────
         monkeypatch.setattr(
             chat_query,
@@ -180,11 +184,13 @@ class TestM0VerticalSlice:
         """Obligation past due → overdue status + still in due window check."""
         from app.services.obligation_engine import derive_obligations
 
+        from datetime import datetime as dt
         doc = Document(
             tenant_id=test_tenant,
             file_name="overdue_smoke.pdf",
             file_path=f"{test_tenant}/overdue.pdf",
             status="extracted",
+            confirmed_by_user_at=dt.utcnow(),
         )
         db.add(doc)
         db.commit()

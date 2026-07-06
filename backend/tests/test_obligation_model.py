@@ -31,6 +31,7 @@ def _make_doc(db, tenant_id, file_name, status="extracted"):
         file_name=file_name,
         file_path=f"{tenant_id}/{file_name}",
         status=status,
+        confirmed_by_user_at=datetime.utcnow(),
     )
     db.add(doc)
     db.commit()
