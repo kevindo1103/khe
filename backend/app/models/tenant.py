@@ -105,7 +105,7 @@ class Obligation(TenantBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(String, nullable=False, index=True)
-    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)   # NULL for manual/rule-pack obligations without a contract (#494)
     description = Column(Text, nullable=False)
     recurrence = Column(String, default="once")          # cadence: "once" | "open_ended_review"
     obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "penalty" | "standing" | "reporting" | "other"
@@ -131,7 +131,9 @@ class Obligation(TenantBase):
     # snooze never mutates status/due_date (D-07: obligation truth unchanged).
     snoozed_until = Column(DateTime, nullable=True)
     # Provenance (#301): how this obligation originated.
-    source = Column(String, nullable=True)             # "ai_extracted" | "user_manual" | "ai_re_derived" | NULL(legacy)
+    source = Column(String, nullable=True)             # "ai_extracted" | "user_manual" | "ai_re_derived" | "rule_pack" | NULL(legacy)
+    # Track 2 (#495): trace rule-pack origin for diff/re-confirm.
+    source_rule_id = Column(String, nullable=True)
     # Fulfillment capture (#302, DEC-048 G2/P3): user-entered completion evidence.
     fulfilled_at = Column(DateTime, nullable=True)     # authoritative completion date (T2)
     fulfilled_by = Column(String, nullable=True)       # username or "operator-for-<username>" (P3)

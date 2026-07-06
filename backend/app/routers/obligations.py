@@ -11,15 +11,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import get_db, get_master_db
 from app.deps import get_current_user
-from app.models.master import TenantUser
+from app.models.master import TenantProfile, TenantUser
 from app.models.tenant import Document, Event, Obligation, OBLIGATION_STATUSES
+from app.services.directions import derive_obligation_direction
 from app.services.obligation_chain import propagate_obligation_done
 from app.schemas.obligations import (
     BulkCompleteIn,
     BulkCompleteItemOut,
     BulkCompleteOut,
+    ObligationCreateIn,
     ObligationListOut,
     ObligationOut,
     ObligationPatchIn,
@@ -98,6 +100,107 @@ def list_obligations(
         page_size=page_size,
         total=total,
     )
+
+
+@router.post("/", response_model=ObligationOut, status_code=status.HTTP_201_CREATED)
+def create_obligation(
+    body: ObligationCreateIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """Create a manual or rule-pack obligation without requiring a parent Document (#494).
+
+    - ``direction`` is required when ``document_id`` is omitted (D-13 party matching
+      only applies to AI-extracted obligations that have a Document).
+    - When ``document_id`` is provided and ``direction`` is omitted, direction is
+      auto-derived from the tenant's legal_name and the document's stored parties.
+    - ``document_id`` is validated for tenant isolation when provided.
+    - Event-triggered obligations with no ``due_date`` start in ``waiting_trigger``.
+    - D-07: an ``obligation_created`` Event is logged in the same transaction.
+    """
+    if body.trigger_obligation_ref is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="trigger_obligation_ref chỉ có hiệu lực trong POST /documents/ (batch)",
+        )
+
+    if body.document_id is None and body.direction is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="direction bắt buộc khi không có document_id",
+        )
+
+    if body.document_id is not None:
+        doc = (
+            db.query(Document)
+            .filter(Document.id == body.document_id, Document.tenant_id == user.tenant_id)
+            .first()
+        )
+        if doc is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document không tồn tại",
+            )
+
+    direction = body.direction
+    if body.document_id is not None and direction is None:
+        profile = (
+            master_db.query(TenantProfile)
+            .filter(TenantProfile.tenant_id == user.tenant_id)
+            .first()
+        )
+        legal_name = profile.legal_name if profile else None
+        direction = derive_obligation_direction(
+            db, user.tenant_id, body.document_id, body.obligor, legal_name
+        )
+
+    initial_status = (
+        "waiting_trigger"
+        if body.milestone_trigger == "event" and not body.due_date
+        else "pending"
+    )
+
+    ob = Obligation(
+        tenant_id=user.tenant_id,
+        document_id=body.document_id,
+        description=body.description,
+        obligation_type=body.obligation_type,
+        direction=direction,
+        due_date=body.due_date,
+        recurrence=body.recurrence,
+        obligor=body.obligor,
+        remind_before_days=body.remind_before_days,
+        source=body.source,
+        source_rule_id=body.source_rule_id,
+        legal_basis=body.legal_basis,
+        milestone_trigger=body.milestone_trigger,
+        trigger_condition=body.trigger_condition,
+        trigger_delay_days=body.trigger_delay_days,
+        status=initial_status,
+    )
+    db.add(ob)
+    db.flush()
+    db.refresh(ob)
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="created",
+        entity_type="obligation",
+        entity_id=ob.id,
+        actor=user.username,
+        payload={
+            "source": body.source,
+            "direction": ob.direction,
+            "milestone_trigger": ob.milestone_trigger,
+            "document_id": ob.document_id,
+            "source_rule_id": ob.source_rule_id,
+        },
+    )
+    db.commit()
+    db.refresh(ob)
+    return ob
 
 
 @router.get("/summary", response_model=ObligationSummaryOut)

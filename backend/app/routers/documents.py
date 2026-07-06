@@ -52,6 +52,7 @@ from app.schemas.documents import (
     DocumentPatchOut,
     EventListOut,
     EventOut,
+    ManualDocumentCreateIn,
     ReDeriveClauseIn,
     ReDeriveClauseOut,
     ReReadDiff,
@@ -67,6 +68,7 @@ from app.schemas.documents import (
     PartyPatchOut,
     SelfPartyIn,
     SelfPartyOut,
+    TermCreateIn,
     TermOut,
     TermPatchIn,
     UploadOut,
@@ -585,6 +587,123 @@ def list_documents(
     )
 
 
+@docs_router.post("/", response_model=DocumentDetailOut, status_code=status.HTTP_201_CREATED)
+def create_manual_document(
+    body: ManualDocumentCreateIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    master_db: Session = Depends(get_master_db),
+):
+    """Create a metadata-only Document (manual contract or virtual rule-pack doc) (#494).
+
+    - No PDF is uploaded; ``file_path`` is empty so the file download endpoint is
+      unavailable for these docs.
+    - Terms and obligations can be seeded in the same request.
+    - Obligations may reference siblings inside the same request via
+      ``trigger_obligation_ref`` (0-based index into ``body.obligations``).
+    - When ``direction`` is omitted for an embedded obligation, it is auto-derived
+      from the tenant's legal_name and the document's stored parties (D-13).
+    - Status starts at ``needs_review`` so the existing ``POST /documents/{id}/confirm``
+      path (D-02) can be reused.
+    - D-07: a ``document_created`` Event is logged in the same transaction.
+    """
+    doc = Document(
+        tenant_id=user.tenant_id,
+        file_name=body.title,
+        file_path="",  # no PDF attached
+        title=body.title,
+        doc_type=body.doc_type,
+        status="needs_review",
+        signing_date=body.sign_date,
+        commencement_date=body.effective_date,
+    )
+    db.add(doc)
+    db.flush()
+
+    if body.counterparty:
+        db.add(Party(
+            tenant_id=user.tenant_id,
+            document_id=doc.id,
+            name=body.counterparty,
+        ))
+
+    for t in body.terms:
+        db.add(Term(
+            tenant_id=user.tenant_id,
+            document_id=doc.id,
+            field_name=t.field_name,
+            field_value=t.field_value,
+            source=t.source,
+        ))
+
+    # Load tenant legal_name once for direction derivation (D-13).
+    profile = (
+        master_db.query(TenantProfile)
+        .filter(TenantProfile.tenant_id == user.tenant_id)
+        .first()
+    )
+    legal_name = profile.legal_name if profile else None
+
+    inserted_obligations: list[Obligation] = []
+    for ob in body.obligations:
+        initial_status = (
+            "waiting_trigger"
+            if ob.milestone_trigger == "event" and not ob.due_date
+            else "pending"
+        )
+        direction = ob.direction
+        if direction is None:
+            direction = directions.derive_obligation_direction(
+                db, user.tenant_id, doc.id, ob.obligor, legal_name
+            )
+        obligation = Obligation(
+            tenant_id=user.tenant_id,
+            document_id=doc.id,
+            description=ob.description,
+            obligation_type=ob.obligation_type,
+            direction=direction,
+            due_date=ob.due_date,
+            recurrence=ob.recurrence,
+            obligor=ob.obligor,
+            remind_before_days=ob.remind_before_days,
+            source=ob.source,
+            source_rule_id=ob.source_rule_id,
+            legal_basis=ob.legal_basis,
+            milestone_trigger=ob.milestone_trigger,
+            trigger_condition=ob.trigger_condition,
+            trigger_delay_days=ob.trigger_delay_days,
+            status=initial_status,
+        )
+        db.add(obligation)
+        inserted_obligations.append(obligation)
+
+    db.flush()  # get real ids for sibling cross-references
+
+    for idx, ob in enumerate(body.obligations):
+        if ob.trigger_obligation_ref is None:
+            continue
+        ref = ob.trigger_obligation_ref
+        if ref < 0 or ref >= len(inserted_obligations) or ref == idx:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="trigger_obligation_ref không hợp lệ",
+            )
+        inserted_obligations[idx].trigger_obligation_id = inserted_obligations[ref].id
+
+    db.add(Event(
+        tenant_id=user.tenant_id,
+        event_type="created",
+        entity_type="document",
+        entity_id=doc.id,
+        actor=user.username,
+        payload=json.dumps({"doc_type": body.doc_type, "title": body.title, "manual": True}),
+    ))
+    db.commit()
+    db.refresh(doc)
+
+    return get_document(doc.id, user, db)
+
+
 # ── Detail (documents) ──
 
 @docs_router.get("/{doc_id}", response_model=DocumentDetailOut)
@@ -669,7 +788,7 @@ def get_document(
         doc_type=doc.doc_type,
         status=doc.status,
         created_at=doc.created_at,
-        file_url=f"/documents/{doc.id}/file",
+        file_url=f"/documents/{doc.id}/file" if doc.file_path else None,
         terms=[TermOut.model_validate(t) for t in terms],
         obligations=[ObligationOut.model_validate(o) for o in obligations],
         clause_count=clause_count,
