@@ -192,14 +192,13 @@ def test_derive_recurrence_open_ended_review_bug5(db):
     assert ob.recurrence == "open_ended_review"
 
 
-def test_derive_d15_fulfilled_not_deleted_bug1(db):
-    """Bug 1: D-15 guard — fulfilled standing obligations must survive re-derive."""
+def test_derive_d15_done_not_deleted_bug1(db):
+    """D-15 guard — 'done' standing obligations must survive re-derive."""
     doc_id = _make_doc(db)
     db.add(Clause(tenant_id=TENANT, document_id=doc_id, clause_num="3",
                    title="Bảo mật thông tin", content="Các bên giữ bí mật tuyệt đối."))
     db.commit()
 
-    # First derive — creates the obligation
     derive_standing_obligations(db, TENANT, doc_id)
     ob = db.query(Obligation).filter(Obligation.document_id == doc_id).first()
     assert ob is not None
@@ -210,13 +209,38 @@ def test_derive_d15_fulfilled_not_deleted_bug1(db):
     ob.fulfilled_by = "testuser"
     db.commit()
 
-    # Re-derive — fulfilled obligation must NOT be deleted
     derive_standing_obligations(db, TENANT, doc_id)
     surviving = db.query(Obligation).filter(
         Obligation.document_id == doc_id,
         Obligation.status == "done",
     ).all()
-    assert len(surviving) == 1, "Fulfilled standing obligation was wiped by re-derive (D-15 violation)"
+    assert len(surviving) == 1, "Done standing obligation was wiped by re-derive (D-15 violation)"
+
+
+def test_derive_d15_cancelled_not_deleted(db):
+    """D-15 guard — 'cancelled' rows have fulfilled_at=NULL (cancel clears it),
+    so the old fulfilled_at IS NULL guard silently resurrected them on re-derive.
+    Must use status.notin_(['done','cancelled']) instead."""
+    doc_id = _make_doc(db)
+    db.add(Clause(tenant_id=TENANT, document_id=doc_id, clause_num="c3",
+                   title="Non-compete clause", content="Party shall not compete."))
+    db.commit()
+
+    derive_standing_obligations(db, TENANT, doc_id)
+    ob = db.query(Obligation).filter(Obligation.document_id == doc_id).first()
+    assert ob is not None
+
+    # Cancel the obligation — cancel path sets fulfilled_at = None explicitly
+    ob.status = "cancelled"
+    ob.fulfilled_at = None
+    db.commit()
+
+    derive_standing_obligations(db, TENANT, doc_id)
+    cancelled = db.query(Obligation).filter(
+        Obligation.document_id == doc_id,
+        Obligation.status == "cancelled",
+    ).all()
+    assert len(cancelled) == 1, "Cancelled standing obligation was resurrected by re-derive (D-15 violation)"
 
 
 def test_derive_skips_no_clauses(db):

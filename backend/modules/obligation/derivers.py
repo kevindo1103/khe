@@ -124,13 +124,15 @@ def derive_standing_obligations(
         return {"created": 0, "skipped": True, "reason": "No clauses found"}
 
     # Idempotency: clear existing standing-derived rows for this doc.
-    # D-15 guard: fulfilled obligations are audit records — never delete them.
+    # D-15 guard: never delete user-terminal rows — 'done' (has fulfilled_at) AND
+    # 'cancelled' (fulfilled_at=NULL per cancel path) are user decisions that must
+    # survive re-derivation. fulfilled_at IS NULL alone misses cancelled rows.
     db.query(Obligation).filter(
         Obligation.tenant_id == tenant_id,
         Obligation.document_id == doc_id,
         Obligation.obligation_type.in_(["standing", "reporting"]),
         Obligation.source == source_label,
-        Obligation.fulfilled_at.is_(None),
+        Obligation.status.notin_(["done", "cancelled"]),
     ).delete(synchronize_session=False)
 
     created = 0
