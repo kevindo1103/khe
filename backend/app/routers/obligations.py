@@ -26,6 +26,7 @@ from app.schemas.obligations import (
     ObligationPatchOut,
     ObligationSummaryOut,
     SnoozeOut,
+    TriggerConfirmIn,
 )
 from app.services import chat_query
 
@@ -358,3 +359,71 @@ def snooze_obligation(
 
     db.commit()
     return SnoozeOut(ok=True, snoozed_until=snoozed_until)
+
+
+@router.post("/{obligation_id}/confirm-trigger", response_model=ObligationOut)
+def confirm_trigger(
+    obligation_id: int,
+    body: TriggerConfirmIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Confirm that a trigger event has occurred for a waiting_trigger obligation (#501).
+
+    Transitions status waiting_trigger → pending and computes due_date from
+    event_date + trigger_delay_days. If trigger_obligation_id is set, the
+    prerequisite obligation must already be done (prevents confirming an event
+    that hasn't happened yet). D-07 Event logged.
+    """
+    ob = (
+        db.query(Obligation)
+        .filter(Obligation.id == obligation_id, Obligation.tenant_id == user.tenant_id)
+        .first()
+    )
+    if ob is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obligation not found")
+    if ob.status != "waiting_trigger":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Obligation is not in waiting_trigger state (current: {ob.status})",
+        )
+
+    # If linked to a prerequisite obligation, verify it is done first.
+    if ob.trigger_obligation_id:
+        prereq = (
+            db.query(Obligation)
+            .filter(
+                Obligation.id == ob.trigger_obligation_id,
+                Obligation.tenant_id == user.tenant_id,
+            )
+            .first()
+        )
+        if prereq is None or prereq.status != "done":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Prerequisite obligation is not done — cannot confirm trigger event",
+            )
+
+    event_date = body.event_date or date.today()
+    delay = ob.trigger_delay_days or 0
+    ob.due_date = (event_date + timedelta(days=delay)).isoformat()
+    ob.status = "pending"
+    db.commit()
+    db.refresh(ob)
+
+    _log_event(
+        db,
+        user.tenant_id,
+        event_type="trigger_confirmed",
+        entity_type="obligation",
+        entity_id=ob.id,
+        actor=user.username,
+        payload={
+            "event_date": str(event_date),
+            "due_date": ob.due_date,
+            "confirmed_by": user.username,
+        },
+    )
+    db.commit()
+
+    return ObligationOut.model_validate(ob)
