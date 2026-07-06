@@ -1,5 +1,5 @@
 """Pydantic schemas for Obligation endpoints (#26 PR-A)."""
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 import json
@@ -82,6 +82,10 @@ class ObligationPatchOut(BaseModel):
     ok: bool
     obligation: ObligationOut
     activated_count: int = 0
+
+
+class TriggerConfirmIn(BaseModel):
+    event_date: date | None = None   # defaults to today if omitted
 
 
 # ── Bulk complete (#471) ──
