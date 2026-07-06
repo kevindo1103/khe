@@ -73,20 +73,28 @@ async def send_obligation_reminder(
     description: str,
     due_date: str | None,
     chat_id: str | None,
+    message_text: str | None = None,
 ) -> bool:
     """Send a single obligation reminder via Telegram.
 
     Returns True if sent, False if delivery failed after retries.
     Returns True when chat_id is None so the caller can count it as skipped.
     Exceptions are never raised.
+
+    ``message_text`` overrides the default message — used by direction-aware
+    reminder templates (#275). When omitted, the legacy generic message is built
+    from ``description`` and ``due_date``.
     """
     if not chat_id:
         logger.info("No chat_id for tenant %s; skipping reminder %s", tenant_id, obligation_id)
         return True
 
-    text = f"📅 *Nhắc nhở hợp đồng*\n\n{description}"
-    if due_date:
-        text += f"\n📆 Hạn: {due_date}"
+    if message_text is not None:
+        text = message_text
+    else:
+        text = f"📅 *Nhắc nhở hợp đồng*\n\n{description}"
+        if due_date:
+            text += f"\n📆 Hạn: {due_date}"
 
     last_exc: Exception | None = None
     for attempt in range(3):

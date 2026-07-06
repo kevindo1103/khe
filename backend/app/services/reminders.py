@@ -15,7 +15,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.tenant import Document, Event, Obligation
+from app.models.tenant import Document, Event, Obligation, Party
 from app.services.consent import check_consent, get_active_consent_channel
 from app.services.telegram import send_admin_alert, send_obligation_reminder
 
@@ -28,6 +28,10 @@ _MAX_RETRY_ATTEMPTS = 5
 # Backfill: re-attempt reminders whose first failure was at most this many days
 # ago. Older than this → drop (D-08 spirit: a reminder 3 days late is noise).
 _BACKFILL_MAX_AGE_DAYS = 1
+
+# Direction-aware reminder windows (#275).
+# quyền_lợi reminders fire AT the due date, then re-fire at +7 and +30 days.
+_QUYEN_LOI_REFIRE_DAYS = (7, 30)
 
 
 def _today() -> date:
@@ -55,6 +59,7 @@ def _log_reminder_sent(
     obligation_id: int,
     channel: str,
     channel_target_ref: str,
+    created_at: datetime | None = None,
 ) -> None:
     event = Event(
         tenant_id=tenant_id,
@@ -66,6 +71,7 @@ def _log_reminder_sent(
         channel=channel,
         channel_target_ref=channel_target_ref,
         payload=json.dumps({"success": True}),
+        created_at=created_at or datetime.utcnow(),
     )
     db.add(event)
     db.commit()
@@ -145,6 +151,129 @@ def _failure_events(db: Session, tenant_id: str, obligation_id: int) -> list[Eve
         .order_by(Event.created_at.asc())
         .all()
     )
+
+
+def _reminder_sent_on_date(
+    db: Session, obligation_id: int, on_date: date
+) -> bool:
+    """True if a reminder_sent Event already exists for this obligation today."""
+    # Event.created_at stores UTC datetime; we compare calendar dates.
+    events = (
+        db.query(Event)
+        .filter(
+            Event.entity_type == "obligation",
+            Event.entity_id == obligation_id,
+            Event.event_type == "reminder_sent",
+        )
+        .all()
+    )
+    return any(
+        (ev.created_at or datetime.utcnow()).date() == on_date for ev in events
+    )
+
+
+def _count_refires(db: Session, obligation_id: int, due_date: str) -> int:
+    """Count reminder_sent events with timestamp strictly after the due_date."""
+    try:
+        due = date.fromisoformat(due_date)
+    except (ValueError, TypeError):
+        return 0
+    events = (
+        db.query(Event)
+        .filter(
+            Event.entity_type == "obligation",
+            Event.entity_id == obligation_id,
+            Event.event_type == "reminder_sent",
+        )
+        .all()
+    )
+    return sum(
+        1
+        for ev in events
+        if (ev.created_at or datetime.utcnow()).date() > due
+    )
+
+
+def _party_name(db: Session, ob: Obligation) -> str | None:
+    """Best-effort counterparty name for quyền_lợi reminder templates.
+
+    1. ``obligation.obligor`` if set.
+    2. A non-self Party on the same document.
+    3. ``None`` (template omits the contact line).
+    """
+    if ob.obligor:
+        return ob.obligor
+    if ob.document_id is None:
+        return None
+    party = (
+        db.query(Party)
+        .filter(
+            Party.tenant_id == ob.tenant_id,
+            Party.document_id == ob.document_id,
+            Party.is_self.is_(False),
+        )
+        .first()
+    )
+    return party.name if party else None
+
+
+def _doc_title(db: Session, ob: Obligation) -> str | None:
+    """Return document title or file_name, or None for doc-less obligations."""
+    if ob.document_id is None:
+        return None
+    doc = (
+        db.query(Document)
+        .filter(Document.tenant_id == ob.tenant_id, Document.id == ob.document_id)
+        .first()
+    )
+    if doc is None:
+        return None
+    return doc.title or doc.file_name
+
+
+def _build_reminder_message(
+    db: Session, ob: Obligation, party_name: str | None, refire_n: int, today: date
+) -> str:
+    """Build one of the four direction-aware Telegram reminder templates (#275)."""
+    doc_title = _doc_title(db, ob)
+    due_date = ob.due_date or ""
+
+    if ob.direction == "nghĩa_vụ":
+        lines = [f"📋 Nhắc việc: {ob.description}", f"⏰ Hạn chót: {due_date}"]
+        if doc_title:
+            lines.append(f"📄 HĐ: {doc_title}")
+        return "\n".join(lines)
+
+    if ob.direction == "quyền_lợi":
+        if refire_n == 0:
+            lines = [f"💰 Đến hạn nhận: {ob.description}", f"📅 Ngày nhận: {due_date}"]
+            if doc_title:
+                lines.append(f"📄 HĐ: {doc_title}")
+            if party_name:
+                lines.append(f"→ Đã nhận chưa? Nếu chưa, liên hệ {party_name}.")
+            return "\n".join(lines)
+
+        # Post-due re-fire template.
+        try:
+            due = date.fromisoformat(due_date)
+            days_past = (today - due).days
+        except (ValueError, TypeError):
+            days_past = 0
+        lines = [
+            f"⚠️ Chưa xác nhận đã nhận: {ob.description}",
+            f"📅 Hạn đã qua: {due_date} ({days_past} ngày trước)",
+        ]
+        if doc_title:
+            lines.append(f"📄 HĐ: {doc_title}")
+        if party_name:
+            lines.append(f"→ Liên hệ {party_name} nếu chưa nhận.")
+        return "\n".join(lines)
+
+    # NULL direction — conservative fallback.
+    lines = [f"📋 Nhắc việc: {ob.description}", f"⏰ Ngày: {due_date}"]
+    if doc_title:
+        lines.append(f"📄 HĐ: {doc_title}")
+    return "\n".join(lines)
 
 
 async def retry_failed_reminders_for_tenant(
@@ -332,9 +461,20 @@ def _flip_overdue_status(
             ob_date = date.fromisoformat(ob.due_date)
         except ValueError:
             continue
-        if ob_date < today:
-            ob.status = "overdue"
-            flipped += 1
+        if ob_date >= today:
+            continue
+
+        if ob.direction == "quyền_lợi":
+            # #275: quyền_lợi obligations stay pending until the re-fire sequence
+            # completes (max 2 re-fires at +7 and +30 days). After the 2nd re-fire
+            # or after day 30, flip to overdue.
+            days_past = (today - ob_date).days
+            refire_count = _count_refires(db, ob.id, ob.due_date)
+            if refire_count < 2 and days_past <= 30:
+                continue
+
+        ob.status = "overdue"
+        flipped += 1
 
     if flipped:
         db.commit()
@@ -346,7 +486,13 @@ def compute_due_window(
     tenant_id: str,
     reference_date: date | None = None,
 ) -> list[Obligation]:
-    """Return pending obligations whose due_date falls within remind_before_days.
+    """Return pending obligations whose due_date falls within the reminder window.
+
+    Direction-aware (#275):
+    - ``nghĩa_vụ`` / ``NULL`` → window is [today, today + remind_before_days]
+      (pre-due, conservative fallback).
+    - ``quyền_lợi`` → fire AT the due date, then re-fire at +7 and +30 days
+      while still pending (max 2 re-fires).
 
     Does NOT mutate status. Call _flip_overdue_status separately.
     """
@@ -388,9 +534,23 @@ def compute_due_window(
         except ValueError:
             continue
 
-        window_start = today
+        if ob.direction == "quyền_lợi":
+            # #275: quyền_lợi = chase counterparty AT the due date (not before).
+            if ob_date == today:
+                result.append(ob)
+                continue
+            # Re-fires for pending quyền_lợi obligations that are still past due.
+            if ob_date < today:
+                days_past = (today - ob_date).days
+                if days_past in _QUYEN_LOI_REFIRE_DAYS:
+                    refire_count = _count_refires(db, ob.id, ob.due_date)
+                    if refire_count < 2:
+                        result.append(ob)
+            continue
+
+        # nghĩa_vụ / NULL → conservative pre-due window (no regression).
         window_end = today + timedelta(days=ob.remind_before_days)
-        if window_start <= ob_date <= window_end:
+        if today <= ob_date <= window_end:
             result.append(ob)
 
     return result
@@ -423,6 +583,7 @@ async def send_reminders_for_tenant(
         else (settings.TELEGRAM_CHAT_ID if settings.ENVIRONMENT == "development" else None)
     )
 
+    today = reference_date or _today()
     overdue_flipped = _flip_overdue_status(db, tenant_id, reference_date)
     due_obs = compute_due_window(db, tenant_id, reference_date)
     attempted = 0
@@ -432,13 +593,33 @@ async def send_reminders_for_tenant(
     skipped_no_destination = 0
 
     for ob in due_obs:
-        if _reminder_already_sent(db, ob.id):
-            skipped += 1
-            continue
+        if ob.direction == "quyền_lợi":
+            # quyền_lợi has multiple touch points (initial + 2 re-fires). Guard
+            # against duplicate sends on the same calendar day only.
+            if _reminder_sent_on_date(db, ob.id, today):
+                skipped += 1
+                continue
+        else:
+            # nghĩa_vụ / NULL → one reminder per obligation (existing idempotency).
+            if _reminder_already_sent(db, ob.id):
+                skipped += 1
+                continue
 
         if not chat_id:
             skipped_no_destination += 1
             continue
+
+        # quyền_lợi post-due sends are re-fires #1 or #2.
+        refire_n = 0
+        if ob.direction == "quyền_lợi" and ob.due_date is not None:
+            try:
+                if date.fromisoformat(ob.due_date) < today:
+                    refire_n = _count_refires(db, ob.id, ob.due_date) + 1
+            except ValueError:
+                pass
+
+        party_name = _party_name(db, ob) if ob.direction == "quyền_lợi" else None
+        message_text = _build_reminder_message(db, ob, party_name, refire_n, today)
 
         attempted += 1
         success = False
@@ -449,12 +630,19 @@ async def send_reminders_for_tenant(
                 ob.description,
                 ob.due_date,
                 chat_id,
+                message_text=message_text,
             )
         except Exception as exc:
             logger.exception("Unexpected error sending reminder for obligation %s: %s", ob.id, exc)
 
         if success:
-            _log_reminder_sent(db, tenant_id, ob.id, channel or "telegram", chat_id)
+            # After the 2nd quyền_lợi re-fire, mark the obligation overdue.
+            if ob.direction == "quyền_lợi" and refire_n == 2:
+                ob.status = "overdue"
+            # Stamp the ledger with the reference calendar date so tests and
+            # re-fire counters stay consistent with the reference_date used today.
+            sent_at = datetime.combine(today, datetime.utcnow().time())
+            _log_reminder_sent(db, tenant_id, ob.id, channel or "telegram", chat_id, created_at=sent_at)
             sent += 1
         else:
             _log_reminder_failed(db, tenant_id, ob.id, channel or "telegram", chat_id, "delivery_failed")
