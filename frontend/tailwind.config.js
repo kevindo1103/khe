@@ -86,6 +86,7 @@ export default {
       },
       fontFamily: {
         sans: ["'Inter'", "'Be Vietnam Pro'", 'system-ui', '-apple-system', 'sans-serif'],
+        serif: ["'Source Serif 4'", 'Georgia', "'Times New Roman'", 'serif'],
       },
       fontSize: {
         '2xs': ['12px', { lineHeight: '1.5' }],

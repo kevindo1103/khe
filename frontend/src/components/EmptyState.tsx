@@ -10,7 +10,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({
-  icon = '📭',
+  icon,
   title,
   description,
   action,
@@ -23,10 +23,11 @@ export function EmptyState({
   const d = notFound
     ? 'Khế chỉ trả lời từ tài liệu bạn đã tải lên — không phỏng đoán. Hãy thử hỏi cách khác hoặc tải thêm tài liệu.'
     : description;
+  const displayIcon = notFound ? '🔍' : icon;
 
   return (
     <div className={`text-center px-5 py-10 text-ink-muted ${className}`}>
-      <div className="text-4xl mb-3">{notFound ? '🔍' : icon}</div>
+      {displayIcon && <div className="text-4xl mb-3" aria-hidden="true">{displayIcon}</div>}
       {t && (
         <div className="text-lg font-semibold text-ink mb-2">{t}</div>
       )}

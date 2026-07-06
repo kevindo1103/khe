@@ -656,7 +656,6 @@ function renderClauseContent(
               title={`Tham chiếu không tìm thấy: ${seg.ref.ref_text}`}
             >
               {seg.text}
-              <span className="text-xs ml-0.5" aria-hidden="true">⚠</span>
             </span>
           );
         }
@@ -713,7 +712,6 @@ function OrphanRefPanel({
   return (
     <div className="mb-4 rounded-lg bg-danger-soft border border-danger/30 p-4">
       <div className="flex items-start gap-3">
-        <span className="text-danger text-lg shrink-0" aria-hidden="true">⚠</span>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-ink mb-2">
             {orphanRefs.length} tham chiếu không tìm thấy
@@ -790,7 +788,7 @@ function ClauseContent({
   const hasTable = content.includes('|') && MD_TABLE_SEP.test(content);
   if (hasTable) {
     return (
-      <div className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+      <div className="text-sm text-ink leading-relaxed whitespace-pre-wrap font-serif">
         <ReactMarkdown
           remarkPlugins={REMARK_PLUGINS}
           rehypePlugins={REHYPE_PLUGINS}
@@ -804,13 +802,13 @@ function ClauseContent({
   const clauseRefs = crossRefs ?? [];
   if (clauseRefs.length > 0) {
     return (
-      <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">
+      <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap font-serif">
         {renderClauseContent(content, clauseRefs, onNavigateDoc)}
       </p>
     );
   }
   return (
-    <p className="text-sm text-ink-muted leading-relaxed whitespace-pre-wrap">{content}</p>
+    <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap font-serif">{content}</p>
   );
 }
 
@@ -939,7 +937,7 @@ function ClauseItem({
                   className="text-2xs text-ink-muted hover:text-primary ml-auto"
                   onClick={startEdit}
                 >
-                  ✎ Sửa nội dung
+                  Sửa nội dung
                 </button>
               </div>
             </div>
@@ -955,7 +953,6 @@ function ReReadBanner({ onReRead, reReading }: { onReRead: () => void; reReading
   return (
     <div className="flex items-center justify-between gap-3 p-3 mb-4 rounded-lg bg-primary/5 border border-primary/20 text-sm">
       <div className="flex items-center gap-2">
-        <span>🔄</span>
         <span className="text-ink">
           Bạn đã sửa điều khoản — Khế có thể bóc lại nghĩa vụ từ nội dung mới.
         </span>
@@ -970,12 +967,11 @@ function ReReadBanner({ onReRead, reReading }: { onReRead: () => void; reReading
 // ── Phase 3: Stale-edit warning on obligations tab ───────────────────────────
 function StaleEditBanner({ onGoToClauses }: { onGoToClauses: () => void }) {
   return (
-    <div className="flex items-center gap-3 p-3 mb-4 rounded-lg bg-amber-50 border border-amber-200 text-sm">
-      <span>⚠️</span>
-      <span className="text-amber-700 flex-1">
+    <div className="flex items-center gap-3 p-3 mb-4 rounded-lg bg-warning-soft border border-warning-border text-sm">
+      <span className="text-warning flex-1">
         Có điều khoản đã sửa — nghĩa vụ có thể chưa phản ánh nội dung mới.
       </span>
-      <button className="text-2xs text-amber-700 underline" onClick={onGoToClauses}>
+      <button className="text-2xs text-warning underline" onClick={onGoToClauses}>
         Xem điều khoản →
       </button>
     </div>
@@ -1024,7 +1020,7 @@ function DiffConfirmModal({
 
   const actionLabel = (action: string) => {
     if (action === 'add') return '+ Thêm mới';
-    if (action === 'update') return '✏ Cập nhật';
+    if (action === 'update') return 'Cập nhật';
     if (action === 'remove') return '− Xóa';
     return action;
   };
@@ -1060,18 +1056,18 @@ function DiffConfirmModal({
                 <div
                   key={`remove-${id}`}
                   className={`p-3 rounded-lg border mb-2 transition-colors ${
-                    selected ? 'border-red-200 bg-red-50' : 'border-border bg-surface-muted'
+                    selected ? 'border-danger/30 bg-danger-soft' : 'border-border bg-surface-muted'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-xs font-medium text-red-600">
+                        <span className="text-xs font-medium text-danger">
                           {actionLabel(diff.action)}
                         </span>
                         {diff.protected && (
-                          <span className="text-2xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
-                            🔒 Thủ công
+                          <span className="text-2xs px-1.5 py-0.5 rounded bg-warning-soft text-warning font-medium">
+                            Thủ công
                           </span>
                         )}
                         {diff.source_clause_num && (
@@ -1093,18 +1089,18 @@ function DiffConfirmModal({
                       <button
                         className={`flex-shrink-0 text-xs px-2 py-1 rounded border transition-colors ${
                           selected
-                            ? 'border-red-300 text-red-600 bg-red-50'
+                            ? 'border-danger/30 text-danger bg-danger-soft'
                             : 'border-border text-ink-muted'
                         }`}
                         onClick={() => toggleCancel(id)}
                         disabled={submitting}
                       >
-                        {selected ? 'Hủy ✓' : 'Giữ lại'}
+                        {selected ? 'Hủy' : 'Giữ lại'}
                       </button>
                     )}
                     {diff.protected && (
                       <span className="flex-shrink-0 text-xs px-2 py-1 text-ink-muted">
-                        Giữ của bạn ✓
+                        Giữ của bạn
                       </span>
                     )}
                   </div>
@@ -1136,9 +1132,9 @@ function DiffConfirmModal({
                 )}
                 {diff.old_value && diff.new_value && (
                   <div className="mt-1 flex gap-2 text-2xs flex-wrap">
-                    <span className="text-red-500 line-through">{diff.old_value}</span>
+                    <span className="text-danger line-through">{diff.old_value}</span>
                     <span>→</span>
-                    <span className="text-green-600">{diff.new_value}</span>
+                    <span className="text-done">{diff.new_value}</span>
                   </div>
                 )}
               </div>
@@ -1187,7 +1183,7 @@ function TabOverview({
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium text-ink-muted uppercase">
+          <span className="text-sm font-semibold text-ink">
             {labelFor(FIELD_LABELS, term.field_name)}
           </span>
           {term.needs_review && <Badge kind="needs_review">Cần kiểm tra</Badge>}
@@ -1281,7 +1277,6 @@ function TabOverview({
       {doc.terms.length === 0 ? (
         <Card title="Thông tin trích xuất">
           <EmptyState
-            icon="📭"
             title="Chưa có thông tin"
             description="Tài liệu đang được xử lý. Quay lại sau vài phút."
           />
@@ -1336,7 +1331,6 @@ function TabObligations({
   if (doc.obligations.length === 0) {
     return (
       <EmptyState
-        icon=""
         title="Chưa có nghĩa vụ nào"
         description="Tài liệu chưa có nghĩa vụ được bóc tách."
       />
@@ -1596,11 +1590,13 @@ function ClauseTreeItem({
   const displayContent = showOriginal && node.original_content ? node.original_content : node.content;
   const nodeRefs = (crossRefs ?? []).filter((r) => r.source_clause_id === node.id);
 
+  const itemCls = 'border-b border-border last:border-0';
+
   return (
-    <div id={`clause-${node.id}`} className={depth > 0 ? 'border-l border-border ml-3' : ''}>
+    <div id={`clause-${node.id}`} className={itemCls}>
       <div style={{ paddingLeft: depth * 24 }}>
         <button
-          className="w-full flex items-center justify-between py-2 px-1 text-left gap-2 hover:bg-surface-alt transition-colors"
+          className="w-full flex items-center justify-between py-3 px-4 text-left gap-2 hover:bg-surface-alt transition-colors"
           onClick={() => !editing && setExpanded((v) => !v)}
           aria-expanded={expanded}
         >
@@ -1627,7 +1623,7 @@ function ClauseTreeItem({
         </button>
 
         {expanded && !isStub && (
-          <div className="pb-2 px-1">
+          <div className="pb-3 px-4">
             {editing ? (
               <div className="flex flex-col gap-2">
                 <textarea
@@ -1663,7 +1659,7 @@ function ClauseTreeItem({
                     className="text-2xs text-ink-muted hover:text-primary ml-auto"
                     onClick={startEdit}
                   >
-                    ✎ Sửa nội dung
+                    Sửa nội dung
                   </button>
                 </div>
               </div>
@@ -1781,7 +1777,7 @@ function DefinitionRow({
                   className="text-2xs text-ink-muted hover:text-primary ml-auto"
                   onClick={startEdit}
                 >
-                  ✎ Sửa định nghĩa
+                  Sửa định nghĩa
                 </button>
               </div>
             </div>
@@ -1872,7 +1868,6 @@ function TabClauses({
   if (error) {
     return (
       <EmptyState
-        icon="⚠️"
         title="Không tải được điều khoản"
         description="Đã xảy ra lỗi khi tải nội dung điều khoản."
         action={<Button size="sm" variant="ghost" onClick={onRetry}>Thử lại</Button>}
@@ -1882,7 +1877,6 @@ function TabClauses({
   if (clauses.length === 0) {
     return (
       <EmptyState
-        icon="📄"
         title="Chưa có nội dung điều khoản"
         description="Tài liệu này chưa được bóc tách nội dung điều khoản."
       />
@@ -1902,7 +1896,7 @@ function TabClauses({
         />
         <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
         <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
-        <Card>
+        <Card className="p-0">
           {roots.map((root) => (
             <ClauseTreeItem
               key={root.id}
@@ -1988,7 +1982,6 @@ function TabParties({ parties }: { parties?: PartyOut[] }) {
   if (!parties || parties.length === 0) {
     return (
       <EmptyState
-        icon="🤝"
         title="Chưa có dữ liệu bên ký kết"
         description="Bên ký kết sẽ xuất hiện sau khi tài liệu được bóc tách."
       />
@@ -2185,7 +2178,7 @@ export default function DocumentDetail() {
             }
           : prev
       );
-      showToast('Đã cập nhật — ghi Event ✓');
+      showToast('Đã cập nhật — ghi Event');
       setEditingTermId(null);
     } catch (err) {
       setError((err as ApiError).message || 'Lưu thất bại');
@@ -2238,8 +2231,8 @@ export default function DocumentDetail() {
       });
       showToast(
         res.journey_advanced
-          ? 'Đã xác nhận tài liệu ✓ — hoàn tất kiểm tra, đã mở khoá đầy đủ.'
-          : `Đã xác nhận tài liệu ✓${res.directions_recomputed > 0 ? ` — ${res.directions_recomputed} nghĩa vụ cập nhật hướng` : ''}`
+          ? 'Đã xác nhận tài liệu — hoàn tất kiểm tra, đã mở khoá đầy đủ.'
+          : `Đã xác nhận tài liệu${res.directions_recomputed > 0 ? ` — ${res.directions_recomputed} nghĩa vụ cập nhật hướng` : ''}`
       );
       await load();
       if (res.journey_advanced) await refetchJourney();
@@ -2269,7 +2262,7 @@ export default function DocumentDetail() {
       const chainMsg = res.activated_count > 0
         ? ` · ${res.activated_count} nghĩa vụ tiếp theo đã kích hoạt`
         : '';
-      showToast(`Đã đánh dấu hoàn thành ✓${chainMsg}`);
+      showToast(`Đã đánh dấu hoàn thành${chainMsg}`);
       await load();
     } catch (err) {
       showToast((err as ApiError).message || 'Đánh dấu hoàn thành thất bại', 'error');
@@ -2281,7 +2274,7 @@ export default function DocumentDetail() {
   const saveClause = useCallback(
     (updated: ClauseOut) => {
       setClauses((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-      showToast('Đã sửa điều khoản ✓ — D-07 ghi nhận.');
+      showToast('Đã sửa điều khoản — D-07 ghi nhận.');
     },
     []
   );
@@ -2289,7 +2282,7 @@ export default function DocumentDetail() {
   const saveDefinition = useCallback(
     (updated: DefinitionOut) => {
       setDefinitions((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
-      showToast('Đã sửa định nghĩa ✓ — D-07 ghi nhận.');
+      showToast('Đã sửa định nghĩa — D-07 ghi nhận.');
     },
     []
   );
@@ -2331,7 +2324,7 @@ export default function DocumentDetail() {
         setReReadDiffs(null);
         const msg =
           toCancel.length > 0
-            ? `Đã hủy ${toCancel.length} nghĩa vụ theo nội dung mới ✓`
+            ? `Đã hủy ${toCancel.length} nghĩa vụ theo nội dung mới`
             : 'Đã đóng — không áp dụng thay đổi.';
         showToast(msg);
         await load();
@@ -2432,7 +2425,7 @@ export default function DocumentDetail() {
   }
 
   if (error && !doc) {
-    return <EmptyState icon="⚠️" title="Không tìm thấy tài liệu" description={error} />;
+    return <EmptyState title="Không tìm thấy tài liệu" description={error} />;
   }
 
   return (
@@ -2486,7 +2479,7 @@ export default function DocumentDetail() {
                   rel="noopener noreferrer"
                   className="text-sm text-primary hover:underline flex-shrink-0"
                 >
-                  📥 Tải bản gốc
+                  Tải bản gốc
                 </a>
               )}
             </div>
@@ -2502,7 +2495,6 @@ export default function DocumentDetail() {
             <Card className="mb-4 border-warning-border bg-warning-soft" testId="doc-unconfirmed-warning">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex items-start gap-3">
-                  <span className="text-xl" aria-hidden="true">⚠️</span>
                   <div>
                     <div className="text-sm font-medium text-ink">
                       Khế chưa nhắc nội dung tài liệu này vì bạn chưa xác nhận.
@@ -2614,7 +2606,7 @@ export default function DocumentDetail() {
               {doc.confirmed_by_user_at ? (
                 <div className="flex items-center gap-2 text-sm text-ink-body">
                   <Badge kind="done">đã xác nhận</Badge>
-                  <span>✅ Bạn đã xác nhận tài liệu này. Khế dùng để nhắc hạn.</span>
+                  <span>Bạn đã xác nhận tài liệu này. Khế dùng để nhắc hạn.</span>
                 </div>
               ) : selfPartySet ? (
                 <Card>
@@ -2634,9 +2626,9 @@ export default function DocumentDetail() {
                   </div>
                 </Card>
               ) : (
-                <Card className="border-amber-200 bg-amber-50">
-                  <div className="text-sm text-amber-700">
-                    ⚠️ Hãy chọn bên trong tab "Nghĩa vụ & Quyền lợi" trước khi xác nhận tài liệu.
+                <Card className="border-warning-border bg-warning-soft">
+                  <div className="text-sm text-warning">
+                    Hãy chọn bên trong tab "Nghĩa vụ & Quyền lợi" trước khi xác nhận tài liệu.
                   </div>
                 </Card>
               )}
