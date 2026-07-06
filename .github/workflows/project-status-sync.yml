@@ -1,0 +1,78 @@
+name: Sync Label → Project Status
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+
+jobs:
+  sync-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync label to Project Status
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          PROJECT_NUMBER: 2
+          REPO_OWNER: kevindo1103
+          LABEL: ${{ github.event.label.name }}
+          ITEM_ID: ${{ github.event.issue.node_id || github.event.pull_request.node_id }}
+        run: |
+          # Map label → Project Status option name
+          case "$LABEL" in
+            "status:planned")     STATUS="Backlog" ;;
+            "status:in-progress") STATUS="In Progress" ;;
+            "status:review")      STATUS="In review" ;;
+            "status:done-staging"|"status:done") STATUS="Done" ;;
+            "status:deferred")    STATUS="Deferred" ;;
+            *) echo "Label $LABEL không map — skip"; exit 0 ;;
+          esac
+
+          # Lấy Project ID + Status field ID + option ID
+          DATA=$(gh api graphql -f query='
+            query($owner: String!, $num: Int!) {
+              user(login: $owner) {
+                projectV2(number: $num) {
+                  id
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        name
+                        options { id name }
+                      }
+                    }
+                  }
+                }
+              }
+            }' -f owner="$REPO_OWNER" -F num="$PROJECT_NUMBER")
+
+          PROJECT_ID=$(echo "$DATA" | jq -r '.data.user.projectV2.id')
+          FIELD_ID=$(echo "$DATA" | jq -r \
+            '.data.user.projectV2.fields.nodes[] | select(.name=="Status") | .id')
+          OPTION_ID=$(echo "$DATA" | jq -r \
+            ".data.user.projectV2.fields.nodes[] | select(.name==\"Status\") | .options[] | select(.name==\"$STATUS\") | .id")
+
+          # Add item vào project nếu chưa có
+          ITEM_RESULT=$(gh api graphql -f query='
+            mutation($proj: ID!, $item: ID!) {
+              addProjectV2ItemById(input:{projectId:$proj, contentId:$item}) {
+                item { id }
+              }
+            }' -f proj="$PROJECT_ID" -f item="$ITEM_ID")
+
+          PROJECT_ITEM_ID=$(echo "$ITEM_RESULT" | jq -r '.data.addProjectV2ItemById.item.id')
+
+          # Update Status field
+          gh api graphql -f query='
+            mutation($proj: ID!, $item: ID!, $field: ID!, $opt: String!) {
+              updateProjectV2ItemFieldValue(input:{
+                projectId: $proj
+                itemId: $item
+                fieldId: $field
+                value: { singleSelectOptionId: $opt }
+              }) { projectV2Item { id } }
+            }' -f proj="$PROJECT_ID" -f item="$PROJECT_ITEM_ID" \
+               -f field="$FIELD_ID" -f opt="$OPTION_ID"
+
+          echo "✓ Synced to Project Status: $STATUS"
