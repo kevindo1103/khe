@@ -136,7 +136,7 @@ function StageNew({
   return (
     <div className="max-w-xl mx-auto">
       <div className="text-center py-6 px-2">
-        <div className="text-xl font-bold text-ink">Chào mừng đến với Khế 👋</div>
+        <div className="text-xl font-bold text-ink">Chào mừng đến với Khế</div>
         <p className="text-sm text-ink-muted mt-2 leading-relaxed">
           Bắt đầu theo dõi nghĩa vụ — tải hợp đồng, nhập tay, hoặc rà soát tuân thủ.
         </p>
@@ -155,7 +155,7 @@ function StageNew({
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-sm font-semibold text-ink">Nhập tay hợp đồng</div>
-              <div className="text-2xs text-ink-muted mt-0.5">Flow 2: tải lên → kiểm tra → xác nhận.</div>
+              <div className="text-2xs text-ink-muted mt-0.5">Ghi lại thông tin hợp đồng khi không có file.</div>
             </div>
             <Button size="sm" variant="secondary" onClick={onManual}>Nhập tay →</Button>
           </div>
@@ -164,7 +164,7 @@ function StageNew({
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-sm font-semibold text-ink">Rà soát tuân thủ</div>
-              <div className="text-2xs text-ink-muted mt-0.5">Flow 3: tạo nghĩa vụ từ gói luật (placeholder).</div>
+              <div className="text-2xs text-ink-muted mt-0.5">Kiểm tra nghĩa vụ thuế, BHXH theo loại hình doanh nghiệp.</div>
             </div>
             <Button size="sm" variant="secondary" onClick={onCompliance}>Rà soát →</Button>
           </div>
