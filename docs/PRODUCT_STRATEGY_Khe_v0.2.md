@@ -1,15 +1,21 @@
-# Khế — Product Strategy Foundation (v0.3)
+# Servanda (Khế) — Product Strategy Foundation (v0.4)
 
-> **Vai trò tài liệu:** Đây là **tài liệu nền** của Khế. Mọi tài liệu downstream — **BRD → SRS → roadmap → mockup → code** — phải dẫn xuất và nhất quán với file này. Khi có mâu thuẫn, file này là nguồn chân lý về *tại sao / cho ai / job gì*; BRD quyết *hệ thống phải làm gì*.
-> **Trạng thái:** **Canonical** (KHE_Docs adopted 2026-06-18 from PM draft on branch `claude/pm-assistant`). Cascade upstream của BRD → SRS.
-> **Last updated:** 2026-06-18
-> **Tham chiếu:** `docs/MVP_BRD_Khe_v0.1.md` (v0.2) · `docs/SRS_v0.1.md` · `CLAUDE.md` (D-rules) · DEC log (`docs/teams/pm_assistant_STATE.md`)
+> **Vai trò tài liệu:** Đây là **tài liệu nền** của Servanda. Mọi tài liệu downstream — **BRD → SRS → roadmap → mockup → code** — phải dẫn xuất và nhất quán với file này. Khi có mâu thuẫn, file này là nguồn chân lý về *tại sao / cho ai / job gì*; BRD quyết *hệ thống phải làm gì*.
+> **Trạng thái:** **Canonical**. Cascade upstream của BRD → SRS.
+> **Last updated:** 2026-07-03
+> **Tham chiếu:** `docs/MVP_BRD_Khe_v0.1.md` (v0.9) · `docs/SRS_v0.1.md` (v0.6) · `CLAUDE.md` (D-rules) · DEC log (`docs/teams/pm_assistant_STATE.md`)
 
 ---
 
 ## 0. TL;DR
 
-Khế là **Hệ điều hành nghĩa vụ hợp đồng hậu-ký** cho SME Việt Nam — nơi mọi hợp đồng *đã ký* được số hóa, tra cứu tức thì bằng chat, và nhắc hạn tự động. Khế **không** soạn thảo, **không** ký số, **không** review rủi ro (đó là các tầng upsell sau). Khế được **phân phối qua cố vấn ngoài** (đại lý thuế / law firm) — họ là khách hàng trả tiền (B2B2B), vận hành Khế trên kho client của họ; SME dùng miễn phí ở Phase 1. Wedge là **deadline + tuân thủ**, đón hậu sóng NĐ 337/2025 — không phải tốc độ chốt sale.
+**Servanda là "Obligation OS" cho SME Việt Nam** (DEC-056) — nền tảng hợp nhất **mọi nghĩa vụ có ngày**: nghĩa vụ hợp đồng (nguồn thứ nhất) + nghĩa vụ tuân thủ pháp luật thuế/BHXH/ngành dọc (nguồn thứ hai). CEO có sổ cái nghĩa vụ duy nhất, không phải phụ thuộc kế toán nhớ hạn thuế, phụ thuộc bộ phận sản phẩm nhớ tuân thủ. Servanda **không** soạn HĐ, **không** ký số, **không** review rủi ro, **không** tư vấn nghĩa vụ pháp lý (guardrail D-17 — firm là người kích hoạt + xác nhận rule pack, D-02 áp nguyên). Phân phối qua **đại lý thuế / law firm** (B2B2B DEC-011) — họ vừa là khách trả tiền, vừa là người cấu hình rule pack cho SME.
+
+**Cấu trúc 2 gói (DEC-055):**
+- **Ledger/"Sổ" tier (free):** nhập tay obligations/parties/metadata + full core loop (deadline reminder, D-02 confirm, D-07 edit, audit, consent) — an toàn không bao giờ paywall (D-16).
+- **AI tier (paid, quota per-document không per-tenant):** vision extraction toàn văn + chat trích nguyên văn + cây điều khoản.
+
+**Tên:** thương mại "**Servanda**" (từ *pacta sunt servanda*, R-7 resolved 2026-07-02). "Khế" giữ làm codename nội bộ.
 
 ---
 
@@ -173,6 +179,81 @@ Tương đương Excel filter→SUM, shell pipe, SQL cursor — nhưng qua ngôn
 
 ---
 
+## 5c. North Star: Obligation OS (DEC-056 — ratified Kevin 2026-07-03)
+
+> **Servanda là hệ điều hành nghĩa vụ, không phải hệ điều hành hợp đồng.**
+> Hợp đồng là **nguồn nghĩa vụ đầu tiên** — không phải là toàn bộ.
+
+### 5c.1 Hai nguồn nghĩa vụ
+
+- **Nguồn 1: Hợp đồng đã ký** — extraction pipeline (DEC-002 / DEC-026 / DEC-050) bóc obligations từ HĐ. Đây là core loop hiện tại.
+- **Nguồn 2: Pháp luật** — thuế (GTGT, TNDN, TNCN, môn bài), BHXH, ngành dọc (PCCC, ATTP, môi trường, gia hạn giấy phép con). Nạp qua **rule pack curated** (§5c.3) + nhập tay.
+- *(Nguồn 3 tương lai:* quy trình nội bộ / ISO — out of scope hiện tại.*)*
+
+### 5c.2 Vì sao reframe: engine đã có hình dạng obligation, không phải contract
+
+`recurrence` monthly/quarterly/yearly, deadline, penalty existence, event chain, fulfillment evidence, `source="user_manual"` đều đã build. "Nộp tờ khai GTGT quý" ánh xạ nguyên vẹn vào Obligation model. Câu bán "không bao giờ trượt deadline" vốn agnostic về nguồn nghĩa vụ.
+
+Brand giãn tự nhiên: *pacta sunt servanda* (hợp đồng phải được tuân thủ) → *leges sunt servandae* (luật phải được tuân thủ).
+
+### 5c.3 Kiến trúc nguồn nạp — rule pack curated
+
+- **Đường chính:** thư viện **rule pack curated** theo hồ sơ doanh nghiệp (loại hình, có nhân viên không, kê khai GTGT tháng/quý, ngành nghề) + nhập tay (rail Ledger DEC-055).
+- **KHÔNG dùng AI đọc văn bản luật** để sinh nghĩa vụ — lãnh địa tư vấn pháp lý, đụng D-01/D-08.
+- **D-17 (new guardrail):** Servanda cung cấp template rule pack + engine nhắc; **firm (đại lý thuế/law firm) là người kích hoạt và xác nhận** lịch tuân thủ cho khách (D-02 áp nguyên). Servanda không bao giờ tự tư vấn nghĩa vụ pháp lý. Rule pack sai → firm bắt được ở bước xác nhận. Đây vừa là lá chắn trách nhiệm, vừa là product design.
+
+### 5c.4 Luận điểm thị trường
+
+- CEO hiện **phụ thuộc kế toán để nhớ** hạn thuế, phụ thuộc bộ phận sản phẩm để comply tiêu chuẩn kỹ thuật — single point of failure, CEO không có tầm nhìn riêng.
+- Chi phí vi phạm **luật định, chắc chắn, đo được** (phạt chậm tờ khai hàng chục triệu, lãi chậm nộp theo ngày, BHXH vừa phạt vừa không chốt sổ) → ROI dễ bán hơn contract management thuần.
+- TAM đảo chiều: không phải SME nào cũng nhiều HĐ, nhưng **mọi doanh nghiệp đều có nghĩa vụ thuế/BHXH**.
+- **Điều chỉnh trung thực:** MISA / phần mềm kế toán có nhắc hạn thuế, eTax Mobile có notification. Khe hở thật: (a) **sổ cái nghĩa vụ HỢP NHẤT cho CEO** (HĐ + thuế + BHXH + giấy phép trong 1 chỗ — tool hiện có đều accountant-facing), (b) **portfolio view cho firm**, (c) **nghĩa vụ ngành dọc** — phân mảnh, chưa tool nào gom.
+
+### 5c.5 Khớp chiến lược với DEC hiện hành
+
+- **DEC-011 (B2B2B):** firm đã là khách trả tiền kiêm kênh — feature này biến chính công việc hằng ngày của kênh thành sản phẩm. Không đe dọa firm: giảm rủi ro nghề nghiệp của họ (khách trượt hạn = firm bị trách), giữ nguyên logic D-03 "đẻ việc" (reminder nổ → SME gọi firm xử lý → firm tính phí).
+- **DEC-018 (wedge OPEN) — reframe:** wedge có thể không phải một *ngành* mà là một *loại nghĩa vụ* (compliance) cắt ngang mọi ngành. Đây là ứng viên trả lời cho câu hỏi wedge.
+- **DEC-055 (Ledger/AI tier):** rule pack là structured data thuần, **không tốn AI call nào** → GM đẹp hơn extraction; "luật đổi → pack cập nhật" = lý do tự nhiên cho doanh thu định kỳ.
+
+### 5c.6 Product gaps + sequencing
+
+**Gap:**
+1. `Obligation.document_id` NOT NULL hiện tại — nghĩa vụ tuân thủ không có tài liệu nguồn → nới schema hoặc container "hồ sơ tuân thủ". Small.
+2. Rule engine lịch luật định ("ngày 20 tháng sau", "quý +30 ngày", dời ngày nghỉ lễ) — expander hiện chỉ monthly/quarterly đơn giản. Medium.
+3. **Vận hành nội dung rule pack** — chi phí lớn nhất, VĨNH VIỄN (duy trì, cập nhật khi luật đổi, chịu trách nhiệm đúng sai). Mitigate bằng D-17 + firm-confirm.
+
+**Sequencing:**
+- **KHÔNG chen vào Sprint 2** (obligation tab + DS rollout đang chạy).
+- Validate rẻ nhất: DEC-013 pilot có sẵn 1 đại lý thuế → làm **MỘT rule pack đầu tiên** (thuế + BHXH cơ bản theo loại hình DN) cùng chính firm đó. Firm không dùng → thesis chết sớm giá rẻ.
+- Backlog kỹ thuật (schema + rule engine) file sau khi rule pack đầu được firm pilot xác nhận có giá trị.
+
+---
+
+## 5d. Tier structure: Ledger / AI (DEC-055 — ratified Kevin 2026-07-02)
+
+### 5d.1 Ledger/"Sổ" (free)
+
+- Nhập tay obligations, parties, metadata + full core loop.
+- Deadline reminder, D-02 confirm, D-07 edit, audit log, consent flow — **an toàn KHÔNG paywall** (D-16).
+- Mọi tool an toàn (reminder, xác nhận, sửa, audit) miễn phí vĩnh viễn.
+
+### 5d.2 AI tier (paid)
+
+- Vision extraction toàn văn hợp đồng (DEC-002 + DEC-026 + DEC-050 schema v3).
+- Chat trích nguyên văn (DEC-031 v2 structured state).
+- Cây điều khoản (DEC-050 R3 clause hierarchy + R10 cross-refs).
+- **Quota per-document** (không per-tenant) — mỗi doc dùng LLM call là 1 unit.
+
+### 5d.3 D-16 (new guardrail): No paywall on safety
+
+Không bao giờ paywall các tool an toàn (reminder, D-02 confirm, D-07 edit, audit, consent). Chỉ monetize **trí tuệ (extraction, chat)** và **tiện lợi** (bulk operations, portfolio view). Đây là kill switch cho model — Servanda phải cứu SME khỏi trượt hạn, kể cả khi họ không trả tiền.
+
+### 5d.4 Sequencing với DEC-016 paywall lever
+
+DEC-055 định **hình dạng tier** nhưng CHƯA quyết **pricing** — DEC-016 vẫn open. Rule pack (§5c) sẽ nằm ở tier nào (free vs paid) = quyết định pricing sau, gắn DEC-016 + kết quả pilot.
+
+---
+
 ## 6. GTM motion — kênh B2B trước, self-serve là contingency
 
 Có hai motion đưa sản phẩm tới SME:
@@ -252,6 +333,8 @@ Có hai motion đưa sản phẩm tới SME:
 ---
 
 ## Changelog
+
+- **v0.4 (2026-07-03, KHE_Docs):** Fold DEC-055 (Servanda brand + Ledger/AI tier structure + D-16 no-paywall-safety guardrail — R-7 resolved) + DEC-056 (Obligation OS North Star + compliance as source-2 + D-17 firm-confirms-compliance guardrail). §0 TL;DR rewritten. §5c NEW Obligation OS section (2 sources, engine shape, rule pack architecture, market thesis, gap+sequencing). §5d NEW Tier structure section (Ledger free / AI paid quota-per-doc + D-16). Numbering: D-11/D-12 proposed by PM conflict with existing → renumbered D-16/D-17 in canonical registry. Cascade ripples: BRD FR-* + CLAUDE.md D-rules + Glossary NEW terms folded downstream cycle 7.
 
 - **v0.3 (2026-06-20, KHE_Docs):** Add §5b Chat Architecture Principle (DEC-031 v2 Result-seeded Progressive State). Anchor principle: multi-turn chat via structured data + UI, NOT conversation memory. Model + 5 invariants (state_json, visibility scope chip, ambiguity guard, cold-start, invalidation). Out-of-scope: prose history (any phase), auto-widen, NLP pronoun layer. Supersedes DEC-031 v1 (commit `1f6c5ad`) which was discarded. Ratified Kevin 2026-06-20 commit `dc307eb`.
 - **v0.2 cycle-3 fold (2026-06-19, KHE_Docs):** Add §7.1 Billing roadmap (Phase 1 manual / Phase 2 automated). Quota guard policy ratified per Kevin: firm-configurable per SME, calendar-month reset, hard block 429. Folds DOCS_INBOX comment 22.

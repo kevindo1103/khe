@@ -8,10 +8,10 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.6 |
-| Trạng thái | Fold cycle 6 — DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production (PR #402) |
+| Phiên bản | v0.8 |
+| Trạng thái | Fold cycle 8 — DEC-056 BA #493 + DEC-057/058/059 routing |
 | Owner | KHE_Docs |
-| Source of truth | BRD v0.9 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
+| Source of truth | BRD v0.11 (`MVP_BRD_Khe_v0.1.md`) — SRS không định ra business rule mới |
 
 ---
 
@@ -23,6 +23,8 @@
 | v0.2 | 2026-06-19 | KHE_Docs | Cycle 3 fold (5 Backend + 1 AI + 1 PM comments). Add §2 ingest/documents/relationships API (PR #54 + #59 + #60 — staging live). Add §4 tenants quota columns (FR-TN). Update §5.2 terms CANONICAL_FIELDS 7 + §5.1 doc_type enum. Add §5.8 `document_relationships` table. Add §9 Extraction module API (`get_extraction_provider` factory, `ExtractionUnavailable`, `is_error` vs `needs_review`). Add §10 Audit Events (`extraction_performed` w/ `consent_reference`, term `updated` PII). |
 | v0.3 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §5.9 `clauses` table per-tenant (`doc_id` FK CASCADE, `clause_num`, `title`, `content`, `page_num`; idx_clauses_doc; migration `tenant_003_clauses.py` down_revision `tenant_002`). Populated từ `VisionExtractionResult.clauses[]` (same vision call). Powers `search_clauses` tool in FR-CQ-02. |
 | v0.4 | 2026-06-20 | KHE_Docs | **Cycle 4 fold.** §2 +`/obligations` GET/PATCH (PR #64), +`/chat/query` POST (PR #68), +`/reminders/test` (PR #66), +`/health/extraction` (PR #80 non-prod). §4 +`tenant_profile` table (Kevin choice: separate model, NOT tenants column — DEC-030 legal_name storage). §5.3 obligations schema rewrite: rename `obligation_type` (cadence) → `recurrence`; new `obligation_type` (category enum 8 per DEC-027); +`direction`, +`obligor`, +`source_doc_chain`, +`resolution_method`; status enum corrected to `{pending,done,cancelled}`. §5.2 terms expanded to 12 CANONICAL_FIELDS + type-specific via NamedExtractedField (DEC-029). §5.10 NEW `parties` schema with role_label (DEC-030). §6 +6.3 payment_schedule derivation (DEC-027), +6.4 direction derivation (DEC-030). §9 2-tier extraction schema (Claude lean / Gemini full). §10 +chat_query_logged Event (DEC-028 compliance debt) + reminder_*. |
+| v0.8 | 2026-07-06 | KHE_Docs | **Cycle 8 fold — DEC-056 BA #493 + DEC-057/058/059.** §4.5 `tenant_profiles` +4 cols (BA #493 §4: `legal_form`, `has_employees`, `vat_period`, `fiscal_year_start`). §5.3 obligations `source` enum +`rule_pack` + NEW `source_rule_id` NULLABLE. §5.13 NEW `rule_activations` per-tenant table (BA #493 §6). §2.16 NEW `POST /documents` manual creation route (FR-IN-06 DEC-058). §2.17 NEW compliance wizard endpoints (`GET /tenant_profile` / `PATCH /tenant_profile`, `GET /rule_packs/available`, `POST /rule_activations`). §5.1 documents `type` enum extended (`normal` / `manual` / `rule_pack` = Virtual Document DEC-057). Migration `tenant_032` compliance obligations schema; `master_005` TenantProfile extend. |
+| v0.7 | 2026-07-03 | KHE_Docs | **Cycle 7 fold — DEC-055/056/DS v1.1 + ~15 impl entries.** §2 NEW `PATCH /obligations/bulk` (PR #475). `TermOut` +`source` field (PR #487). `DocumentDetailOut`/`DocumentListItem` +`extraction_warnings` +`may_have_unextracted_obligations` (PR #458/#492). §5.1 documents +`may_have_unextracted_obligations` BOOL NULLABLE (`tenant_031`). §5.3 obligations `obligation_type` enum +`penalty` (`tenant_030`). §5.4 parties `aliases` clarification (D-13 alias-match unpack per PR #475; ⚠️ AI schema gap — `PartyItem` chưa emit aliases). §5.1 `processing_stage` enum extended (+`retry_needed` PR #458, +`two_pass_skeleton`/`two_pass_fill` PR #463 — `tenant_029` content_status). §9 extraction module: all-PDFs → hybrid_ocr routing (PR #414), `_PDF_CHAIN` excludes claude_haiku (PR #458), auto-trigger two-pass MAX_TOKENS (PR #463 gap: clauses-only). §9.11 NEW garbled OCR detection (`is_garbled_vietnamese` PR #422). §11 NEW NFR UI — Design System v1.1 tokens + Hợp đồng A11y + WCAG 2.1 AA measured. |
 | v0.6 | 2026-06-29 | KHE_Docs | **Cycle 6 fold — DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production (PR #402 staging→main).** §2 NEW admin endpoints (`/admin/extraction-metrics` + summary, super-admin gated via `SUPERADMIN_USERS` env). §2 NEW document detail endpoints expansion: GET/PATCH definitions, GET/POST cross-refs, GET parties extended, GET clauses with hierarchy. §2 PATCH `/documents/{id}` D-07 editable title/contract_number. §5.1 documents +10 cols (title, contract_number, signing_date, commencement_date, contract_duration, lifecycle_status, has_signature, signature_pages, extraction_model/latency_ms/warnings, processing_stage/progress). §5.4 parties +6 cols (address, representative, tax_code, is_self, aliases). §5.9 clauses hierarchy +3 cols (parent_id, level, clause_path). §5.10 NEW `definitions` table (R9). §5.11 NEW cross-ref storage (R10 — verify exact shape). §5.12 `document_relationships.relationship_type` enum extended +`annex`. §9 extraction module +hybrid_ocr provider (DEC-049). §9 schema v3 (CANONICAL 12→15: +tieu_de_hd/so_hop_dong/ngay_khai_truong; ClauseItem +level/clause_path; PartyItem +address/representative/tax_code; new DefinedTermItem + CrossReferenceItem; has_signature/signature_pages flags). Migrations: tenant_019-028. |
 | v0.5 | 2026-06-27 | KHE_Docs | **Cycle 5 fold — DEC-048 EPIC #300 production.** §2.7 PATCH /obligations expanded (fulfilled_at/by/evidence_doc_ids; awaiting_confirmation status). §2.12 NEW endpoints: PATCH /documents/{id}/clauses/{clause_id} (clause edit + original_content snapshot, PR #325 migration tenant_018), POST /documents/{id}/reread (clause-scoped re-derive diff-confirm D-02, PR #326), POST /documents/{id}/re-derive-clause (PR #303 tenant_017), GET /documents/{id}/clauses (PR #320), GET /documents/{id}/events (PR #323 audit). §5.1 documents +`is_evidence` BOOL. §5.3 obligations REWRITE: +fulfilled_at/by/evidence_doc_ids, status enum +awaiting_confirmation +waiting_trigger, +source_clause_num, +derived_from, +source (P1). §5.9 clauses +`original_content` immutable +`edited_by_user` +`edited_at` (tenant_018). §6.5 NEW cascade chain anchor rule (fulfilled_at G1). §6.6 NEW date-anchored resolver (FR-OB-13). §6.7 NEW P1 source-aware merge + derive delete path-2 guard. §10 Audit Events +obligation_fulfilled/reverted, cascade_triggered, clause_edited (PII-safe), evidence_attached, obligation_date_resolved, re_read_triggered. |
 | v0.4.1 | 2026-06-20 | KHE_Docs | **Cycle 4.1 fix-up fold** (2 entries: Backend lead response + PR #138). §4.5 `tenant_profile` → `tenant_profiles` (plural) với Backend lead exact spec (`id` integer PK + `tenant_id` UNIQUE FK). §6.3 staging caveat: PR #141 `obligation_type="once"` pre-#145, flip post-migration. §3.3 SQLite Unicode `lower()` override (PR #138) for VN diacritics support. |
@@ -216,6 +218,83 @@ Body: `{clause_num: "Điều X"}`.
 - Document-scoped + obligation-scoped events (tenant-isolated). Ordered `created_at DESC`.
 - Surfaces `clause_edited`, `obligation_fulfilled`, `cascade_triggered`, etc. for UI audit timeline.
 
+### 2.13 Bulk obligation completion (cycle 7 — Backend PR #475)
+
+#### `PATCH /obligations/bulk`
+Body:
+```json
+{
+  "ids": [12, 15, 23],
+  "status": "done",
+  "fulfilled_at": "2026-07-03T14:30:00",
+  "fulfilled_by": "Nguyễn Văn A"
+}
+```
+- Tenant-isolated: cross-tenant IDs silently skipped (D-10 no-leak).
+- **1 Event/obligation** (KHÔNG gộp — D-07/FR-OB-04 preserved).
+- `fulfilled_at` required khi `status="done"`.
+- Cascade: mỗi `done` triggers `propagate_obligation_done()` (DEC-048).
+- **200:** `{updated, skipped, items[]}`.
+- **400:** `status ∉ {done, cancelled}` or missing `fulfilled_at` when done.
+- Frontend TODO: D-02 readback modal (PR #476 flagged pre-prod).
+
+### 2.14 Term source provenance (cycle 7 — Backend PR #487)
+
+`TermOut` in `GET /documents/{id}` gains optional field:
+```
+source: "extracted" | "remap" | "manual" | null   // null = legacy pre-migration
+```
+No DB migration (column existed). Non-breaking additive.
+
+### 2.15 Document-level warnings + completeness surface (cycle 7)
+
+- `DocumentDetailOut.extraction_warnings: list[str] | None` (Backend PR #458 — raw provider warnings surfaced to FE)
+- `DocumentDetailOut.may_have_unextracted_obligations: bool | None` (Backend PR #492 — three-state per §5.1)
+- `DocumentDetailOut.failure_reason` now surfaces when `processing_stage="retry_needed"` (previously only `status="failed"`)
+
+### 2.16 Manual document creation (cycle 8 FR-IN-06 — Backend TBD DEC-058)
+
+#### `POST /documents`
+Body (no file bytes):
+```json
+{
+  "title": "Hợp đồng thuê mặt bằng — HĐ tự nhập",
+  "type": "manual",
+  "contract_number": "HĐ-2026-001",
+  "parties": [{"name": "...", "role_label": "..."}],
+  "signing_date": "2026-01-15",
+  ...
+}
+```
+- **200:** `{id, type: "manual", ...}` — Document tạo với `is_evidence=false`, no `provider.extract()` invocation. FR-IN-06 wired.
+- **400:** invalid `type`, missing `title`, or file upload attempted (use `/ingest/upload` instead).
+- User có thể sau đó thêm obligations manual (`source="user_manual"`) via `PATCH /documents/{id}/obligations` (existing FR-OB endpoint).
+
+### 2.17 Compliance wizard endpoints (cycle 8 DEC-059 — FR-FP-05)
+
+#### `GET /tenant_profile` (existing extended cycle 8)
+- **200:** `{tenant_id, legal_name, legal_form?, has_employees?, vat_period?, fiscal_year_start?, ...}`
+- Fields nullable — populated qua compliance wizard.
+
+#### `PATCH /tenant_profile`
+Body: `{legal_form?, has_employees?, vat_period?, fiscal_year_start?}` — partial update supported.
+- **200:** updated `TenantProfileOut`.
+- Side effect: re-trigger rule pack matching (compute `applies_when` conditions with new profile). Return `{updated: TenantProfileOut, matching_rule_packs: [...]}` với list rule packs newly applicable.
+
+#### `GET /rule_packs/available`
+- **200:** `{packs: [{id, name, description, applies_when, obligations_preview: [...]}]}` — Rule packs applicable cho current `TenantProfile`. Loaded từ `rule_packs/*.json` fixtures in repo.
+- Filter by `TenantProfile.legal_form` / `has_employees` / `vat_period` (BA #493 §3 JSON fixture applies_when).
+
+#### `POST /rule_activations`
+Body: `{rule_pack_id, decision: "activate" | "decline"}`.
+- **`activate`:** create Virtual Document (`type="rule_pack"`) + sinh obligations với `source="rule_pack"` + `source_rule_id` + `document_id=<virtual_doc.id>`. Insert `rule_activations` row `status="active"` + `obligation_ids=[...]`.
+- **`decline`:** insert `rule_activations` row `status="declined"`, no obligations sinh, no Virtual Document. Blocks re-suggest per FR-OB-23.
+- **200:** `{activation_id, status, virtual_document_id?, obligation_ids?}`.
+- **409:** activation already exists cho `(tenant, rule_pack_id)` — use PATCH instead.
+
+#### `PATCH /rule_activations/{id}` (Re-confirm flow FR-OB-22)
+Body: `{decision: "activate" | "decline" | "paused", per_obligation_confirmations?: [...]}` — supports per-obligation re-confirm khi rule pack version thay đổi.
+
 ### 2.11 Public API surface boundary
 
 Cookie auth (not Bearer — Backend PR #46/#91, Bearer fully retired). All endpoints above except `/auth/*` + `/health` + `/` require active session. Admin SPA at `/`, PWA at `/pwa/` (DEC-025 Option A — locked PR #95).
@@ -319,6 +398,10 @@ Separate model from `tenants` (Kevin chose this over PM-recommended embed in `te
 | `tenant_id` | VARCHAR | FK → `tenants.id` UNIQUE NOT NULL | 1:1 với tenant (slug) |
 | `legal_name` | VARCHAR | NULLABLE | SME entity legal name — auto-match `parties[].name` for self-party (DEC-030). User-editable. NULL → all docs' obligations `direction=NULL + needs_review=true` (FR-OB-07). |
 | `legal_name_aliases` | TEXT | NULLABLE | JSON array of common variants (vd shortened name, English name). Future enrichment. |
+| **`legal_form`** (cycle 8 BA #493 §4, `master_005`) | VARCHAR | NULLABLE | Loại hình DN: `LLC` / `JSC` / `partnership` / `individual` / `foreign` / etc. Drives rule pack `applies_when` matching. |
+| **`has_employees`** (cycle 8) | BOOLEAN | NULLABLE | SME có nhân viên không → filter BHXH rule pack applicability. |
+| **`vat_period`** (cycle 8) | VARCHAR | NULLABLE | `month` / `quarter` — kê khai GTGT cycle. Drives thuế VAT rule pack cadence. |
+| **`fiscal_year_start`** (cycle 8) | DATE | NULLABLE | Ngày bắt đầu năm tài chính (default `01-01` nếu NULL). Drives fiscal-year-based rule pack calculations. |
 | `created_at` | DATETIME | DEFAULT `now` | |
 | `updated_at` | DATETIME | DEFAULT `now` ON UPDATE | |
 
@@ -358,8 +441,10 @@ File metadata + phân loại.
 | **`extraction_model`** (cycle 6, `tenant_019`) | VARCHAR NULLABLE — provider+model snapshot (`gemini_flash:gemini-2.5-flash`, etc.) per extraction |
 | **`extraction_latency_ms`** (`tenant_019`) | FLOAT NULLABLE — total extraction time in ms |
 | **`extraction_warnings`** (`tenant_019`) | TEXT JSON list — warnings from result.warnings (clamp violations, etc.) |
-| **`processing_stage`** (cycle 6, `tenant_020`) | VARCHAR DEFAULT `"queued"` — pipeline checkpoint: `queued` / `ocr` / `llm` / `saving` / `done` / `failed` |
+| **`processing_stage`** (cycle 6, `tenant_020` + cycle 7 `tenant_029`) | VARCHAR DEFAULT `"queued"` — pipeline checkpoint. Enum: `queued` / `ocr` / `llm` / `saving` / `done` / `failed` / **`retry_needed`** (PR #458 transient 503 + MAX_TOKENS) / **`two_pass_skeleton`** + **`two_pass_fill`** (PR #463 auto-triggered MAX_TOKENS recovery). |
 | **`processing_progress`** (`tenant_020`) | INTEGER DEFAULT `0` — 0/30/60/90/100 per stage. Reset to 0 on `_mark_failed()`. |
+| **`may_have_unextracted_obligations`** (cycle 7, `tenant_031` PR #492) | BOOLEAN NULLABLE — three-state completeness flag. `NULL` = CompletenessVerifier never ran (default + legacy); `true` = detected likely miss; `false` = cleared. LLM impl fast-follow (this PR only migration). D-03 honest completeness. |
+| **`type`** (cycle 8, DEC-057/058, `tenant_032`) | VARCHAR DEFAULT `"normal"` — enum: `normal` (default AI-extracted contracts) / `manual` (SME manually created via FR-IN-06) / **`rule_pack`** (Virtual Document anchor cho compliance obligations DEC-057). List UI filter `type != "rule_pack"` (Virtual Documents không hiển thị). |
 | `created_at` | Upload timestamp |
 
 ### 5.2 `terms` — EAV with CANONICAL_FIELDS vocab v2 (DEC-029 Backend PR #135)
@@ -406,7 +491,7 @@ Per-Document extracted Term rows. Schema is **EAV** (entity-attribute-value); `f
 | `id` | PK |
 | `document_id` | FK → `documents` (chain terminal per FR-OB-05) |
 | `description` | Mô tả nghĩa vụ; `amount` embedded vào string cho payment rows (no dedicated column yet — Backend PR #141 ambiguity) |
-| **`obligation_type`** | **Category enum 8 (DEC-027):** `payment` · `delivery` · `handover` · `expiration` · `renewal` · `review` · `warranty` · `other`. *Renamed concept: trước v0.4 `obligation_type` = cadence; per #122 Option B → cadence moved to `recurrence`.* |
+| **`obligation_type`** | **Category enum 9 (DEC-027 + cycle 7 PR #475 `tenant_030`):** `payment` · `delivery` · `handover` · `expiration` · `renewal` · `review` · `warranty` · **`penalty`** · `other`. TEXT column — migration là anchor only. |
 | **`recurrence`** | **Cadence enum (renamed from old `obligation_type`):** `once` · `monthly` · `quarterly` · `yearly` · `open_ended_review`. `open_ended_review` = `thoi_han_hd` phi-số case (DEC-020), `due_date=NULL`. Migration `tenant_005` per PM relay. |
 | `due_date` | DATE — derived per FR-OB-01 hoặc từ `payment_schedule[].due_date`. NULL khi `recurrence=open_ended_review`. |
 | `status` | **Enum extended DEC-048:** `pending` · `done` · `cancelled` · `awaiting_confirmation` (cascade-past D-02 backfill) · `waiting_trigger` (FR-OB-13 unresolved date anchor). **`overdue` KHÔNG phải status** — FE-derived urgency bucket. |
@@ -420,8 +505,10 @@ Per-Document extracted Term rows. Schema is **EAV** (entity-attribute-value); `f
 | **`fulfilled_by`** (DEC-048) | VARCHAR NULLABLE — actor name (SME user hoặc concierge) |
 | **`evidence_doc_ids`** (DEC-048) | TEXT JSON array of doc_ids — link tới documents với `is_evidence=true` (FR-IN-05) |
 | **`source_clause_num`** (Kevin Option B 0a, migration `tenant_017`) | VARCHAR NULLABLE — clause gốc sinh obligation (FR-OB-11). Set từ winning Term's `ref` field trong `derive_obligations()`. Enables clause-scoped re-derive. |
+| **`source_rule_id`** (cycle 8 BA #493 §6, `tenant_032`) | VARCHAR NULLABLE — trace về rule pack ID gốc khi `source="rule_pack"`. Format: `<pack_id>:<obligation_index>` (vd `"thue_vat_quarterly:0"` — obligation đầu trong pack). NULL cho obligations không phải từ rule pack. |
+| **`document_id`** (existing — cycle 8 nullable migration `tenant_032`) | INTEGER — was `NOT NULL`, giờ `NULLABLE` cho compliance obligations. Manual contracts vẫn giữ NOT NULL semantic ở API layer (validation) per FR-OB-18. Interim: Virtual Document anchor DEC-057 pre-migration. |
 | **`derived_from`** (PR #303) | VARCHAR NULLABLE — `"original"` (AI initial extraction) / `"user_edit"` (clause edit triggered re-derive) / `"ai_re_derived"` (POST /reread path). |
-| **`source`** (P1 merge rule) | VARCHAR — `ai_extracted` / `user_manual` / `ai_re_derived`. **`user_manual` obligations protected from re-derive delete** (FR-OB-12). |
+| **`source`** (P1 merge rule + cycle 8) | VARCHAR — `ai_extracted` / `user_manual` / `ai_re_derived` / **`rule_pack`** (cycle 8 DEC-056). **Protection semantics:** `user_manual` obligations protected from AI re-derive delete (FR-OB-12); `rule_pack` obligations NOT protected same way (rule engine can regenerate on TenantProfile change) but re-confirm flow required per FR-OB-22. |
 
 ### 5.4 `parties` — **schema update DEC-030**
 
@@ -555,6 +642,26 @@ Heuristic split:
 - `clauses` = raw text passages preserving original wording. Search by full-text (LIKE / FTS5 future), not field_name.
 
 **Tool consumption:** `search_clauses(query, doc_hint)` — substring/full-text search trong `content`; filter `doc_hint` qua join `documents.file_name LIKE` hoặc `clauses.doc_id IN (...)`.
+
+### 5.13 `rule_activations` (cycle 8 DEC-056 BA #493 §6 — NEW per-tenant table `tenant_032`)
+
+Tracks user decisions per rule pack match. Prevents re-suggest spam (D-02 autonomy).
+
+| Column | Type | Constraints | Note |
+|---|---|---|---|
+| `id` | INTEGER | PK AUTOINCREMENT | |
+| `tenant_id` | VARCHAR | NOT NULL | Multi-tenant isolation |
+| `rule_pack_id` | VARCHAR | NOT NULL | Rule pack file ID (vd `"thue_vat_quarterly"`) |
+| `rule_pack_version` | VARCHAR | NULLABLE | Version snapshot khi activate; enables diff view per FR-OB-22 |
+| `status` | VARCHAR | NOT NULL | `active` (obligations sinh + active) / `declined` (user rejected) / `paused` (user tạm dừng) |
+| `activated_at` | DATETIME | NOT NULL | Timestamp user decision |
+| `activated_by` | VARCHAR | NOT NULL | JWT sub user actor |
+| `obligation_ids` | TEXT | NULLABLE | JSON list[int] — obligations sinh từ activation (`status=active`); NULL cho `declined`. Enables cascade cleanup nếu user later `decline`. |
+| `virtual_document_id` | INTEGER | NULLABLE FK → `documents(id)` | Virtual Document anchor (DEC-057 `type="rule_pack"`) — 1 per activation for `document_id` NOT NULL constraint. |
+
+**Indexes:** `(tenant_id, rule_pack_id)` unique — 1 activation per (tenant, rule_pack). Re-activate qua UPDATE, không INSERT duplicate.
+
+**Endpoint:** `POST /rule_activations` body `{rule_pack_id, decision: "activate"|"decline", tenant_profile_snapshot?}` → creates row + sinh obligations (activate) hoặc marks declined. `PATCH /rule_activations/{id}` cho re-confirm flow.
 
 ---
 
@@ -836,6 +943,30 @@ class CrossReferenceItem: # R10
 
 **Claude `ContractExtractionLLM` lean schema unchanged** (7 BASE fields) — Claude grammar limits preserved.
 
+### 9.11 Cycle 7 refinements
+
+**All-PDFs routing (PR #414):** `extraction_runner` detect PDF → auto-set `prefer="hybrid_ocr"`. Factory gate changed `GOOGLE_APPLICATION_CREDENTIALS` → `GEMINI_API_KEY`/`GOOGLE_API_KEY`. Rationale: Gemini vision-only ignore complex prompt rules trong `_CLAUSES_SPEC` → hierarchy + toàn văn broken.
+
+**`_PDF_CHAIN` excludes claude_haiku (PR #458):** Claude lean schema (7 flat fields) không có `clauses[]` / `parties[]` → extraction "thành công" giả trên PDF (0 clauses persist). Chain giờ `(hybrid_ocr, gemini_flash)` cho PDF; ảnh giữ `claude_haiku` fallback.
+
+**Auto-trigger two-pass MAX_TOKENS (PR #463):** khi `is_max_tokens_truncation()` detected + `result.ocr_text` có sẵn (chỉ `hybrid_ocr` text-mode) → auto `extract_skeleton()` → `persist_skeleton()` → `run_content_fill()`. Fallback → `_mark_transient_failure` nếu bất kỳ bước throw. **⚠️ Recovery scope: chỉ clauses.** Universal fields / parties / obligation_schedule / definitions / cross_refs / signature detection **KHÔNG** khôi phục — filed #464 cho metadata-pass fix. `extraction_warnings` warn user.
+
+**`is_garbled_vietnamese()` detection (`scan_detect.py` PR #422):** heuristic diacritical ratio < 2% → detected garbled Vietnamese → fallback DocAI OCR. Root cause: pdftotext produces garbled on scanned PDFs với embedded OCR layers (missing diacritics, `~` artifacts).
+
+**Retryable states (PR #458):**
+- Provider 503/UNAVAILABLE tạm thời → doc giữ `status='pending'` + `processing_stage='retry_needed'`, event `extraction_transient_failure` (NOT `extraction_failed`).
+- `finish=MAX_TOKENS` trap → dừng fallback chain (không thử provider cùng giới hạn output), doc `retry_needed`.
+
+### 9.12 FallbackProvider warnings accumulation (PR #426)
+
+Previously `_FallbackProvider` silently discarded warnings từ failed providers khi advance sang provider tiếp theo. Now accumulates với `[provider_name]` prefix và carry forward tới final result. Cho phép diagnose sao fall through chain.
+
+### 9.13 Definitions persist wiring (PR #431)
+
+`extraction_runner.py:275` was **no-op stub** — Gemini extracted `defined_terms[]` (15 terms observed doc #14/#15) nhưng runner never persisted vào `definitions` table (DEC-050 R9). Điều 1 (ĐỊNH NGHĨA) appeared empty in UI.
+
+Fix: idempotent delete + persist loop từ `result.defined_terms` — creates Definition rows với `source_clause_num` + `source_clause_id` linking qua `clause_path`.
+
 ---
 
 ## 10. Audit Event types (NĐ 13/2023 compliance)
@@ -867,6 +998,59 @@ Events in per-tenant `events` ledger. Append-only.
 
 ---
 
+## 11. NFR UI — Design System "Sổ cái" v1.1 (cycle 7 canonical)
+
+**Source of truth:** `docs/mockup_design_system_v1.1.jsx`. Kevin ratified 2026-07-03 (supersedes v1.0 ratified 2026-07-02).
+
+### 11.1 Design tokens
+
+**Palette:**
+- Primary: `Lục Khế #1E5C49`
+- Paper `#FBFAF7` / Ink `#1C2420`
+- Semantic 4-color (positive / notice / warning / **red exclusive**)
+- Neutrals: `n-100..n-500` (decorative borders only)
+- **`border-strong #7E8983`** (v1.1 NEW — WCAG 2.1 3:1 for input/button/checkbox borders per SC 1.4.11 non-text contrast)
+- Done: `done #5A6660` / `done-soft #F0F0EB` (v1.1 explicit — "hoàn thành = xám lặng")
+
+**8 hard color rules:**
+1. Đỏ độc quyền quá-hạn + phá-hủy
+2. 1 vùng đỏ / màn hình
+3. Hoàn thành = xám lặng (KHÔNG `bg-success`)
+4. `n-300`/`n-400` KHÔNG dùng cho input/button (dùng `border-strong`)
+5-8. (see mockup source)
+
+**Font:** Be Vietnam Pro (UI sans) + Source Serif 4 (nguyên văn hợp đồng, serif = D-06 signal). Self-host, weights 400/500/600.
+
+**Elevation 4-tier:** `e0-e3` ẩn dụ "giấy xếp lớp" — không tùy hứng.
+
+### 11.2 Component vocabulary
+
+**13 badges chuẩn hóa (KHÔNG icon/emoji):** "Chờ kích hoạt", "Đã thanh lý", "Đang xử lý", ... — vocabulary thống nhất tab tài liệu → dashboard → Telegram.
+
+**4 ratified components:**
+- `NavItem` — semantic nav
+- `IconButton` — ngoại lệ DUY NHẤT cho luật không-icon
+- `Dropzone`
+- `LiveRegion` — cho văn bản tự đổi (a11y)
+
+### 11.3 Accessibility — "Hợp đồng A11y" binding (v1.1)
+
+- Semantic-element mandate: `button`/`a` KHÔNG phải `div`
+- Bàn phím vận hành được (tab order, focus-visible, escape close)
+- `LiveRegion` cho status/loading text auto-update
+- Icon-only bắt buộc `aria-label`
+- Contrast **đo thật** (WCAG 2.1 formula relative luminance) không khẳng định
+- **WCAG 2.1 AA** target
+
+### 11.4 Voice + tone
+
+- Xưng "**bạn**"
+- Tự gọi "**Servanda**" (không "Khế" trong copy user-facing)
+- KHÔNG dấu chấm than
+- Dark mode = v2 (chưa design MVP)
+
+---
+
 ## 8. Open items (Sprint 1+)
 
 | ID | Item | Owner |
@@ -878,6 +1062,10 @@ Events in per-tenant `events` ledger. Append-only.
 | O-5 | `regen_openapi.py` run khi `docs/openapi.json` ready | KHE_Backend |
 
 ---
+
+*Hết v0.8 — cycle 8 fold (DEC-056 BA #493 6 sub-decisions + DEC-057/058/059 routing). §4.5 tenant_profiles +4 compliance-profile cols (`master_005`). §5.1 documents +`type` enum. §5.3 obligations `source` +`rule_pack` + `source_rule_id` + `document_id` nullable (`tenant_032`). §5.13 NEW `rule_activations` per-tenant. §2.16 NEW manual doc route. §2.17 NEW compliance wizard endpoints (tenant_profile / rule_packs available / rule_activations POST+PATCH). Open items: rule pack format v1 finalize với firm pilot, Virtual Document UI list filter policy, per-obligation confirmation UX cho re-confirm flow.*
+
+*Hết v0.7 — cycle 7 fold (DEC-055 tier + DEC-056 Obligation OS + DS v1.1). §2 +bulk endpoint + Term.source + document warnings/completeness surfaces. §5.1 +may_have_unextracted_obligations + processing_stage enum extended. §5.3 obligation_type +penalty. §9 all-PDFs routing + PDF chain excludes claude_haiku + auto-two-pass MAX_TOKENS + garbled detection + FallbackProvider accumulate + definitions persist fix. §11 NEW NFR UI Design System v1.1. Open items: CompletenessVerifier LLM impl, KHE_AI Party.aliases schema fold, metadata-pass fix (#464).*
 
 *Hết v0.6 — cycle 6 fold (DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production PR #402). 8 tenant migrations consolidated (`tenant_019..028`). 2 new entities (Definition, CrossReference). Schema v3 extraction (15 canonical + 2 new arrays). Annex relationship type. Lifecycle status enum 5 states. Open items: DEC-049 routing default policy, R10 cross-ref exact storage shape verify, Sprint 2 EPIC #397 (obligation/rights reorg + Nhóm B metadata).*
 
