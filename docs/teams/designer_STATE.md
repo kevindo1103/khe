@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-07-03 (#481 — document list v3 on DS v1.1, closes rollout gap 3/3; #480 merged)_
+_Last updated: 2026-07-03 (#478 — Q1/Q1-ext ratified: success green removed at 4 spots, no new mockup needed)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
@@ -355,16 +355,27 @@ Scope: chỉ 3 tab (Tổng quan / Nội dung hợp đồng / Bên ký kết). Ta
   - Card "Loại hợp đồng" disabled + card "Thời hạn hợp đồng" tint xám XÁC NHẬN đúng hành vi/copy thật — dùng nguyên văn copy/tooltip gốc trong mockup
 - **4 fix theo feedback Kevin:** bỏ tint xám card Thời hạn (Card mặc định v1.1); label Term đổi `ink` đậm thay `ink-muted`; rẽ nhánh `Term.source` (manual→`<Badge kind="manual">` outline có sẵn, không tự chế class — bài học #468); panel cross-ref mồ côi cap `maxHeight:160px` + nút "Xem tất cả (N) →" mở `Modal` thật từ v1.1.
 - **4 quyết định mở** (3 từ PM #478 + 1 Designer tự phát hiện) — đóng khung `OpenDecisionCallout` riêng (viền đứt vàng, nhãn "chờ Kevin ratify"), mỗi callout trích file:line thật:
-  1. ConfidenceMeter/SignatureBadge màu success → đổi `done`/`warning`? (v1.1 không có token success)
-  2. UI cho `content_status` (two-pass) — vào scope sprint này không? (cần Backend thêm field vào `ClauseOut` trước)
-  3. UI cho `DocumentRelationship` — vào scope không? (cần Backend thêm endpoint expose, hiện chưa có)
-  4. (Designer tự phát hiện) `Term.source="remap"` chưa được brief nhắc — hiển thị thế nào?
+  1. **✅ RATIFIED (Kevin, 2026-07-03):** ConfidenceMeter/SignatureBadge màu success → `done`/`ink-faint` (không phải xanh ăn mừng). Mở rộng thành 4 điểm cùng lúc (Q1-ext #481's LifecycleBadge + #472's AmountDisplay) — xem chi tiết bảng dưới. Không cần PR/mockup mới, Frontend áp 1 PR (#485).
+  2. UI cho `content_status` (two-pass) — vào scope sprint này không? (cần Backend thêm field vào `ClauseOut` trước) — vẫn mở.
+  3. UI cho `DocumentRelationship` — vào scope không? (cần Backend thêm endpoint expose, hiện chưa có) — vẫn mở.
+  4. (Designer tự phát hiện) `Term.source="remap"` chưa được brief nhắc — hiển thị thế nào? — vẫn mở.
 - **Sample data:** cùng hợp đồng ALPHATECH ↔ Minh Phát như v3 (dễ so sánh), nhưng field shape khớp model thật 100%: 3 loại cross-ref (`clause`/`appendix`/`document`), đủ 4 giá trị `content_status`, marker stub thật `'(tổng hợp từ mục con)'`, 3 loại `DocumentRelationship`.
 - **QC review (PR #480) — 3 findings, tất cả confirmed + fixed:**
   1. `content_status="skeleton"` loading text không gate theo toggle `showContentStatus` (Q2 unratified) — fix: thêm `showContentStatus &&` vào điều kiện `isLoading`, mặc định (toggle tắt) giờ hiện đúng hành vi thật hôm nay (clause rỗng, không có loading text đề xuất).
   2. Glyph `▴/▾/└` không có `aria-hidden`, nút toggle không có `aria-expanded` — dùng glyph trần thay vì đi qua `IconButton` (cơ chế a11y riêng của v1.1 cho glyph chức năng). Fix: thêm `aria-hidden="true"` trên glyph, `aria-expanded={expanded}` trên button cha (đúng hơn ép dùng `IconButton` vì các nút này đã có text label thấy được, không phải icon-only).
   3. Comment "14 orphan refs" gây hiểu lầm — sample data chỉ có 6 orphan. Fix: sửa comment nói rõ 6 orphan đủ trigger cap/overflow, case thật doc #14 (14 refs) không được tái tạo 1:1.
-- Awaiting re-verify.
+- **✅ Q1 + Q1-ext RATIFIED (Kevin, 2026-07-03, comment trên #478)** — bỏ xanh lá "success" đồng loạt ở 4 vị trí (áp dụng nhất quán nguyên tắc v1.1, không phải quyết định mới):
+
+  | Component | Từ | Thành |
+  |---|---|---|
+  | `ConfidenceMeter` (≥ ngưỡng) | `bg-success` | `ink-faint` |
+  | `ConfidenceMeter` (< ngưỡng) | `bg-warning` | giữ nguyên |
+  | `SignatureBadge` "Đã ký" | `text-success`/`bg-success-soft` | `done`/`done_soft` |
+  | `LifecycleBadge` "active" (#481's Q1-ext) | `bg-success-soft text-success` | `ink-muted` + outline |
+  | `AmountDisplay` (#472) | `bg-success-soft text-success` | chữ `ink` thường, bỏ badge hẳn |
+
+  Không cần PR/mockup mới — cả 4 phương án đã có sẵn trong PR #480/#483 (đúng non-legacy variant đã build sẵn). Frontend áp dụng đồng loạt 1 PR (#485), gỡ block cho #484/#485.
+- Awaiting re-verify (Q2/Q3/Q4 vẫn mở).
 
 ## Issue #467 — Obligation tab v3 reorg (parent #466, DEC-055) — branch `claude/design-obligation-tab-reorg-467`
 - Full reorg of doc-detail tab "Nghĩa vụ & Quyền lợi". Replaces v2 flat list + obligation_v0.2 emoji patterns.
