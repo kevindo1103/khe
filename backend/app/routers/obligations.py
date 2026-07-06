@@ -370,10 +370,18 @@ def confirm_trigger(
 ):
     """Confirm that a trigger event has occurred for a waiting_trigger obligation (#501).
 
-    Transitions status waiting_trigger → pending and computes due_date from
-    event_date + trigger_delay_days. If trigger_obligation_id is set, the
-    prerequisite obligation must already be done (prevents confirming an event
-    that hasn't happened yet). D-07 Event logged.
+    Only for event-triggered obligations (milestone_trigger != "date"). Date-anchored
+    obligations (milestone_trigger == "date") resolve automatically via contract date
+    extraction — D-08 prevents manual override.
+
+    Computes due_date = event_date + trigger_delay_days and transitions:
+      - pending          when due_date >= today
+      - awaiting_confirmation when due_date < today  (D-15 backfill guard — D-02 SME confirm)
+
+    Prerequisite guard (defense-in-depth): if trigger_obligation_id is set, the
+    referenced obligation must already be done.
+
+    D-07 trigger_confirmed Event logged in the same transaction as the status change.
     """
     ob = (
         db.query(Obligation)
@@ -382,13 +390,21 @@ def confirm_trigger(
     )
     if ob is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obligation not found")
+
+    # D-08: date-anchored obligations resolve via AI contract date extraction, not manual confirm.
+    if ob.milestone_trigger == "date":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Date-anchored obligations are resolved via contract date extraction, not manual trigger confirmation",
+        )
+
     if ob.status != "waiting_trigger":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Obligation is not in waiting_trigger state (current: {ob.status})",
         )
 
-    # If linked to a prerequisite obligation, verify it is done first.
+    # Prerequisite guard (defense-in-depth for edge cases where cascade didn't fire).
     if ob.trigger_obligation_id:
         prereq = (
             db.query(Obligation)
@@ -406,11 +422,12 @@ def confirm_trigger(
 
     event_date = body.event_date or date.today()
     delay = ob.trigger_delay_days or 0
-    ob.due_date = (event_date + timedelta(days=delay)).isoformat()
-    ob.status = "pending"
-    db.commit()
-    db.refresh(ob)
+    due = event_date + timedelta(days=delay)
+    ob.due_date = due.isoformat()
+    # D-15: backfilled past due_date → awaiting_confirmation (D-02 SME confirm required).
+    ob.status = "awaiting_confirmation" if due < date.today() else "pending"
 
+    # Log Event in the same transaction as the status change (atomicity — D-07).
     _log_event(
         db,
         user.tenant_id,
@@ -425,5 +442,6 @@ def confirm_trigger(
         },
     )
     db.commit()
+    db.refresh(ob)
 
     return ObligationOut.model_validate(ob)
