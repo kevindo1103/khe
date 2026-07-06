@@ -3,7 +3,7 @@
  * Mirrored from backend schemas exactly to prevent drift.
  */
 
-import type { ObligationOut } from './obligations';
+import type { ObligationOut, ObligationCreateIn } from './obligations';
 
 export interface TermOut {
   id: number;
@@ -15,6 +15,23 @@ export interface TermOut {
 
 export interface TermPatchIn {
   field_value: string;
+}
+
+export interface TermCreateIn {
+  field_name: string;
+  field_value: string | null;
+  source: string;
+}
+
+// #494 — manual document creation (metadata-only, no PDF)
+export interface ManualDocumentCreateIn {
+  title: string;
+  doc_type: string | null;
+  counterparty: string | null;
+  sign_date: string | null;
+  effective_date: string | null;
+  terms: TermCreateIn[];
+  obligations: ObligationCreateIn[];
 }
 
 export interface DocumentListItem {

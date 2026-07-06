@@ -51,8 +51,8 @@ export const NAV_SECTIONS: NavSection[] = [
 const ALL_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
 export const SETTINGS_ITEM: NavItem = { key: 'settings', label: 'Cài đặt', icon: '⚙', to: '/admin/settings' };
 
-// first session keeps home + upload OPEN; read destinations lock until activated
-const FIRST_SESSION_OPEN = ['home', 'upload'];
+// first session keeps home + upload + the two new wizard routes OPEN; read destinations lock until activated
+const FIRST_SESSION_OPEN = ['home', 'upload', 'documents/new', 'obligations/ra-soat'];
 const isLocked = (key: string, firstSession: boolean) =>
   firstSession && !FIRST_SESSION_OPEN.includes(key);
 

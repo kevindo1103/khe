@@ -123,21 +123,55 @@ function UnconfirmedCounter({ unconfirmed, total, onView }: { unconfirmed: numbe
 
 // ── stage views ──
 
-/** NEW — self-serve cold start: one focused CTA (Hick's law). */
-function StageNew({ onUpload }: { onUpload: () => void }) {
+/** NEW — self-serve cold start: 3 CTAs (DEC-058). */
+function StageNew({
+  onUpload,
+  onManual,
+  onCompliance,
+}: {
+  onUpload: () => void;
+  onManual: () => void;
+  onCompliance: () => void;
+}) {
   return (
     <div className="max-w-xl mx-auto">
       <div className="text-center py-6 px-2">
-        <div className="text-xl font-bold text-ink">Chào mừng đến với Khế 👋</div>
+        <div className="text-xl font-bold text-ink">Chào mừng đến với Khế</div>
         <p className="text-sm text-ink-muted mt-2 leading-relaxed">
-          Tải hợp đồng đầu tiên lên — Khế tự đọc, bóc hạn và nhắc bạn trước khi tới hạn.
+          Bắt đầu theo dõi nghĩa vụ — tải hợp đồng, nhập tay, hoặc rà soát tuân thủ.
         </p>
       </div>
-      <Card>
-        <JourneyEmptyState state="cold_start" onUpload={onUpload} />
-      </Card>
+      <div className="space-y-3">
+        <Card>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-semibold text-ink">Tải hợp đồng lên</div>
+              <div className="text-2xs text-ink-muted mt-0.5">AI tự đọc và bóc tách nội dung.</div>
+            </div>
+            <Button size="sm" onClick={onUpload}>Tải lên →</Button>
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-semibold text-ink">Nhập tay hợp đồng</div>
+              <div className="text-2xs text-ink-muted mt-0.5">Ghi lại thông tin hợp đồng khi không có file.</div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={onManual}>Nhập tay →</Button>
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-semibold text-ink">Rà soát tuân thủ</div>
+              <div className="text-2xs text-ink-muted mt-0.5">Kiểm tra nghĩa vụ thuế, BHXH theo loại hình doanh nghiệp.</div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={onCompliance}>Rà soát →</Button>
+          </div>
+        </Card>
+      </div>
       <div className="text-2xs text-ink-subtle text-center mt-3">
-        Các mục khác mở sau khi bạn tải hợp đồng đầu tiên.
+        Các mục khác mở sau khi bạn hoàn tất bước đầu tiên.
       </div>
     </div>
   );
@@ -301,6 +335,8 @@ export default function Home() {
   const navigate = useNavigate();
 
   const goUpload = useCallback(() => navigate('/admin/upload'), [navigate]);
+  const goManual = useCallback(() => navigate('/admin/documents/new'), [navigate]);
+  const goCompliance = useCallback(() => navigate('/admin/obligations/ra-soat'), [navigate]);
   const goReviewDoc = useCallback((id: number) => navigate(`/admin/documents/${id}`), [navigate]);
 
   // doc list powers the counts shown in several stage views (server owns the stage)
@@ -319,7 +355,7 @@ export default function Home() {
 
   switch (stage) {
     case 'NEW':
-      return <StageNew onUpload={goUpload} />;
+      return <StageNew onUpload={goUpload} onManual={goManual} onCompliance={goCompliance} />;
     case 'EXTRACTING':
       return (
         <div className="max-w-xl mx-auto">

@@ -47,6 +47,23 @@ export interface ObligationOut {
   legal_basis: string | null;
 }
 
+// #494 — manual / rule-pack obligation creation
+export interface ObligationCreateIn {
+  description: string;
+  obligation_type: string;
+  direction: 'nghĩa_vụ' | 'quyền_lợi' | null;
+  due_date: string | null;
+  recurrence: string | null;
+  obligor: string | null;
+  remind_before_days: number;
+  document_id: number | null;
+  source: string;
+  legal_basis: string | null;
+  milestone_trigger: string;
+  trigger_condition: string | null;
+  trigger_delay_days: number | null;
+}
+
 export interface ObligationListOut {
   items: ObligationOut[];
   page: number;
