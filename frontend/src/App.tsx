@@ -8,7 +8,9 @@ import Home from './pages/admin/Home';
 import Upload from './pages/admin/Upload';
 import DocumentList from './pages/admin/DocumentList';
 import DocumentDetail from './pages/admin/DocumentDetail';
+import DocumentNew from './pages/admin/DocumentNew';
 import Obligations from './pages/admin/Obligations';
+import ComplianceWizard from './pages/admin/ComplianceWizard';
 import Chat from './pages/admin/Chat';
 import Settings from './pages/admin/Settings';
 import ExtractionMetrics from './pages/admin/ExtractionMetrics';
@@ -45,8 +47,10 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="upload" element={<Upload />} />
         <Route path="documents" element={<DocumentList />} />
+        <Route path="documents/new" element={<DocumentNew />} />
         <Route path="documents/:id" element={<DocumentDetail />} />
         <Route path="obligations" element={<Obligations />} />
+        <Route path="obligations/ra-soat" element={<ComplianceWizard />} />
         <Route path="chat" element={<Chat />} />
         <Route path="settings" element={<Settings />} />
         <Route path="extraction-metrics" element={<ExtractionMetrics />} />
