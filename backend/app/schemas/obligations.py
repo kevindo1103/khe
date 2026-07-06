@@ -82,3 +82,24 @@ class ObligationPatchOut(BaseModel):
     ok: bool
     obligation: ObligationOut
     activated_count: int = 0
+
+
+# ── Bulk complete (#471) ──
+
+class BulkCompleteIn(BaseModel):
+    ids: list[int]
+    status: str                          # must be "done" or "cancelled"
+    fulfilled_at: datetime | None = None # required when status="done"
+    fulfilled_by: str | None = None
+
+
+class BulkCompleteItemOut(BaseModel):
+    id: int
+    ok: bool
+    error: str | None = None             # reason if not ok (not found, wrong tenant, etc.)
+
+
+class BulkCompleteOut(BaseModel):
+    updated: int
+    skipped: int
+    items: list[BulkCompleteItemOut]

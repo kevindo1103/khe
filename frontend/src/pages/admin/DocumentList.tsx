@@ -28,8 +28,8 @@ function sortDocs(docs: DocumentListItem[]): DocumentListItem[] {
   return [...docs].sort((a, b) => {
     const overdueA = a.next_due_date ? new Date(a.next_due_date) < today : false;
     const overdueB = b.next_due_date ? new Date(b.next_due_date) < today : false;
-    const actionA = (overdueA || (!a.confirmed_by_user_at && a.status !== 'processing')) ? 0 : 1;
-    const actionB = (overdueB || (!b.confirmed_by_user_at && b.status !== 'processing')) ? 0 : 1;
+    const actionA = (overdueA || (!a.confirmed_by_user_at && a.status !== 'processing' && a.status !== 'failed')) ? 0 : 1;
+    const actionB = (overdueB || (!b.confirmed_by_user_at && b.status !== 'processing' && b.status !== 'failed')) ? 0 : 1;
     if (actionA !== actionB) return actionA - actionB;
     const dateA = a.next_due_date ? new Date(a.next_due_date).getTime() : Infinity;
     const dateB = b.next_due_date ? new Date(b.next_due_date).getTime() : Infinity;
@@ -134,12 +134,19 @@ function CompletenessIcon({ value }: { value: boolean | null | undefined }) {
   );
 }
 
+function isPendingDoc(doc: DocumentListItem): boolean {
+  return doc.status !== 'processing' && doc.status !== 'failed' && !doc.confirmed_by_user_at;
+}
+
 function StatusPill({ doc, docId }: { doc: DocumentListItem; docId?: number }) {
   let label: string;
   let pillClass: string;
   if (doc.status === 'processing') {
     label = 'Đang xử lý';
     pillClass = 'bg-surface-alt text-ink-muted';
+  } else if (doc.status === 'failed') {
+    label = 'Lỗi trích xuất';
+    pillClass = 'bg-danger-soft text-danger';
   } else if (!doc.confirmed_by_user_at) {
     label = 'Cần xác nhận';
     pillClass = 'bg-warning-soft text-warning';
@@ -233,12 +240,9 @@ function DocCard({ doc, onClick }: { doc: DocumentListItem; onClick: () => void 
           <span className="text-xs font-medium text-ink truncate">
             {doc.title || (`HĐ ${docTypeLabel(doc.doc_type)}${doc.primary_party ? ` với ${doc.primary_party}` : ''}`)}
           </span>
-          {doc.duplicate && (
-            <span className="shrink-0 text-warning font-bold text-xs" title="Tệp trùng — kiểm tra">!</span>
-          )}
           <LifecycleBadge status={doc.lifecycle_status} />
           {doc.has_signature != null && (
-            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>
+            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-done-soft text-done' : 'bg-warning-soft text-warning'}`}>
               {doc.has_signature ? 'Đã ký' : 'Chưa ký'}
             </span>
           )}
@@ -358,7 +362,7 @@ export default function DocumentList() {
         case 'all':          return true;
         case 'due7':         return isDueSoon(doc);
         case 'overdue':      return isOverdue(doc);
-        case 'pending':      return !doc.confirmed_by_user_at && doc.status !== 'processing';
+        case 'pending':      return isPendingDoc(doc);
         case 'rights':       return (doc.quyen_loi_count ?? 0) > 0;
         case 'processing':   return doc.status === 'processing';
         case 'extracted':    return doc.status === 'extracted';
@@ -373,7 +377,7 @@ export default function DocumentList() {
     const items = data?.items ?? [];
     return {
       total:   data?.total ?? 0,
-      pending: items.filter(d => !d.confirmed_by_user_at && d.status !== 'processing').length,
+      pending: items.filter(isPendingDoc).length,
       dueSoon: items.filter(isDueSoon).length,
       overdue: items.filter(isOverdue).length,
       rights:  items.filter(d => (d.quyen_loi_count ?? 0) > 0).length,
@@ -587,18 +591,9 @@ export default function DocumentList() {
                     <span className="text-xs font-medium text-ink group-hover:underline truncate">
                       {doc.title || (`HĐ ${docTypeLabel(doc.doc_type)}${doc.primary_party ? ` với ${doc.primary_party}` : ''}`)}
                     </span>
-                    {doc.duplicate && (
-                      <span
-                        className="shrink-0 text-warning font-bold text-xs cursor-help"
-                        title="Tệp trùng — kiểm tra"
-                        aria-label="Cảnh báo: tệp trùng"
-                      >
-                        !
-                      </span>
-                    )}
                     <LifecycleBadge status={doc.lifecycle_status} />
           {doc.has_signature != null && (
-            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>
+            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-medium ${doc.has_signature ? 'bg-done-soft text-done' : 'bg-warning-soft text-warning'}`}>
               {doc.has_signature ? 'Đã ký' : 'Chưa ký'}
             </span>
           )}

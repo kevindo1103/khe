@@ -562,7 +562,7 @@ def list_documents(
                 nghia_vu_count=nghia_vu or 0,
                 quyen_loi_count=quyen_loi or 0,
                 direction_null_count=dir_null or 0,
-                may_have_unextracted_obligations=None,  # TODO(#276): map doc.may_have_unextracted_obligations once column exists
+                may_have_unextracted_obligations=doc.may_have_unextracted_obligations,
                 processing_stage=doc.processing_stage,
                 processing_progress=doc.processing_progress,
                 title=doc.title,
@@ -632,11 +632,17 @@ def get_document(
         .count()
     )
 
-    # When the doc failed extraction, surface the reason from the latest
-    # extraction_failed Event (#79 follow-up — UAT self-diagnosis).
+    # When the doc failed extraction (terminal) OR needs a retry (transient outage /
+    # MAX_TOKENS, #436/#446), surface the reason from the latest matching Event
+    # (#79 follow-up — UAT/FE self-diagnosis; widened per QC review on PR #458 —
+    # previously only checked status=="failed", so a retryable doc's reason never
+    # surfaced even though `_mark_transient_failure` recorded it).
     failure_reason: str | None = None
     if doc.status == "failed":
         fail_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_failed")
+        failure_reason = fail_payload.get("reason") if fail_payload else None
+    elif doc.processing_stage == "retry_needed":
+        fail_payload = _latest_event_payload(db, user.tenant_id, doc.id, "extraction_transient_failure")
         failure_reason = fail_payload.get("reason") if fail_payload else None
 
     # Last extraction provider/model from the extraction_performed Event (#233) —
@@ -657,6 +663,7 @@ def get_document(
         clause_count=clause_count,
         parties=[PartyOut.model_validate(p) for p in parties],
         failure_reason=failure_reason,
+        extraction_warnings=doc.extraction_warnings,
         provider=provider,
         model=model,
         confirmed_by_user_at=doc.confirmed_by_user_at,
@@ -671,6 +678,7 @@ def get_document(
         definition_count=definition_count,
         has_signature=doc.has_signature,
         signature_pages=doc.signature_pages,
+        may_have_unextracted_obligations=doc.may_have_unextracted_obligations,
     )
 
 
@@ -1033,6 +1041,40 @@ def download_file(
         path=str(file_path),
         filename=doc.file_name,
         media_type="application/pdf",
+    )
+
+
+@docs_router.get("/{doc_id}/ocr-text")
+def get_ocr_text(
+    doc_id: int,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return OCR text for a document (#444).
+
+    Only available for documents processed via hybrid_ocr (scanned PDFs).
+    Response header: X-Khe-OCR-Disclaimer labels this as machine-generated.
+    """
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.tenant_id == user.tenant_id)
+        .first()
+    )
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    ocr_path = settings.STORAGE_DIR / (doc.file_path + ".ocr.txt")
+    if not ocr_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OCR text not available for this document",
+        )
+
+    return FileResponse(
+        path=str(ocr_path),
+        filename=doc.file_name.rsplit(".", 1)[0] + ".ocr.txt",
+        media_type="text/plain; charset=utf-8",
+        headers={"X-Khe-OCR-Disclaimer": "Machine-generated OCR, may contain errors"},
     )
 
 

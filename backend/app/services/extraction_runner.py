@@ -16,12 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_tenant_session
-from app.models.tenant import Clause, Document, Event, Obligation, Party, Term
+from app.models.tenant import Clause, Definition, Document, Event, Obligation, Party, Term
 from app.services.consent import check_extraction_consent, get_active_consent_reference
 from app.services.obligation_engine import derive_obligations, resolve_date_anchored_obligations
 from app.services import quota, tenant_journey
 from app.services.date_parse import parse_date as _parse_date
-from modules.extraction import ExtractionUnavailable, get_extraction_provider
+from modules.extraction import ExtractionUnavailable, get_extraction_provider, is_max_tokens_truncation
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
-_VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "other"}
+_VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "penalty", "other"}
 _VALID_TRIGGERS = {"date", "event"}
 
 
@@ -170,13 +170,10 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             _mark_failed(db, doc_id, tenant_id, f"Failed to read file: {exc}")
             return
 
-        # 4. DEC-049: route scanned PDFs through hybrid_ocr (DocAI OCR + Gemini text),
-        #    digital PDFs/images through gemini_flash (vision-only).
-        prefer = "gemini_flash"
-        if file_bytes[:4] == b"%PDF":
-            from modules.extraction.scan_detect import is_scanned_pdf
-            if is_scanned_pdf(file_bytes):
-                prefer = "hybrid_ocr"
+        # 4. DEC-049 (#413): route ALL PDFs through hybrid_ocr.
+        #    Digital → pdftotext (free) → Gemini text. Scanned → DocAI → Gemini text.
+        #    Non-PDF (images) → gemini_flash vision-only.
+        prefer = "hybrid_ocr" if file_bytes[:4] == b"%PDF" else "gemini_flash"
 
         try:
             provider = get_extraction_provider(prefer=prefer)
@@ -200,6 +197,29 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
 
         # 6. Hard extraction failure (D-08: never fabricate).
         if result.is_error:
+            if is_max_tokens_truncation(result.warnings):
+                # #461 (mini-sprint #443, ratified by Kevin 2026-07-02): auto-trigger
+                # the two-pass clause pipeline as a background continuation, rather
+                # than leaving the doc stuck on a single-call MAX_TOKENS. Requires
+                # OCR text — only hybrid_ocr's text-mode path carries it; a vision-mode
+                # MAX_TOKENS (gemini_flash) has no OCR text to reuse, so falls through
+                # to the same retryable message as before.
+                if isinstance(result.ocr_text, str) and result.ocr_text.strip():
+                    asyncio.run(_run_two_pass_fallback(db, doc_id, tenant_id, result.ocr_text))
+                    return
+                _mark_transient_failure(
+                    db, doc_id, tenant_id,
+                    "Document quá lớn, đã cắt bớt kết quả.",
+                    result.warnings,
+                )
+                return
+            if _is_transient_provider_outage(result.warnings):
+                _mark_transient_failure(
+                    db, doc_id, tenant_id,
+                    "Provider temporarily unavailable (503/UNAVAILABLE)",
+                    result.warnings,
+                )
+                return
             _mark_failed(
                 db,
                 doc_id,
@@ -210,6 +230,15 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             return
 
         _update_progress(tenant_id, doc_id, "saving", _PROGRESS_CHECKPOINTS["saving"])
+
+        # 6b. Persist OCR text to disk if available (hybrid_ocr produces this).
+        if isinstance(result.ocr_text, str) and result.ocr_text:
+            ocr_path = settings.STORAGE_DIR / (doc.file_path + ".ocr.txt")
+            try:
+                ocr_path.parent.mkdir(parents=True, exist_ok=True)
+                ocr_path.write_text(result.ocr_text, encoding="utf-8")
+            except Exception:
+                logger.warning("Failed to save OCR text for doc %d", doc_id, exc_info=True)
 
         # 7. Idempotency: replace existing terms.
         #    Kept in the same transaction as the inserts below; the final
@@ -224,6 +253,12 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         db.query(Clause).filter(
             Clause.document_id == doc_id,
             Clause.tenant_id == tenant_id,
+        ).delete()
+
+        # 7c. Idempotency: replace existing definitions (R9 #372).
+        db.query(Definition).filter(
+            Definition.document_id == doc_id,
+            Definition.tenant_id == tenant_id,
         ).delete()
 
         # 8. Persist terms — all fields returned by the provider (universal + type-specific).
@@ -262,6 +297,8 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
                 title=clause_item.title,
                 content=clause_item.content,
                 page_num=None,
+                level=clause_item.level,
+                clause_path=clause_item.clause_path,
             )
             db.add(c)
             new_clauses.append(c)
@@ -273,10 +310,27 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
             from app.services.clause_hierarchy import build_clause_hierarchy
             build_clause_hierarchy(new_clauses, db)
 
-        # 8b-iii. R9 (#372): definitions extraction — stub pending KHE_AI schema.
-        # When Gemini schema adds definitions[] array, parse (term, definition) pairs
-        # here, create Definition rows, link source_clause_id via clause_path matching.
-        # No-op for now; CRUD + storage layer is ready.
+        # 8b-iii. R9 (#372): persist defined_terms from Gemini extraction.
+        clause_path_to_id: dict[str, int] = {
+            c.clause_path: c.id for c in new_clauses if c.clause_path and c.id
+        }
+        for dt in result.defined_terms:
+            if not dt.term or not dt.definition:
+                continue
+            source_clause_id = None
+            source_clause_num = dt.source_clause
+            if source_clause_num:
+                from app.services.clause_hierarchy import _parse_path
+                path = _parse_path(source_clause_num) or source_clause_num.replace("Điều ", "").strip().rstrip(".")
+                source_clause_id = clause_path_to_id.get(path)
+            db.add(Definition(
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                term=dt.term,
+                definition=dt.definition,
+                source_clause_num=source_clause_num,
+                source_clause_id=source_clause_id,
+            ))
 
         # 8b-iv. R10 (#373): cross-reference resolution between clauses.
         from app.services.cross_ref import resolve_cross_refs
@@ -517,6 +571,178 @@ def _mark_failed(
         actor="system",
         purpose="vision_extraction",
         payload=json.dumps({"reason": reason, **(payload or {})}),
+    )
+    db.add(event)
+    db.commit()
+
+
+def _is_transient_provider_outage(warnings: list[str]) -> bool:
+    """True if warnings indicate a transient upstream outage (#436, QC #435).
+
+    Distinguishes "Gemini is temporarily overloaded, try again" from a genuine
+    extraction failure — the former should keep the doc retryable, not terminal.
+    """
+    text = "; ".join(warnings)
+    return "503" in text or "UNAVAILABLE" in text
+
+
+def _mark_transient_failure(
+    db: Session,
+    doc_id: int,
+    tenant_id: str,
+    reason: str,
+    warnings: list[str],
+) -> None:
+    """Keep a document retryable after a transient provider outage (#436).
+
+    Unlike `_mark_failed`, does NOT set a terminal `failed` state — `status`
+    resets to `pending` so the doc can be retried (via `POST
+    /{doc_id}/re-extract`, #97) without landing in the same
+    silently-useless-Haiku-result bucket QC found in #435.
+
+    `processing_stage='retry_needed'` (QC review, PR #458) — deliberately NOT
+    'pending', which collides with a freshly-uploaded doc that hasn't started
+    extraction yet (`processing_stage` starts `NULL`, not 'pending') and isn't
+    in the documented `queued|ocr|llm|saving|done|failed` enum either. A
+    distinct value lets the frontend tell "never started" from "needs retry"
+    and show the retry button only for the latter. Warnings are stored on the
+    doc row (`extraction_warnings`) for UI display.
+    """
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
+    if doc:
+        doc.status = "pending"
+        doc.processing_stage = "retry_needed"
+        doc.processing_progress = 0
+        doc.extraction_warnings = json.dumps(warnings) if warnings else None
+        db.commit()
+    else:
+        logger.warning("Cannot mark document %d transient-failed: not found for tenant %s", doc_id, tenant_id)
+
+    event = Event(
+        tenant_id=tenant_id,
+        event_type="extraction_transient_failure",
+        entity_type="document",
+        entity_id=doc_id,
+        actor="system",
+        purpose="vision_extraction",
+        payload=json.dumps({"reason": reason, "warnings": warnings}),
+    )
+    db.add(event)
+    db.commit()
+
+
+async def _run_two_pass_fallback(
+    db: Session,
+    doc_id: int,
+    tenant_id: str,
+    ocr_text: str,
+) -> None:
+    """Auto-recover a MAX_TOKENS truncation via the two-pass clause pipeline (#461).
+
+    SCOPE GAP — flagged, not silently papered over (D-08): `two_pass_runner`
+    (#449) only recovers CLAUSE content. The single-call attempt that hit
+    MAX_TOKENS would also have tried to extract universal/type-specific
+    fields, parties, obligation_schedule, definitions, cross_references, and
+    signature detection in the SAME call — none of that exists here. A doc
+    that completes via this path has real, full clause text but EMPTY
+    Terms/Parties/Obligations/Definitions. Marking it "extracted" without
+    surfacing this would reproduce the exact silent-partial-success bug QC
+    caught with the Haiku PDF fallback (#435/#436) — arguably worse here,
+    since the clause view looks complete and would mask the gap. Surfaced via
+    `extraction_warnings` instead. A metadata-only pass to close this gap is
+    tracked as a fast-follow (see #461 comment thread) — out of scope here.
+
+    Resumable end-to-end: if this doc is retried later (`POST /re-extract`),
+    the single-call attempt will hit MAX_TOKENS again (nothing about the doc
+    changed) and land back in this same function. `persist_skeleton` is a
+    no-op once Pass 2 progress exists and `run_content_fill` only re-bills
+    non-'filled' clauses (#459 QC review fixes), so retries converge instead
+    of re-doing completed work.
+    """
+    from app.services.two_pass_runner import persist_skeleton, run_content_fill
+    from modules.extraction.two_pass import extract_skeleton
+
+    _update_progress(tenant_id, doc_id, "two_pass_skeleton", _PROGRESS_CHECKPOINTS["ocr"])
+    try:
+        skeleton = await extract_skeleton(ocr_text)
+    except Exception as exc:
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            "Document quá lớn, đã cắt bớt kết quả. (two-pass skeleton lỗi)",
+            [f"two_pass skeleton exception: {type(exc).__name__}: {exc}"],
+        )
+        return
+
+    if skeleton.truncated or not skeleton.clauses:
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            "Document quá lớn, đã cắt bớt kết quả. (two-pass skeleton rỗng)",
+            skeleton.warnings or ["two_pass skeleton returned no clauses"],
+        )
+        return
+
+    persist_skeleton(db, tenant_id, doc_id, skeleton)
+    _update_progress(tenant_id, doc_id, "two_pass_fill", _PROGRESS_CHECKPOINTS["llm"])
+
+    try:
+        summary = await run_content_fill(db, tenant_id, doc_id, ocr_text)
+    except Exception as exc:
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            "Document quá lớn, đã cắt bớt kết quả. (two-pass fill lỗi)",
+            [f"two_pass fill exception: {type(exc).__name__}: {exc}"],
+        )
+        return
+
+    doc = db.query(Document).filter(Document.id == doc_id, Document.tenant_id == tenant_id).first()
+    if doc is None:
+        logger.warning("Cannot finalize two-pass result for doc %d: not found for tenant %s", doc_id, tenant_id)
+        return
+
+    if summary["truncated"] > 0:
+        # Some clauses never converged even after Pass 3 — stay retryable
+        # rather than declaring a partial result "done".
+        _mark_transient_failure(
+            db, doc_id, tenant_id,
+            f"Document quá lớn — {summary['truncated']}/{summary['total']} điều khoản chưa trích xuất được.",
+            [f"two_pass partial: {summary['filled']}/{summary['total']} clauses filled"],
+        )
+        return
+
+    # R10 (#373): cross-reference resolution is a pure post-process over
+    # already-persisted Clause.content — no dependency on the original LLM
+    # call's raw output (same call used by the single-call path, line ~337).
+    # Two-pass DOES persist full clause content, so this is recovered "for
+    # free" (QC review finding on PR #463) — narrows the fields/parties/
+    # obligations scope gap by one item without needing new AI-side work.
+    from app.services.cross_ref import resolve_cross_refs
+    resolve_cross_refs(db, tenant_id, doc_id)
+
+    doc.status = "extracted"
+    doc.processing_stage = "done"
+    doc.processing_progress = 100
+    doc.extraction_warnings = json.dumps([
+        f"Trích xuất qua chế độ tài liệu lớn (two-pass) — {summary['filled']}/{summary['total']} điều khoản "
+        "đầy đủ. Trường thông tin/đối tác/nghĩa vụ CHƯA được trích xuất tự động do tài liệu quá lớn — "
+        "cần bổ sung thủ công."
+    ])
+    db.commit()
+
+    event = Event(
+        tenant_id=tenant_id,
+        event_type="extraction_two_pass_completed",
+        entity_type="document",
+        entity_id=doc_id,
+        actor="system",
+        purpose="vision_extraction",
+        payload=json.dumps({
+            "clauses_filled": summary["filled"],
+            "clauses_total": summary["total"],
+            "cross_refs_resolved": True,
+            "fields_extracted": False,
+            "parties_extracted": False,
+            "obligations_extracted": False,
+        }),
     )
     db.add(event)
     db.commit()

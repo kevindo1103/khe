@@ -4,13 +4,13 @@ Called from extraction_runner after clause rows are flushed (within the same
 transaction). Operates in-place: sets parent_id, level, clause_path on each
 Clause row. Synthesizes stub parent nodes for missing intermediate levels.
 
-Vietnamese numbering conventions handled:
-  Điều X           → top-level path "X"          (level 0)
-  Khoản X.Y        → sub path "X.Y"              (level 1)
-  Mục X.Y          → sub path "X.Y"              (level 1)
-  X.Y              → sub path "X.Y"              (level 1)
-  X.Y.Z            → sub-sub path "X.Y.Z"        (level 2)
-  X.Y.Z.W and deeper → clamped to level 2, path preserved
+Vietnamese numbering conventions handled (1-indexed, matching prompt schema):
+  Điều X           → top-level path "X"          (level 1)
+  Khoản X.Y        → sub path "X.Y"              (level 2)
+  Mục X.Y          → sub path "X.Y"              (level 2)
+  X.Y              → sub path "X.Y"              (level 2)
+  X.Y.Z            → sub-sub path "X.Y.Z"        (level 3)
+  Phụ lục X        → appendix path "PL-X"        (level 1)
 
 Clauses with unrecognised numbering (Roman numerals, letters, bare titles)
 keep clause_path=None, parent_id=None, level=None.
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Patterns ordered most-specific first.
 _DIEU_RE = re.compile(r"^(?:Đi[eề]u|DIEU)\s*(\d+)\s*[\.:\s]*$", re.IGNORECASE)
 _KHOAN_MUC_RE = re.compile(r"^(?:Kho[aả]n|M[uụ]c|KHOAN|MUC)\s*(\d+(?:\.\d+)+)\s*[\.:\s]*$", re.IGNORECASE)
+_PHU_LUC_RE = re.compile(r"^(?:Ph[uụ]\s+l[uụ]c|PHỤ\s+LỤC)\s+([A-Za-z0-9]+)", re.IGNORECASE)
 _DOTTED_RE = re.compile(r"^(\d+(?:\.\d+)+)\s*[\.:]?\s*")  # bare "2.1" or "2.1.1 ..."
 _TOP_RE = re.compile(r"^(\d+)\s*[\.:]?\s*")                 # bare "2" or "2. Tên mục"
 
@@ -35,6 +36,11 @@ def _parse_path(clause_num: Optional[str]) -> Optional[str]:
     if not clause_num:
         return None
     s = clause_num.strip()
+    if s.startswith("PL-"):
+        return s
+    m = _PHU_LUC_RE.match(s)
+    if m:
+        return f"PL-{m.group(1).upper()}"
     m = _DIEU_RE.match(s)
     if m:
         return m.group(1)
@@ -51,14 +57,27 @@ def _parse_path(clause_num: Optional[str]) -> Optional[str]:
 
 
 def _level_from_path(path: str) -> int:
-    """Return hierarchy depth: "2"→0, "2.1"→1, "2.1.1"→2 (capped at 2)."""
-    return min(path.count("."), 2)
+    """Return hierarchy depth (1-indexed, matching prompt schema):
+    "2"→1, "2.1"→2, "2.1.1"→3."""
+    return path.count(".") + 1
 
 
 def _parent_path(path: str) -> Optional[str]:
     """Return the immediate parent path: "2.1.1"→"2.1", "2.1"→"2", "2"→None."""
     idx = path.rfind(".")
     return path[:idx] if idx != -1 else None
+
+
+def _stub_num(path: str) -> str:
+    """Generate a clause_num label for a synthesized parent stub."""
+    if path.startswith("PL-"):
+        suffix = path[3:]
+        if "." not in suffix:
+            return f"Phụ lục {suffix}"
+        return path
+    if "." not in path:
+        return f"Điều {path}"
+    return path
 
 
 def build_clause_hierarchy(clauses: list, db) -> None:
@@ -74,12 +93,16 @@ def build_clause_hierarchy(clauses: list, db) -> None:
         return
 
     # Step 1: parse paths for all existing clauses.
+    # Always compute level from clause_path (source of truth) — LLM-provided
+    # level is often wrong (e.g. path="1.1" but level=1 instead of 2).
     for clause in clauses:
-        path = _parse_path(clause.clause_num)
-        if path is not None:
-            clause.clause_path = path
-            clause.level = _level_from_path(path)
-        # else: leave clause_path/level as None (unrecognised numbering)
+        if clause.clause_path is not None:
+            clause.level = _level_from_path(clause.clause_path)
+        else:
+            path = _parse_path(clause.clause_num)
+            if path is not None:
+                clause.clause_path = path
+                clause.level = _level_from_path(path)
 
     # Step 2: build a path→clause lookup (existing rows only, first-wins on collision).
     path_map: dict[str, Clause] = {}
@@ -108,7 +131,7 @@ def build_clause_hierarchy(clauses: list, db) -> None:
         stub = Clause(
             tenant_id=tenant_id,
             document_id=document_id,
-            clause_num=f"Điều {path}" if "." not in path else path,
+            clause_num=_stub_num(path),
             title=None,
             content="(tổng hợp từ mục con)",
             clause_path=path,

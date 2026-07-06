@@ -36,6 +36,27 @@ def is_scanned_pdf(file_bytes: bytes, *, min_chars_per_page: int = 50) -> bool:
     return avg_chars < min_chars_per_page
 
 
+_VIET_DIACRITICALS = set(
+    "àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ"
+    "ÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴĐ"
+)
+
+_GARBLE_THRESHOLD = 0.02
+
+
+def is_garbled_vietnamese(text: str) -> bool:
+    """Return True if text looks garbled — pdftotext failed to decode Vietnamese diacritics.
+
+    Normal Vietnamese text has ~8-15% diacritical characters.
+    Garbled text (custom font encoding not decoded) has <2%.
+    """
+    alpha_count = sum(1 for c in text if c.isalpha())
+    if alpha_count < 100:
+        return False
+    diac_count = sum(1 for c in text if c in _VIET_DIACRITICALS)
+    return (diac_count / alpha_count) < _GARBLE_THRESHOLD
+
+
 def extract_embedded_text(file_bytes: bytes) -> str | None:
     """Extract text from a digital PDF using pdftotext.
 

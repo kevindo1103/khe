@@ -76,6 +76,7 @@ class TermOut(BaseModel):
     field_value: str | None = None
     confidence: float | None = None
     needs_review: bool = False
+    source: str | None = None    # "extracted" | "remap" | "manual" | NULL(legacy)
     # Stage 3 review ref-link trust gate (#217, FR-EX-05). All optional → FE
     # graceful-degrades to plain text when absent (no dead link).
     ref: str | None = None             # display label, e.g. "Điều 8" / "tr.1 §A"
@@ -121,7 +122,7 @@ class DocumentListItem(BaseModel):
     nghia_vu_count: int = 0
     quyen_loi_count: int = 0
     direction_null_count: int = 0
-    may_have_unextracted_obligations: bool | None = None   # #276 column — NULL until that migration lands
+    may_have_unextracted_obligations: bool | None = None   # #276 honest completeness flag; NULL until verifier runs
     # R1 (#363): contract title/number — null for pre-migration docs (FE falls back to file_name)
     title: str | None = None
     contract_number: str | None = None
@@ -159,10 +160,15 @@ class DocumentDetailOut(BaseModel):
     obligations: list[Any] = []
     clause_count: int = 0
     parties: list[PartyOut] = []
-    # When status == "failed", populated from the most recent extraction_failed
-    # Event's payload.reason — surfaces the exact failure path (#79 follow-up)
-    # so UAT can self-diagnose without VPS access. Null for non-failed docs.
+    # Populated from the most recent extraction_failed OR extraction_transient_failure
+    # Event's payload.reason — surfaces the exact failure path (#79 follow-up; #436/#446
+    # widened to cover retryable transient failures too, QC review PR #458) so UAT/FE
+    # can self-diagnose without VPS access. Null for docs with no failure history.
     failure_reason: str | None = None
+    # #436/#446 (QC review PR #458): raw provider warnings for the latest extraction
+    # attempt — lets FE show "Gemini tạm thời không khả dụng" / "Document quá lớn"
+    # instead of a bare status. Null when no warnings were recorded.
+    extraction_warnings: list[str] | None = None
     # Last extraction provider/model from the extraction_performed Event (#233).
     # Lets the staging smoke gate discriminate gemini_flash (anchors required, #230)
     # vs claude fallback (null anchors OK). Also feeds NĐ 13 PII-processing audit.
@@ -187,9 +193,12 @@ class DocumentDetailOut(BaseModel):
     # R5 (#368): signature detection — null for pre-migration docs
     has_signature: bool | None = None
     signature_pages: list[int] | None = None
+    # #276 honest completeness flag — null until verifier runs, True/False set by fast-follow CompletenessVerifier
+    may_have_unextracted_obligations: bool | None = None
     model_config = ConfigDict(from_attributes=True)
 
     _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)
+    _parse_extraction_warnings = field_validator("extraction_warnings", mode="before")(_parse_json_list)
 
 
 # ── Document-level PATCH (#363 D-07 + #371 R8) ──

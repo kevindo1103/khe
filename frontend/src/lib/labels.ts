@@ -42,6 +42,7 @@ export const OBLIGATION_TYPE_LABELS: Record<string, string> = {
   renewal: 'Gia hạn',
   review: 'Rà soát',
   warranty: 'Bảo hành',
+  penalty: 'Phạt',
   other: 'Khác',
 };
 

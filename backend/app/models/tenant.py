@@ -45,7 +45,7 @@ class Document(TenantBase):
     extraction_latency_ms = Column(Float, nullable=True)   # total extraction latency in ms
     extraction_warnings = Column(Text, nullable=True)      # JSON array of warning strings
     # ── tenant_020: extraction progress (#360) ──
-    processing_stage = Column(String, nullable=True)       # queued|ocr|llm|saving|done|failed
+    processing_stage = Column(String, nullable=True)       # queued|ocr|llm|saving|done|failed|retry_needed|two_pass_skeleton|two_pass_fill
     processing_progress = Column(Integer, nullable=True)   # 0-100
     # ── tenant_021: contract title + number (#363) ──
     title = Column(String, nullable=True)                  # extracted contract title (tieu_de_hd term)
@@ -59,6 +59,10 @@ class Document(TenantBase):
     # ── tenant_028: signature detection (#368, R5) ──
     has_signature = Column(Boolean, nullable=True)         # True if doc has physical/digital signature
     signature_pages = Column(Text, nullable=True)          # JSON list e.g. "[1, 3]"
+    # ── tenant_031: honest completeness flag (#276) ──
+    # NULL = verifier never ran; True = likely miss; False = verifier cleared.
+    # NO default — legacy and freshly extracted docs must remain NULL.
+    may_have_unextracted_obligations = Column(Boolean, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -104,7 +108,7 @@ class Obligation(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
     description = Column(Text, nullable=False)
     recurrence = Column(String, default="once")          # cadence: "once" | "open_ended_review"
-    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "other"
+    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "penalty" | "other"
     direction = Column(String, nullable=True)            # DEC-030: "nghĩa_vụ" | "quyền_lợi" | NULL (needs_review)
     obligor = Column(String, nullable=True)              # DEC-030: role_label from parties[]
     due_date = Column(String, nullable=True)
@@ -224,6 +228,12 @@ class Clause(TenantBase):
     parent_id = Column(Integer, nullable=True)  # self-ref to clauses.id; app-level (no FK — avoids delete-order issues)
     level = Column(Integer, nullable=True)            # 0=top, 1=sub, 2=sub-sub (derived, not user-editable)
     clause_path = Column(String, nullable=True)       # dotted path e.g. "2.1.1" (for hierarchy sort)
+    # ── tenant_029: two-pass map-reduce content state (#449, mini-sprint #443) ──
+    # NULL = single-call extraction (legacy path, content already present at insert).
+    # "skeleton" = Pass 1 hierarchy only, content="" pending fill.
+    # "filled" = Pass 2 verbatim content persisted.
+    # "truncated" = Pass 2 hit MAX_TOKENS on this section; needs Pass 3 paragraph-split retry.
+    content_status = Column(String, nullable=True)
 
 
 class Definition(TenantBase):

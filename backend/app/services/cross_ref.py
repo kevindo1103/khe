@@ -182,6 +182,12 @@ def resolve_cross_refs(db: Session, tenant_id: str, document_id: int) -> dict:
                 if doc_id:
                     target_doc_id = doc_id
                     is_orphan = False
+                else:
+                    intra = path_map.get(f"PL-{target_key.upper()}")
+                    if intra and intra.id != clause.id:
+                        target_clause_id = intra.id
+                        target_clause_path = f"PL-{target_key.upper()}"
+                        is_orphan = False
 
             db.add(ClauseCrossRef(
                 tenant_id=tenant_id,

@@ -12,14 +12,21 @@ auto-derived: no legal_name, no matching self-party, or no obligor.
 #282 B1 hardening: matching is normalized (case-fold + diacritics-stripped +
 whitespace-collapsed). Obligor is matched against both role_label AND party name
 so LLMs emitting full company names as obligor are handled correctly.
+
+#471 Q1 fix: Party.aliases (tenant_022/#364, JSON TEXT) are now included in the
+match so abbreviated names stored as aliases are treated as self-party identifiers.
 """
 from __future__ import annotations
 
+import json
+import logging
 import unicodedata
 
 from sqlalchemy.orm import Session
 
 from app.models.tenant import Obligation, Party
+
+logger = logging.getLogger(__name__)
 
 
 def _norm(s: str) -> str:
@@ -28,12 +35,25 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
+def _party_names(p: Party) -> list[str]:
+    """All normalized name strings for a party: canonical name + aliases."""
+    names = [p.name or ""]
+    if p.aliases:
+        try:
+            parsed = json.loads(p.aliases) if isinstance(p.aliases, str) else p.aliases
+            if isinstance(parsed, list):
+                names.extend(str(a) for a in parsed if a)
+        except (ValueError, TypeError):
+            logger.warning("Party %d has corrupt aliases JSON — skipping aliases for direction match", p.id)
+    return [n for n in names if n]
+
+
 def _self_party_strings(db: Session, tenant_id: str, doc_id: int, legal_name: str | None) -> set[str]:
-    """Normalized identifiers (role_labels + party names) for the self-party.
+    """Normalized identifiers (role_labels + party names + aliases) for the self-party.
 
     Empty when legal_name is unset or nothing matches (→ direction stays NULL).
     Normalized so diacritic variants in legal_name vs extracted party names compare
-    correctly (B1 hardening, #282).
+    correctly (B1 hardening, #282). Aliases included per #471 Q1 fix.
     """
     if not legal_name:
         return set()
@@ -45,11 +65,16 @@ def _self_party_strings(db: Session, tenant_id: str, doc_id: int, legal_name: st
         .all()
     )
     for p in parties:
-        norm_nm = _norm(p.name or "")
-        if norm_nm and (norm_ln in norm_nm or norm_nm in norm_ln):
+        all_names = _party_names(p)
+        matched = any(
+            norm_nm and (norm_ln in norm_nm or norm_nm in norm_ln)
+            for norm_nm in (_norm(n) for n in all_names)
+        )
+        if matched:
             if p.role_label:
                 result.add(_norm(p.role_label))
-            result.add(norm_nm)
+            for n in all_names:
+                result.add(_norm(n))
     return result
 
 

@@ -186,6 +186,129 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
   (Claude provider falls back to `ANTHROPIC_API_KEY` for local/SDK default). Never log/hardcode.
 - Local dev: add both to `backend/.env.local` (gitignored).
 
+## Done (issue #445 — WS1-AI, parent #443 mini-sprint)
+- [x] `max_output_tokens=65_536` set explicitly (model max) in both
+      `gemini_flash.py` (`GeminiFlashProvider.extract`) and `hybrid_ocr.py`
+      (`HybridOCRProvider._llm_extract`) — was previously unset (SDK implicit
+      default), root cause of silent truncation on large docs (#442, doc #20).
+- [x] `finish_reason()` helper added to `providers/base.py` — reads
+      `response.candidates[0].finish_reason` off the google-genai response.
+- [x] Both providers now `logger.info` per extraction call: `input_tokens`,
+      `output_tokens` (`candidates_token_count`), `max_output_tokens`,
+      `finish_reason`, `latency_ms` — builds the empirical corpus WS2
+      (two-pass map-reduce, #448) needs for batch-sizing.
+- [ ] **Not done in this pass:** WS1's `MAX_TOKENS` trap (`is_error=True`,
+      no provider-advance) — that's the Backend half of WS1, coordinate via #443.
+- [x] **Rebased branch onto `origin/staging`** (was stale off `main` — staging had
+      ~20 commits ahead incl. PR #425 AI Phụ lục prompt fix for #439 and PR #441
+      Backend hierarchy fix). Resolved 1 merge conflict in `hybrid_ocr.py`
+      (`_response_diagnostic` tuple return vs my logging line — kept both).
+- Unit tests: `test_extraction.py` 54/55 pass post-rebase (1 pre-existing unrelated
+  failure, `test_canonical_fields_v2_expanded` — count assertion stale vs actual
+  `CANONICAL_FIELDS` len, predates this change, confirmed via `git stash` both
+  pre- and post-rebase).
+
+## Coordination flag — #443 tracker discrepancy (2026-07-02)
+- #443's tracker comment claimed PR #441 "bundles WS0 [#444 ocr-text download] +
+  WS3-backend [#439/#440 hierarchy]" and #450 (AI relay) claimed
+  `ExtractionResult.ocr_text` was "already on ExtractionResult (added in Backend
+  PR #441)". **Verified false on staging**: merged PR #441 (`9a7d427`, branch
+  `claude/fix-phu-luc-hierarchy-440`) only touches `clause_hierarchy.py` +
+  `extraction_runner.py` (+tests) for #439/#440. No `ocr_text` field, no runner
+  persistence, no `GET /documents/{id}/ocr-text` route anywhere on staging.
+  No open PR has this either (checked `list_pull_requests`).
+- **Did NOT implement #450's one-liner** — adding `ocr_text=ocr_text` to
+  `HybridOCRProvider.extract()`'s result construction would require guessing the
+  field's shape on `ExtractionResult` (schemas.py) since it doesn't exist yet.
+  Commented on #450 + #443 flagging the gap; waiting on actual WS0 PR before
+  wiring the one-liner.
+- #439 AI-half (Phụ lục `PL-` prompt rules) **confirmed already merged** via PR
+  #425 — no new prompt work needed there. Still need to re-check whether the
+  original #439 bug (bare "Khoản N" under Phụ lục colliding with Điều N) is
+  fully closed by #425 + #441 combined, or if a residual gap remains, before
+  starting #448 (blocked on #439).
+- **2026-07-02, follow-up:** Backend posted #451 (relay) re-asserting WS0 shipped
+  in PR #441. Re-verified via `pull_request_read get` + `get_files` directly on
+  the GitHub PR object (not just local git log) — PR #441 is `changed_files: 3`,
+  confirmed hierarchy-only (WS3), no `ocr_text`/router/schema diff. WS3 claim is
+  accurate; WS0 claim still isn't reflected in any merged PR or open PR. Replied
+  on #451 — #450 stays blocked until Backend actually pushes the WS0 diff.
+- **2026-07-02, unblocked:** Backend shipped PR #452 standalone (WS0 was bundled
+  with #441 originally but landed after #441 merged, so reopened separately) —
+  confirmed on fresh `staging` fetch: `ExtractionResult.ocr_text` field,
+  `GET /documents/{id}/ocr-text` route, and runner persistence all present.
+  Rebased branch onto new staging (clean, no conflicts).
+
+## Done (issue #450 — ocr_text plumbing, unblocked by PR #452)
+- [x] `to_result()` in `providers/base.py` gained an optional `ocr_text: str | None
+      = None` kwarg, passed straight through to `ExtractionResult(ocr_text=...)`.
+      Left default `None` so `gemini_flash.py`'s existing `to_result()` call
+      (vision-only, no OCR pass) is unaffected.
+- [x] `hybrid_ocr.py`'s `to_result()` call now passes `ocr_text=ocr_text` (the
+      Document AI OCR text already captured earlier in `extract()`).
+- Smoke-tested directly (no fastapi in this env, so `tests/test_ocr_text.py`
+  couldn't run here — pure-python check confirms `to_result(..., ocr_text=...)`
+  populates the field for hybrid_ocr and stays `None` for gemini_flash).
+  `test_extraction.py` unaffected (54/55, same pre-existing failure).
+
+## Done (issue #448 — WS2a, two-pass map-reduce prompts, parent #443)
+- [x] New module `backend/modules/extraction/two_pass.py` (follows `remap.py`'s
+      pattern — pure prompt builders + lean LLM schemas + async caller):
+  - **Pass 1 (`extract_skeleton`)** — hierarchy-only skeleton (num/title/level/
+    clause_path, NO content) from full OCR text. Reuses the proven QUY TẮC
+    PHỤ LỤC / sub-clause-split / no-flat rules from `_CLAUSES_SPEC` but as a
+    self-contained spec (didn't refactor the shared main-path prompt — regression
+    risk on the already-QC'd single-call extraction). `max_output_tokens=16_384`
+    (circuit breaker; skeleton output should never approach it).
+  - **Pass 2 (`fill_section`)** — verbatim content for one section's (one Điều
+    or one Phụ lục) clauses, given a manifest of the section's skeleton
+    `clause_path`s from Pass 1. `max_output_tokens=32_768` (section-scoped, well
+    under the 65,536 whole-doc ceiling from #445).
+  - **Pass 3 (`fill_paragraph`)** — single paragraph/page chunk fill for the
+    rare oversized clause. `max_output_tokens=8_192`.
+  - All three report `truncated: bool` (via `finish_reason() == "MAX_TOKENS"`,
+    the #445 helper) so Backend's WS2b runner can distinguish "done" from
+    "needs paragraph-split retry" without parsing warning strings.
+  - R4b multi-doc detection (Pass 1 stretch goal per PM's #443 triage) —
+    **not implemented**, matches the ratified demotion to non-blocking.
+- [x] Exported via `backend/modules/extraction/__init__.py`.
+- [x] 20 new pure unit tests (`test_two_pass.py`, no keys/SDK) — prompt-builder
+      content checks, no-op guards, result normalizers, `truncated` propagation,
+      and a regression test for the `.format()`-vs-literal-JSON-braces bug I hit
+      while writing this (switched to placeholder + `.replace()`).
+  `test_extraction.py` unaffected (94/95, same pre-existing failure).
+- **Not in my scope (Backend WS2b, #449):** the `content_status` state machine,
+  grouping clauses into sections, per-section commit/resume, invoking Pass 3 on
+  a Pass-2 MAX_TOKENS. This module only provides the pass primitives.
+
+## Fixed — QC review of PR #456 (2026-07-02)
+Two review agents converged on the same top bug; verified all findings directly
+against source before fixing:
+- [x] **#1 (confirmed) `_clause_manifest()` stringified `clause_path=None` as
+  literal `"None"`** — a model echoing it back would corrupt exact-match lookup.
+  Fixed: unnumbered clauses now render as an explicit "để clause_path=null"
+  instruction, never the Python `None` repr.
+- [x] **#2 (confirmed) no validation that returned `clause_path`s match the
+  section's skeleton** — `_to_fill_result()` now takes `skeleton_clauses` and
+  drops any returned clause whose `clause_path` isn't in the section's known
+  non-null path set (hallucinated/mismatched/stringified-None), with a warning
+  carrying the drop count. `fill_section()`'s call site updated to match.
+- [x] **#3 (confirmed) `truncated` conflated MAX_TOKENS with all other
+  no-parse causes** — all three passes now embed the real `finish_reason` in
+  the warning text (`finish_reason={fr}`) instead of a binary MAX_TOKENS
+  suffix, and flag an anomalous `finish_reason` even on a *successful* parse
+  (e.g. RECITATION racing a partial result).
+- [x] **#4 (design risk) Pass 3 chunk boundaries had no continuation
+  marker** — added `is_continuation: bool = False` to
+  `build_paragraph_fill_instruction()`/`fill_paragraph()`. When set, the
+  prompt explicitly warns against "smoothing over" a mid-sentence/mid-table
+  cut (D-06 content-alteration risk) — Backend's WS2b runner should pass
+  `True` for every chunk after the first per clause.
+- Skipped #5 (`.replace()` clobber risk) — reviewer's own assessment was
+  "astronomically unlikely, not worth blocking on"; agreed, left as-is.
+- 5 new regression tests added (25 total in `test_two_pass.py`, was 20) +
+  2 existing tests updated for the new `_to_fill_result()` signature.
+
 ## Inbox
 - issue #3 (`for:ai`, `task-assignment`) — Sprint 0 benchmark. Status: implementation
   done; awaiting live run for results (blocked on samples).
@@ -195,3 +318,6 @@ Spec-impact insight to fold into BRD §6 (Term) + obligation engine spec:
 - issue #258 — clause remap. Status: **done** (KHE_AI scope shipped, full stack on staging).
 - issue #248 — cost figure ratification. Status: **awaiting PM** (`for:pm`).
 - issue #268 — chat D-08 false-negatives. Status: **analysis posted** (not AI scope).
+- issue #445 (`for:ai`, WS1-AI, parent #443) — max_output_tokens + instrumentation. Status: **done**, this PR.
+- issue #439 (Phụ lục sub-clause `clause_path`, Part 1 prompt fix) — **next up**.
+- issue #448 (two-pass map-reduce prompts) — blocked on #439 + WS3 (Backend Phụ lục hierarchy parse).

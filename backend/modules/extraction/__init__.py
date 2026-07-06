@@ -34,21 +34,46 @@ from .schemas import (
     PaymentScheduleItem,
     TokenUsage,
 )
-from .providers.base import USD_TO_VND, cost_vnd
+from .providers.base import USD_TO_VND, cost_vnd, is_max_tokens_truncation
 from .provider import VisionExtractionProvider
 from .factory import ExtractionUnavailable, get_extraction_provider
 from .remap import RemapFieldResult, RemapResult, remap_type
 from .rederive import RederiveResult, rederive_obligations
+from .two_pass import (
+    FillClauseResult,
+    FillResult,
+    ParagraphFillResult,
+    SkeletonClauseResult,
+    SkeletonResult,
+    build_fill_instruction,
+    build_paragraph_fill_instruction,
+    build_skeleton_instruction,
+    extract_skeleton,
+    fill_paragraph,
+    fill_section,
+)
 
 __all__ = [
     "VisionExtractionProvider",
     "get_extraction_provider",
     "ExtractionUnavailable",
+    "is_max_tokens_truncation",
     "remap_type",
     "RemapResult",
     "RemapFieldResult",
     "rederive_obligations",
     "RederiveResult",
+    "extract_skeleton",
+    "SkeletonResult",
+    "SkeletonClauseResult",
+    "build_skeleton_instruction",
+    "fill_section",
+    "FillResult",
+    "FillClauseResult",
+    "build_fill_instruction",
+    "fill_paragraph",
+    "ParagraphFillResult",
+    "build_paragraph_fill_instruction",
     "ExtractionResult",
     "ExtractedField",
     "AnchoredField",

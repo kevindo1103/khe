@@ -6,7 +6,7 @@ import pytest
 
 from app.db.database import get_tenant_session
 from app.models.tenant import Clause, Document
-from app.services.clause_hierarchy import build_clause_hierarchy, _parse_path, _level_from_path
+from app.services.clause_hierarchy import build_clause_hierarchy, _parse_path, _level_from_path, _stub_num
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -53,10 +53,22 @@ def _make_mock_result(clauses_data=None):
     result.fields = {}
     result.obligation_schedule = []
     result.parties = []
+    result.defined_terms = []
+    result.cross_references = []
+    result.has_signature = False
+    result.signature_pages = []
 
     clause_items = []
-    for num, title, content in (clauses_data or []):
+    for item in (clauses_data or []):
         ci = MagicMock()
+        if len(item) == 3:
+            num, title, content = item
+            ci.level = None
+            ci.clause_path = None
+        else:
+            num, title, content, level, clause_path = item
+            ci.level = level
+            ci.clause_path = clause_path
         ci.num = num
         ci.title = title
         ci.content = content
@@ -159,6 +171,20 @@ def test_parse_path_bare_top():
     assert _parse_path("3 Thanh toán") == "3"
 
 
+def test_parse_path_phu_luc():
+    """Phụ lục X → path "PL-X"."""
+    assert _parse_path("Phụ lục 1") == "PL-1"
+    assert _parse_path("Phụ lục A") == "PL-A"
+    assert _parse_path("PHỤ LỤC 2") == "PL-2"
+
+
+def test_parse_path_pl_passthrough():
+    """LLM-provided PL- paths pass through unchanged."""
+    assert _parse_path("PL-1") == "PL-1"
+    assert _parse_path("PL-1.1") == "PL-1.1"
+    assert _parse_path("PL-A.2.1") == "PL-A.2.1"
+
+
 def test_parse_path_unrecognised():
     """Non-numeric / letter / roman numbering → None."""
     assert _parse_path("a.") is None
@@ -168,12 +194,21 @@ def test_parse_path_unrecognised():
     assert _parse_path("") is None
 
 
+def test_stub_num():
+    """_stub_num generates correct labels for synthesized stubs."""
+    assert _stub_num("2") == "Điều 2"
+    assert _stub_num("2.1") == "2.1"
+    assert _stub_num("PL-1") == "Phụ lục 1"
+    assert _stub_num("PL-A") == "Phụ lục A"
+    assert _stub_num("PL-1.2") == "PL-1.2"
+
+
 def test_level_from_path():
-    """Level derived from dot count, capped at 2."""
-    assert _level_from_path("2") == 0
-    assert _level_from_path("2.1") == 1
-    assert _level_from_path("2.1.1") == 2
-    assert _level_from_path("2.1.1.1") == 2   # capped at 2
+    """Level derived from dot count + 1 (1-indexed, matching prompt schema)."""
+    assert _level_from_path("2") == 1
+    assert _level_from_path("2.1") == 2
+    assert _level_from_path("2.1.1") == 3
+    assert _level_from_path("2.1.1.1") == 4
 
 
 # ── build_clause_hierarchy unit tests ────────────────────────────────────────
@@ -192,11 +227,11 @@ def test_build_hierarchy_links_parent(test_tenant, db):
     db.refresh(c_child)
 
     assert c_parent.clause_path == "2"
-    assert c_parent.level == 0
+    assert c_parent.level == 1
     assert c_parent.parent_id is None
 
     assert c_child.clause_path == "2.1"
-    assert c_child.level == 1
+    assert c_child.level == 2
     assert c_child.parent_id == c_parent.id
 
 
@@ -215,7 +250,7 @@ def test_build_hierarchy_three_levels(test_tenant, db):
     assert c1.parent_id is None
     assert c2.parent_id == c1.id
     assert c3.parent_id == c2.id
-    assert c3.level == 2
+    assert c3.level == 3
 
 
 def test_build_hierarchy_synthesizes_missing_parent(test_tenant, db):
@@ -236,7 +271,47 @@ def test_build_hierarchy_synthesizes_missing_parent(test_tenant, db):
     ).first()
     assert stub is not None
     assert stub.content == "(tổng hợp từ mục con)"
-    assert stub.level == 0
+    assert stub.level == 1
+    assert c_child.parent_id == stub.id
+
+
+def test_build_hierarchy_phu_luc_subclauses(test_tenant, db):
+    """Phụ lục sub-clauses link to PL- parent, not Điều."""
+    doc = _make_doc(db, test_tenant, status="extracted")
+    c_dieu1 = _make_clause(db, test_tenant, doc.id, "Điều 1", "Nội dung điều 1")
+    c_pl = _make_clause(db, test_tenant, doc.id, "Phụ lục 1", "Nội dung phụ lục")
+    c_pl_child = _make_clause(db, test_tenant, doc.id, "PL-1.1", "Khoản 1 phụ lục")
+    db.flush()
+
+    build_clause_hierarchy([c_dieu1, c_pl, c_pl_child], db)
+    db.commit()
+    db.refresh(c_dieu1); db.refresh(c_pl); db.refresh(c_pl_child)
+
+    assert c_dieu1.clause_path == "1"
+    assert c_pl.clause_path == "PL-1"
+    assert c_pl_child.clause_path == "PL-1.1"
+    assert c_pl_child.parent_id == c_pl.id
+    assert c_pl.parent_id is None
+
+
+def test_build_hierarchy_synthesizes_phu_luc_stub(test_tenant, db):
+    """PL- sub-clause with no parent → stub "Phụ lục X" synthesized."""
+    doc = _make_doc(db, test_tenant, status="extracted")
+    c_child = _make_clause(db, test_tenant, doc.id, "PL-2.1", "Khoản 1 phụ lục 2")
+    db.flush()
+
+    build_clause_hierarchy([c_child], db)
+    db.commit()
+    db.refresh(c_child)
+
+    stub = db.query(Clause).filter(
+        Clause.document_id == doc.id,
+        Clause.clause_path == "PL-2",
+        Clause.tenant_id == test_tenant,
+    ).first()
+    assert stub is not None
+    assert stub.clause_num == "Phụ lục 2"
+    assert stub.content == "(tổng hợp từ mục con)"
     assert c_child.parent_id == stub.id
 
 
@@ -297,11 +372,11 @@ def test_extraction_builds_hierarchy(test_tenant, tmp_path):
     assert "2.1" in by_path
     assert "2.1.1" in by_path
 
-    assert by_path["2"]["level"] == 0
+    assert by_path["2"]["level"] == 1
     assert by_path["2"]["parent_id"] is None
-    assert by_path["2.1"]["level"] == 1
+    assert by_path["2.1"]["level"] == 2
     assert by_path["2.1"]["parent_id"] == by_path["2"]["id"]
-    assert by_path["2.1.1"]["level"] == 2
+    assert by_path["2.1.1"]["level"] == 3
     assert by_path["2.1.1"]["parent_id"] == by_path["2.1"]["id"]
 
 
@@ -317,6 +392,21 @@ def test_extraction_synthesizes_missing_parent(test_tenant, tmp_path):
     assert "3" in by_path, "Stub parent '3' should be synthesized"
     assert by_path["3"]["content"] == "(tổng hợp từ mục con)"
     assert by_path["3.2"]["parent_id"] == by_path["3"]["id"]
+
+
+def test_extraction_prefers_llm_hierarchy(test_tenant, tmp_path):
+    """LLM-provided level/clause_path are preserved, not overwritten by regex."""
+    clauses_data = [
+        ("Điều 5", "Thanh toán", "Nội dung điều 5", 1, "5"),
+        ("Khoản 5.1", "Chi tiết", "Nội dung 5.1", 2, "5.1"),
+    ]
+    result = _make_mock_result(clauses_data)
+    clauses, _ = _run_mock_extraction(test_tenant, tmp_path, result)
+
+    by_path = {c["clause_path"]: c for c in clauses if c["clause_path"]}
+    assert by_path["5"]["level"] == 1
+    assert by_path["5.1"]["level"] == 2
+    assert by_path["5.1"]["parent_id"] == by_path["5"]["id"]
 
 
 def test_extraction_flat_clauses_null_hierarchy(test_tenant, tmp_path):
@@ -346,7 +436,7 @@ def test_get_clauses_includes_hierarchy_fields(auth_client, test_tenant, db):
         clause_num="Điều 1",
         content="Nội dung điều 1",
         clause_path="1",
-        level=0,
+        level=1,
     )
     db.add(c_parent)
     db.flush()
@@ -357,7 +447,7 @@ def test_get_clauses_includes_hierarchy_fields(auth_client, test_tenant, db):
         clause_num="Khoản 1.1",
         content="Nội dung 1.1",
         clause_path="1.1",
-        level=1,
+        level=2,
         parent_id=c_parent.id,
     )
     db.add(c_child)
@@ -369,11 +459,11 @@ def test_get_clauses_includes_hierarchy_fields(auth_client, test_tenant, db):
     clauses = {c["clause_num"]: c for c in data["clauses"]}
 
     assert clauses["Điều 1"]["clause_path"] == "1"
-    assert clauses["Điều 1"]["level"] == 0
+    assert clauses["Điều 1"]["level"] == 1
     assert clauses["Điều 1"]["parent_id"] is None
 
     assert clauses["Khoản 1.1"]["clause_path"] == "1.1"
-    assert clauses["Khoản 1.1"]["level"] == 1
+    assert clauses["Khoản 1.1"]["level"] == 2
     assert clauses["Khoản 1.1"]["parent_id"] == c_parent.id
 
 

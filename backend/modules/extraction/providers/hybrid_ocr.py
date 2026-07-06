@@ -1,19 +1,16 @@
-"""HybridOCRProvider — DEC-049 scanned/digital PDF routing.
+"""HybridOCRProvider — DEC-049 Document AI OCR + Gemini text extraction.
 
 2-pass pipeline:
-  Pass 1 (OCR): Scanned PDF → Document AI OCR; Digital PDF → pdftotext (free).
-  Pass 2 (LLM): Feed extracted text → Gemini 2.5 Flash + ContractExtractionLLMFull.
+  Pass 1 (OCR): ALL PDFs → Document AI OCR (accurate Vietnamese diacritics).
+  Pass 2 (LLM): Feed OCR text → Gemini 2.5 Flash + ContractExtractionLLMFull.
 
-Rationale (benchmark doc 22, 10-page scanned contract):
-  Vision-only:  9 clauses, 7 obligations — Gemini does OCR+understanding simultaneously,
-                misses articles on dense scanned pages.
-  Hybrid DocAI: 14 clauses, 16 obligations — separating OCR from structured extraction
-                lets each stage do its job.
+pdftotext removed: produces garbled Vietnamese on scanned PDFs with embedded
+OCR layers (missing diacritics, ~ artifacts). DocAI handles both scanned and
+digital PDFs correctly.
 
 Pricing:
   OCR pass:  Document AI ~39đ/page (1,000 pages/month free tier).
   LLM pass:  Gemini Flash $0.30/$2.50 per 1M tokens (text-only, no vision surcharge).
-  Digital:   pdftotext = 0đ → LLM-only cost.
 
 Env vars:
   GOOGLE_APPLICATION_CREDENTIALS — path to service account JSON (Document AI auth).
@@ -25,26 +22,29 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import os
 import time
 
 from ..prompts import SYSTEM_GUARDRAIL, build_text_instruction
-from ..scan_detect import extract_embedded_text, is_scanned_pdf
 from ..schemas import ContractExtractionLLMFull, ExtractionResult, TokenUsage
-from .base import cost_vnd, empty_result, to_result
+from .base import cost_vnd, empty_result, finish_reason, to_result
+
+logger = logging.getLogger(__name__)
 
 _DOCAI_SYNC_PAGE_LIMIT = 15
 
 
 class HybridOCRProvider:
-    """DEC-049: Route scanned PDFs through Document AI OCR, digital through pdftotext,
-    then feed extracted text to Gemini Flash for structured extraction."""
+    """DEC-049: All PDFs → Document AI OCR → Gemini Flash structured extraction."""
 
     name = "hybrid_ocr"
     model = "gemini-2.5-flash"
     in_usd_per_mtok = 0.30
     out_usd_per_mtok = 2.50
     ocr_cost_per_page_vnd = 39.0
+    # #445: explicit cap (model max) — see gemini_flash.py for rationale.
+    max_output_tokens = 65_536
 
     def __init__(
         self,
@@ -83,30 +83,22 @@ class HybridOCRProvider:
                 warning="hybrid_ocr is PDF-only — use gemini_flash for image inputs.",
             )
 
-        scanned = is_scanned_pdf(image_bytes)
-
         ocr_text: str | None = None
         ocr_cost_vnd = 0.0
         ocr_page_count = 0
         ocr_warnings: list[str] = []
 
-        if not scanned:
-            ocr_text = extract_embedded_text(image_bytes)
-            if not ocr_text:
-                scanned = True
-
-        if scanned:
-            try:
-                ocr_text, ocr_page_count = await self._document_ai_ocr(image_bytes)
-                ocr_cost_vnd = ocr_page_count * self.ocr_cost_per_page_vnd
-            except Exception as exc:  # noqa: BLE001
-                latency_ms = (time.perf_counter() - started) * 1000
-                return empty_result(
-                    provider=self.name,
-                    model=self.model,
-                    latency_ms=latency_ms,
-                    warning=f"Document AI OCR failed: {type(exc).__name__}: {exc}",
-                )
+        try:
+            ocr_text, ocr_page_count = await self._document_ai_ocr(image_bytes)
+            ocr_cost_vnd = ocr_page_count * self.ocr_cost_per_page_vnd
+        except Exception as exc:  # noqa: BLE001
+            latency_ms = (time.perf_counter() - started) * 1000
+            return empty_result(
+                provider=self.name,
+                model=self.model,
+                latency_ms=latency_ms,
+                warning=f"Document AI OCR failed: {type(exc).__name__}: {exc}",
+            )
 
         if not ocr_text or not ocr_text.strip():
             latency_ms = (time.perf_counter() - started) * 1000
@@ -124,7 +116,7 @@ class HybridOCRProvider:
             )
 
         try:
-            parsed, usage, llm_latency_ms = await self._llm_extract(ocr_text, doc_type)
+            parsed, usage, llm_latency_ms, diag = await self._llm_extract(ocr_text, doc_type)
         except Exception as exc:  # noqa: BLE001
             latency_ms = (time.perf_counter() - started) * 1000
             return empty_result(
@@ -141,15 +133,14 @@ class HybridOCRProvider:
                 provider=self.name,
                 model=self.model,
                 latency_ms=latency_ms,
-                warning=f"{self.name} returned no structured output.",
+                warning=f"{self.name} returned no structured output. {diag}",
             )
 
         llm_cost = cost_vnd(usage, self.in_usd_per_mtok, self.out_usd_per_mtok)
         total_cost = round(ocr_cost_vnd + llm_cost, 2)
 
-        extraction_path = "docai_ocr" if scanned else "pdftotext"
         warnings = [
-            f"hybrid:{extraction_path} | OCR {ocr_cost_vnd:.0f}đ + LLM {llm_cost:.0f}đ",
+            f"hybrid:docai_ocr | OCR {ocr_cost_vnd:.0f}đ + LLM {llm_cost:.0f}đ",
             *ocr_warnings,
         ]
 
@@ -161,6 +152,7 @@ class HybridOCRProvider:
             usage=usage,
             cost=total_cost,
             warnings=warnings,
+            ocr_text=ocr_text,
         )
 
     async def _document_ai_ocr(self, file_bytes: bytes) -> tuple[str, int]:
@@ -205,7 +197,7 @@ class HybridOCRProvider:
 
     async def _llm_extract(  # noqa: C901 (kept together for readability)
         self, text: str, doc_type: str
-    ) -> tuple[ContractExtractionLLMFull | None, TokenUsage, float]:
+    ) -> tuple[ContractExtractionLLMFull | None, TokenUsage, float, str]:
         """Feed OCR text to Gemini Flash for structured extraction."""
         from google.genai import types
 
@@ -214,6 +206,7 @@ class HybridOCRProvider:
             response_mime_type="application/json",
             response_schema=ContractExtractionLLMFull,
             temperature=0.0,
+            max_output_tokens=self.max_output_tokens,
         )
         contents = [
             types.Part.from_text(text=text),
@@ -232,7 +225,18 @@ class HybridOCRProvider:
             input_tokens=getattr(meta, "prompt_token_count", 0) or 0,
             output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
         )
-        return parsed, usage, llm_latency_ms
+        logger.info(
+            "hybrid_ocr llm_extract: input_tokens=%d output_tokens=%d max_output_tokens=%d "
+            "finish_reason=%s latency_ms=%.0f",
+            usage.input_tokens,
+            usage.output_tokens,
+            self.max_output_tokens,
+            finish_reason(response),
+            llm_latency_ms,
+        )
+        from .gemini_flash import _response_diagnostic
+        diag = "" if isinstance(parsed, ContractExtractionLLMFull) else _response_diagnostic(response)
+        return parsed, usage, llm_latency_ms, diag
 
 
 def _pdf_page_count(file_bytes: bytes) -> int:

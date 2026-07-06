@@ -19,7 +19,10 @@ Design notes:
 
 from __future__ import annotations
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 from .provider import VisionExtractionProvider
 from .providers import (
@@ -28,6 +31,7 @@ from .providers import (
     GeminiFlashProvider,
     HybridOCRProvider,
 )
+from .providers.base import is_max_tokens_truncation
 from .schemas import ExtractionResult
 
 
@@ -45,17 +49,25 @@ _REGISTRY: dict[str, tuple[type, tuple[str, ...]]] = {
     "gemini_flash": (GeminiFlashProvider, ("GEMINI_API_KEY", "GOOGLE_API_KEY")),
     "claude_haiku": (ClaudeHaikuProvider, ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY")),
     "claude_sonnet": (ClaudeSonnetProvider, ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY")),
-    # DEC-049: hybrid OCR pipeline — Document AI + Gemini Flash text extraction.
-    # Requires Gemini key + GOOGLE_APPLICATION_CREDENTIALS (service account for DocAI).
-    # GOOGLE_APPLICATION_CREDENTIALS gates the registry — without it, scanned PDFs
-    # hit DocAI and fail. pdftotext-only (digital PDFs) still works but not worth
-    # advertising as "ready" without the full pipeline.
-    "hybrid_ocr": (HybridOCRProvider, ("GOOGLE_APPLICATION_CREDENTIALS",)),
+    # DEC-049: hybrid OCR pipeline — 2 paths:
+    #   Digital PDFs → pdftotext (free, local) → Gemini text extraction
+    #   Scanned PDFs → Document AI OCR → Gemini text extraction
+    # Gated on Gemini key only — pdftotext path works without DocAI credentials.
+    # Scanned path gracefully fails if GOOGLE_APPLICATION_CREDENTIALS is missing
+    # (provider returns empty_result, fallback chain picks up).
+    "hybrid_ocr": (HybridOCRProvider, ("GEMINI_API_KEY", "GOOGLE_API_KEY")),
 }
 
 # DEC-002 default preference: Gemini primary, Claude Haiku fallback. `prefer` moves
 # a provider to the front; the rest of this chain follows for resilience.
 _DEFAULT_CHAIN: tuple[str, ...] = ("gemini_flash", "claude_haiku")
+
+# PDF-specific chain (#436, QC #435): claude_haiku uses the lean
+# ContractExtractionLLM schema (7 flat fields, no clauses/parties/obligations) —
+# a "successful" Haiku extraction on a PDF is silently useless. Excluded here so a
+# Gemini outage keeps the doc retryable instead of masquerading as done with 0
+# clauses. Haiku stays available for image-only inputs (still extracts base fields).
+_PDF_CHAIN: tuple[str, ...] = ("hybrid_ocr", "gemini_flash")
 
 
 def _has_key(env_vars: tuple[str, ...]) -> bool:
@@ -63,13 +75,19 @@ def _has_key(env_vars: tuple[str, ...]) -> bool:
 
 
 def _resolve_chain(prefer: str) -> tuple[str, ...]:
-    """`prefer` first, then the default chain — deduped, order preserved."""
+    """`prefer` first, then the rest of its base chain — deduped, order preserved.
+
+    `prefer="hybrid_ocr"` (PDFs, per DEC-049) uses `_PDF_CHAIN` — no claude_haiku.
+    Everything else (image inputs) uses `_DEFAULT_CHAIN`, which keeps haiku as a
+    fallback since it still extracts the 7 base fields from a single image.
+    """
     if prefer not in _REGISTRY:
         raise ValueError(
             f"Unknown provider {prefer!r}. Known: {sorted(_REGISTRY)}."
         )
-    ordered = [prefer, *(n for n in _DEFAULT_CHAIN if n != prefer)]
-    # Keep only registered names (registry may be narrower than the default chain).
+    base = _PDF_CHAIN if prefer == "hybrid_ocr" else _DEFAULT_CHAIN
+    ordered = [prefer, *(n for n in base if n != prefer)]
+    # Keep only registered names (registry may be narrower than the base chain).
     return tuple(n for n in dict.fromkeys(ordered) if n in _REGISTRY)
 
 
@@ -125,11 +143,43 @@ class _FallbackProvider:
 
     async def extract(self, image_bytes: bytes, doc_type: str = "auto") -> ExtractionResult:
         result: ExtractionResult | None = None
+        prior_warnings: list[str] = []
         for provider in self._providers:
             result = await provider.extract(image_bytes, doc_type)
             if not result.is_error:
+                if prior_warnings:
+                    result.warnings = [*prior_warnings, *result.warnings]
                 return result
-        # Every provider failed — return the last honest error result (it carries
-        # the warnings); never fabricate (D-08).
-        assert result is not None  # _providers is non-empty by construction
+            if is_max_tokens_truncation(result.warnings):
+                # Ratified trade-off (#443, Kevin 2026-07-02): stop here rather
+                # than advance to the next Gemini-backed provider. NOTE this is
+                # NOT "every provider would hit the same wall" as fact — a
+                # text-mode provider (hybrid_ocr) truncating does not guarantee
+                # a vision-mode provider (gemini_flash) truncates too on the
+                # same doc (observed: doc #20 recovered via gemini_flash after
+                # hybrid_ocr hit MAX_TOKENS, QC review PR #458). The trade is
+                # deliberate: a doomed-or-not retry is a coin flip that costs a
+                # full extraction call either way, so we accept a deterministic
+                # "document too large" message over a probabilistic vision
+                # fallback — see #442/#446 for the full rationale.
+                logger.warning(
+                    "Provider %s hit MAX_TOKENS, stopping fallback (accepted trade-off, #443): %s",
+                    provider.name,
+                    "; ".join(result.warnings),
+                )
+                result.warnings = [
+                    *prior_warnings,
+                    *(f"[{provider.name}] {w}" for w in result.warnings),
+                ]
+                return result
+            logger.warning(
+                "Provider %s failed, advancing fallback: %s",
+                provider.name,
+                "; ".join(result.warnings),
+            )
+            prior_warnings.extend(
+                f"[{provider.name}] {w}" for w in result.warnings
+            )
+        assert result is not None
+        result.warnings = [*prior_warnings, *result.warnings]
         return result

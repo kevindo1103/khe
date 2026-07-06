@@ -43,6 +43,12 @@ export default {
           soft: '#E6EEF7',
           border: '#C2D7F5',   // v0.2 additive
         },
+        // v1.1 (#478/#485): "completion" tone — quiet gray, never celebratory
+        // green (Badge kind="done" in mockup_design_system_v1.1.jsx).
+        done: {
+          DEFAULT: '#5A6660',
+          soft: '#F0F0EB',
+        },
         ink: {
           DEFAULT: '#1A1D1C',
           body: '#333E4F',     // v0.2 additive — body copy (neutral-700)
@@ -51,7 +57,9 @@ export default {
         },
         border: {
           DEFAULT: '#DADEDC',
-          strong: '#C2C8C5',
+          // v1.1 (#472 / #467): bumped from #C2C8C5 to meet WCAG 1.4.11 3:1 on
+          // interactive component borders (input/button/checkbox) — verified.
+          strong: '#7E8983',
         },
         surface: {
           DEFAULT: '#FFFFFF',

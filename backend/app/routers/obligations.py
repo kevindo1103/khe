@@ -17,6 +17,9 @@ from app.models.master import TenantUser
 from app.models.tenant import Document, Event, Obligation, OBLIGATION_STATUSES
 from app.services.obligation_chain import propagate_obligation_done
 from app.schemas.obligations import (
+    BulkCompleteIn,
+    BulkCompleteItemOut,
+    BulkCompleteOut,
     ObligationListOut,
     ObligationOut,
     ObligationPatchIn,
@@ -131,6 +134,91 @@ def obligations_summary(
         groups=s["groups"],
         status_breakdown=s["status_breakdown"],
         source=agg["source"],
+    )
+
+
+# ── Bulk complete (#471) — MUST be before /{obligation_id} to avoid path shadowing ──
+
+_BULK_ALLOWED_STATUSES = {"done", "cancelled"}
+
+
+@router.patch("/bulk", response_model=BulkCompleteOut)
+def bulk_complete_obligations(
+    payload: BulkCompleteIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bulk-update obligations to 'done' or 'cancelled'. Logs one Event per item (D-07/FR-OB-04).
+
+    - Tenant-isolated: only obligations belonging to the authenticated tenant are touched.
+    - IDs not found or belonging to another tenant are silently skipped (reported in items[].error).
+    - fulfilled_at is required when status='done' (same rule as single PATCH).
+    """
+    if payload.status not in _BULK_ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"bulk status must be one of: {sorted(_BULK_ALLOWED_STATUSES)}",
+        )
+    if payload.status == "done" and payload.fulfilled_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fulfilled_at is required when status='done'",
+        )
+    if not payload.ids:
+        return BulkCompleteOut(updated=0, skipped=0, items=[])
+
+    owned = {
+        ob.id: ob
+        for ob in db.query(Obligation).filter(
+            Obligation.id.in_(payload.ids),
+            Obligation.tenant_id == user.tenant_id,
+        ).all()
+    }
+
+    items: list[BulkCompleteItemOut] = []
+    updated = 0
+
+    for ob_id in payload.ids:
+        if ob_id not in owned:
+            items.append(BulkCompleteItemOut(id=ob_id, ok=False, error="not found"))
+            continue
+
+        ob = owned[ob_id]
+        old_status = ob.status
+        ob.status = payload.status
+
+        if payload.status == "done":
+            ob.fulfilled_at = payload.fulfilled_at
+            ob.fulfilled_by = payload.fulfilled_by or user.username
+            propagate_obligation_done(ob.id, db, fulfilled_at=payload.fulfilled_at)
+        elif old_status == "done":
+            ob.fulfilled_at = None
+            ob.fulfilled_by = None
+            ob.evidence_doc_ids = None
+
+        _log_event(
+            db,
+            user.tenant_id,
+            event_type="updated",
+            entity_type="obligation",
+            entity_id=ob.id,
+            actor=user.username,
+            payload={
+                "old_status": old_status,
+                "new_status": payload.status,
+                "bulk": True,
+                "fulfilled_at": payload.fulfilled_at.isoformat() if payload.fulfilled_at else None,
+                "fulfilled_by": ob.fulfilled_by if payload.status == "done" else None,
+            },
+        )
+        updated += 1
+        items.append(BulkCompleteItemOut(id=ob_id, ok=True))
+
+    db.commit()
+    return BulkCompleteOut(
+        updated=updated,
+        skipped=len(payload.ids) - updated,
+        items=items,
     )
 
 

@@ -53,6 +53,10 @@ jobs:
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GOOGLE_SA_JSON_B64: ${{ secrets.GOOGLE_SA_JSON_B64 }}
+          DOCAI_PROJECT_ID: ${{ secrets.DOCAI_PROJECT_ID }}
+          DOCAI_LOCATION: ${{ secrets.DOCAI_LOCATION }}
+          DOCAI_PROCESSOR_ID: ${{ secrets.DOCAI_PROCESSOR_ID }}
         run: |
           if [ -z "$VPS_HOST" ]; then
             echo "⚠️  VPS_HOST secret not set — skipping VPS deploy (set secret to enable)"
@@ -76,15 +80,32 @@ jobs:
 
           rsync -az --delete --exclude=venv --exclude=.env \
             --exclude=master.db --exclude='tenants/' --exclude='storage/' \
+            --exclude='google-sa.json' \
             -e "ssh -i ~/.ssh/deploy_key" \
             ./backend/ "$VPS_USER@$VPS_HOST:/opt/khe/backend/"
 
+          # Deploy Google Cloud service account JSON for Document AI (hybrid_ocr)
+          if [ -n "$GOOGLE_SA_JSON_B64" ]; then
+            echo "$GOOGLE_SA_JSON_B64" | base64 -d \
+              | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+                "cat > /opt/khe/backend/google-sa.json && chmod 600 /opt/khe/backend/google-sa.json"
+            echo "✅ Google SA JSON deployed to production"
+            GOOGLE_CREDS_LINE="GOOGLE_APPLICATION_CREDENTIALS=/opt/khe/backend/google-sa.json"
+          else
+            echo "⚠️  GOOGLE_SA_JSON_B64 not set — hybrid_ocr Document AI will be unavailable"
+            GOOGLE_CREDS_LINE=""
+          fi
+
           # Write secrets to .env on VPS via stdin pipe (values masked by GH Actions in logs)
-          printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\n' \
-            "$GEMINI_API_KEY" "$CLAUDE_API_KEY" "$JWT_SECRET" "$TELEGRAM_BOT_TOKEN" \
-            "https://khe.iceflow.cloud" \
-            "/opt/khe/data" \
-            | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+          {
+            printf 'GEMINI_API_KEY=%s\nCLAUDE_API_KEY=%s\nJWT_SECRET=%s\nTELEGRAM_BOT_TOKEN=%s\nCORS_ORIGINS=%s\nDATA_DIR=%s\n' \
+              "$GEMINI_API_KEY" "$CLAUDE_API_KEY" "$JWT_SECRET" "$TELEGRAM_BOT_TOKEN" \
+              "https://khe.iceflow.cloud" \
+              "/opt/khe/data"
+            [ -n "$GOOGLE_CREDS_LINE" ] && printf '%s\n' "$GOOGLE_CREDS_LINE"
+            [ -n "$DOCAI_PROJECT_ID" ] && printf 'DOCAI_PROJECT_ID=%s\nDOCAI_LOCATION=%s\nDOCAI_PROCESSOR_ID=%s\n' \
+              "$DOCAI_PROJECT_ID" "$DOCAI_LOCATION" "$DOCAI_PROCESSOR_ID"
+          } | ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
               "cat > /opt/khe/backend/.env && chmod 600 /opt/khe/backend/.env"
 
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash <<'REMOTE'

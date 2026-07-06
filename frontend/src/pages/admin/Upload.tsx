@@ -1,4 +1,5 @@
 import { useState, useRef, type ChangeEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Card, Badge, Toast, EmptyState } from '../../components';
 import { apiFetchMultipart } from '../../lib/api';
 import type { UploadOut, BulkUploadOut } from '../../types/documents';
@@ -7,6 +8,7 @@ import type { ApiError } from '../../lib/api';
 type Tab = 'single' | 'bulk';
 
 export default function Upload() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('single');
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -15,7 +17,7 @@ export default function Upload() {
   const [isConsentError, setIsConsentError] = useState(false);
   const [isQuotaError, setIsQuotaError] = useState(false);
   const [partialNote, setPartialNote] = useState<string>('');
-  const [toastMsg, setToastMsg] = useState<string>('');
+
   const singleInputRef = useRef<HTMLInputElement>(null);
   const bulkInputRef = useRef<HTMLInputElement>(null);
 
@@ -74,17 +76,18 @@ export default function Upload() {
         const fd = new FormData();
         fd.append('file', files[0]);
         const res = await apiFetchMultipart<UploadOut>('/ingest/upload', fd);
-        setResults([res]);
-        setToastMsg('Tải lên thành công ✓');
+        navigate(`/admin/documents/${res.doc_id}`);
+        return;
       } else {
         const fd = new FormData();
         files.forEach((f) => fd.append('files', f));
         const res = await apiFetchMultipart<BulkUploadOut>('/ingest/bulk', fd);
-        setResults(res.documents);
-        setToastMsg(`Đã tải ${res.count} tài liệu ✓`);
-        // PartialUpload (#227 note 3): some files didn't make it — say so, never a stuck state
         if (res.count < submitted) {
+          setResults(res.documents);
           setPartialNote(`${submitted - res.count}/${submitted} file không tải được (không hợp lệ hoặc trùng). ${res.count} file đã tải.`);
+        } else {
+          navigate('/admin/documents');
+          return;
         }
       }
       setFiles([]);
@@ -249,12 +252,6 @@ export default function Upload() {
         )}
       </Card>
 
-      {/* Toast */}
-      {toastMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-toast">
-          <Toast kind="success">{toastMsg}</Toast>
-        </div>
-      )}
     </div>
   );
 }
