@@ -253,7 +253,7 @@ class FakeVisionProvider:
 
 
 def _default_extraction_result() -> ExtractionResult:
-    """A baseline ExtractionResult with all 12 canonical fields populated."""
+    """A baseline ExtractionResult with all canonical fields populated."""
     return ExtractionResult(
         doc_type=DocType.LEASE,
         doc_type_confidence=0.95,
@@ -264,6 +264,8 @@ def _default_extraction_result() -> ExtractionResult:
                 "thoi_han_hd", "dieu_khoan_gia_han", "dieu_khoan_thanh_toan",
                 "doc_type_group", "ngay_ky", "tien_dat_coc",
                 "thoi_han_bao_hanh", "thoi_han_thong_bao",
+                # tenant_021 additions
+                "tieu_de_hd", "so_hop_dong",
             )
         },
         provider="fake_qc_provider",
@@ -301,6 +303,14 @@ def make_extraction_result(
         "dieu_khoan_gia_han": ExtractedField(value="Tự động gia hạn", confidence=0.7, needs_review=True),
         "dieu_khoan_thanh_toan": ExtractedField(value="Chuyển khoản", confidence=0.9, needs_review=False),
         "doc_type_group": ExtractedField(value=doc_type_group, confidence=0.95, needs_review=False),
+        # tenant_021 additions — required by CANONICAL_FIELDS
+        "tieu_de_hd": ExtractedField(value="sample", confidence=0.9, needs_review=False),
+        "so_hop_dong": ExtractedField(value="sample", confidence=0.9, needs_review=False),
+        "ngay_ky": ExtractedField(value="2026-01-01", confidence=0.9, needs_review=False),
+        "ngay_khai_truong": ExtractedField(value="sample", confidence=0.8, needs_review=False),
+        "tien_dat_coc": ExtractedField(value="sample", confidence=0.8, needs_review=False),
+        "thoi_han_bao_hanh": ExtractedField(value="sample", confidence=0.8, needs_review=False),
+        "thoi_han_thong_bao": ExtractedField(value="sample", confidence=0.8, needs_review=False),
     }
     if fields:
         base_fields.update(fields)

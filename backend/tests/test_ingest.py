@@ -275,6 +275,9 @@ class TestListDetail:
         other_db = get_tenant_session("other-tenant")
         record_consent(other_db, "other-tenant", "vision_extraction", actor="otheruser", entity_id=1)
         other_doc_id = 999999
+        # Clean up stale fixture doc from prior runs before insert
+        other_db.execute(text("DELETE FROM documents WHERE id = :id"), {"id": other_doc_id})
+        other_db.commit()
         # Insert with explicit ID to avoid collision with ingest-tenant
         other_db.execute(
             text(

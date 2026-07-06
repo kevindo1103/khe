@@ -62,6 +62,8 @@ def _make_mock_result(clauses_data=None):
         ci.content = content
         clause_items.append(ci)
     result.clauses = clause_items
+    result.has_signature = False
+    result.signature_pages = None
     return result
 
 
