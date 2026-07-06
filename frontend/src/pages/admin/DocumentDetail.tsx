@@ -553,14 +553,12 @@ function SettingsNudge({ hasLegalName }: { hasLegalName: boolean }) {
             : 'Servanda cần biết tên pháp nhân của bạn để tự phân biệt nghĩa vụ và quyền lợi.'}
         </div>
       </div>
-      {!hasLegalName && (
-        <Link
-          to="/admin/settings"
-          className="px-4 py-2 rounded-md text-sm font-semibold text-primary bg-surface border border-border-strong hover:bg-surface-alt"
-        >
-          Sửa pháp nhân trong Cài đặt
-        </Link>
-      )}
+      <Link
+        to="/admin/settings"
+        className="px-4 py-2 rounded-md text-sm font-semibold text-primary bg-surface border border-border-strong hover:bg-surface-alt shrink-0"
+      >
+        {hasLegalName ? 'Kiểm tra pháp nhân' : 'Sửa pháp nhân trong Cài đặt'}
+      </Link>
     </div>
   );
 }
