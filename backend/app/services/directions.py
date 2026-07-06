@@ -30,7 +30,12 @@ logger = logging.getLogger(__name__)
 
 
 def _norm(s: str) -> str:
-    """Case-fold + strip diacritics + collapse whitespace for fuzzy comparison."""
+    """Case-fold + strip diacritics + collapse whitespace for fuzzy comparison.
+
+    đ/Đ (U+0111/U+0110) has no NFD decomposition — pre-replace before NFD
+    or Vietnamese names containing đ silently fail D-13 self-match.
+    """
+    s = s.replace("đ", "d").replace("Đ", "D")
     s = unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
     return " ".join(s.lower().split())
 

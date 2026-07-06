@@ -22,6 +22,7 @@ from app.services.obligation_engine import derive_obligations, resolve_date_anch
 from app.services import quota, tenant_journey
 from app.services.date_parse import parse_date as _parse_date
 from modules.extraction import ExtractionUnavailable, get_extraction_provider, is_max_tokens_truncation
+from modules.obligation.derivers import derive_standing_obligations
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,17 @@ def _normalize_date_iso(raw: str | None) -> str | None:
 
 
 def _norm(s: str) -> str:
-    """Case-fold + strip diacritics + collapse whitespace for fuzzy comparison."""
+    """Case-fold + strip diacritics + collapse whitespace for fuzzy comparison.
+
+    đ/Đ (U+0111/U+0110) has no NFD decomposition — pre-replace before NFD
+    or Vietnamese names containing đ silently drop the leading consonant.
+    """
+    s = s.replace("đ", "d").replace("Đ", "D")
     s = unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
     return " ".join(s.lower().split())
 
 
-_VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "penalty", "other"}
+_VALID_OBLIGATION_TYPES = {"payment", "delivery", "handover", "expiration", "renewal", "review", "warranty", "penalty", "standing", "reporting", "other"}
 _VALID_TRIGGERS = {"date", "event"}
 
 
@@ -542,6 +548,11 @@ def run_extraction(doc_id: int, tenant_id: str, doc_type: str | None = None) -> 
         # B3 (#282): resolve date-anchored obligations that were persisted as
         # waiting_trigger because their anchor date wasn't known at schedule time.
         resolve_date_anchored_obligations(db, tenant_id, doc_id)
+
+        # #274: derive standing obligations (confidentiality, non-compete, etc.)
+        # from persisted Clause rows. Runs after schedule derivation so its
+        # idempotent cleanup doesn't affect standing rows. D-06: verbatim only.
+        derive_standing_obligations(db, tenant_id, doc_id)
     finally:
         db.close()
 

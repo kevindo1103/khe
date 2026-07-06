@@ -189,6 +189,34 @@ class TestDeriveDirection:
             result = _derive_direction("test-tenant", "Ben mua", FakeResult())
         assert result == "nghĩa_vụ"
 
+    def test_d_stroke_normalization_legal_name(self):
+        """đ/Đ (U+0111) has no NFD decomp — legal_name with đ must still self-match.
+
+        Before fix: _norm('Đầu tư ABC') → 'u abc' (đ silently dropped) → no match.
+        After fix: pre-replace đ→d → _norm('Đầu tư ABC') → 'dau tu abc' → matches.
+        """
+        class FakeResult:
+            parties = [PartyItem(name="Công ty Đầu tư ABC", role_label="Bên A")]
+
+        with patch(
+            "app.services.extraction_runner._get_tenant_legal_name",
+            return_value="Công ty Đầu tư ABC",
+        ):
+            result = _derive_direction("test-tenant", "Bên A", FakeResult())
+        assert result == "nghĩa_vụ", "Legal name with đ failed D-13 self-match (đ→d pre-replace missing)"
+
+    def test_d_stroke_in_obligor(self):
+        """Obligor containing đ must match normalized legal_name."""
+        class FakeResult:
+            parties = [PartyItem(name="Điện lực Miền Nam", role_label="Bên bán")]
+
+        with patch(
+            "app.services.extraction_runner._get_tenant_legal_name",
+            return_value="Điện lực Miền Nam",
+        ):
+            result = _derive_direction("test-tenant", "Điện lực Miền Nam", FakeResult())
+        assert result == "nghĩa_vụ"
+
 
 # ── Full extraction flow with direction ──────────────────────────────────
 
