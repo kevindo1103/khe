@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.schemas.obligations import ObligationCreateIn
+
 
 def _parse_json_list(v: Any) -> Any:
     """Deserialize a JSON TEXT column to a Python list. Returns None on corrupt data."""
@@ -100,6 +102,12 @@ class TermPatchIn(BaseModel):
     field_value: str | None = None
 
 
+class TermCreateIn(BaseModel):
+    field_name: str
+    field_value: str | None = None
+    source: str = "manual"
+
+
 # ── Documents ──
 
 class DocumentListItem(BaseModel):
@@ -147,6 +155,18 @@ class DocumentListOut(BaseModel):
     page: int
     page_size: int
     total: int
+
+
+class ManualDocumentCreateIn(BaseModel):
+    """Create a metadata-only Document (manual contract or virtual rule-pack doc) (#494)."""
+
+    title: str
+    doc_type: str | None = "manual"
+    counterparty: str | None = None
+    sign_date: str | None = None
+    effective_date: str | None = None
+    terms: list[TermCreateIn] = []
+    obligations: list[ObligationCreateIn] = []
 
 
 class DocumentDetailOut(BaseModel):

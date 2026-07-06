@@ -1,15 +1,18 @@
 """Pydantic schemas for Obligation endpoints (#26 PR-A)."""
 from datetime import date, datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 import json
+
+
+OBLIGATION_SOURCE_VALUES = {"ai_extracted", "ai_re_derived", "user_manual", "rule_pack"}
 
 
 class ObligationOut(BaseModel):
     id: int
-    document_id: int
+    document_id: int | None = None  # NULL for manual/rule-pack obligations without a contract (#494)
     description: str
-    obligation_type: str          # category: payment/expiration/renewal/...
+    obligation_type: str          # category: payment/expiration/renewal/.../standing/reporting
     recurrence: str               # cadence: once/open_ended_review
     direction: str | None = None  # nghĩa_vụ/quyền_lợi/null
     obligor: str | None = None
@@ -35,6 +38,9 @@ class ObligationOut(BaseModel):
     # Clause provenance (#303, DEC-048 §13)
     source_clause_num: str | None = None
     derived_from: str | None = None
+    # Provenance (#494)
+    source: str | None = None
+    source_rule_id: str | None = None
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,6 +53,53 @@ class ObligationOut(BaseModel):
             except (ValueError, TypeError):
                 return None
         return v
+
+
+class ObligationCreateIn(BaseModel):
+    """Request body for POST /obligations and embedded POST /documents/ obligations (#494)."""
+
+    description: str
+    obligation_type: str = "other"
+    direction: str | None = None
+    due_date: str | None = None
+    recurrence: str | None = "once"
+    obligor: str | None = None
+    remind_before_days: int = 7
+    document_id: int | None = None
+    source: str = "user_manual"
+    source_rule_id: str | None = None
+    milestone_trigger: str = "date"
+    trigger_condition: str | None = None
+    trigger_delay_days: int | None = None
+    # index into the obligations list of the same manual-document request (0-based).
+    trigger_obligation_ref: int | None = None
+
+    @field_validator("source")
+    @classmethod
+    def _check_source(cls, v: str) -> str:
+        if v not in OBLIGATION_SOURCE_VALUES:
+            raise ValueError(f"source must be one of {sorted(OBLIGATION_SOURCE_VALUES)}")
+        return v
+
+    @field_validator("milestone_trigger")
+    @classmethod
+    def _check_milestone_trigger(cls, v: str) -> str:
+        if v not in ("date", "event"):
+            raise ValueError("milestone_trigger must be 'date' or 'event'")
+        return v
+
+    @field_validator("direction")
+    @classmethod
+    def _check_direction(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("nghĩa_vụ", "quyền_lợi"):
+            raise ValueError("direction must be 'nghĩa_vụ' or 'quyền_lợi'")
+        return v
+
+    @model_validator(mode="after")
+    def _check_date_when_date_trigger(self):
+        if self.milestone_trigger == "date" and self.due_date is None:
+            raise ValueError("due_date bắt buộc khi milestone_trigger là 'date'")
+        return self
 
 
 class ObligationListOut(BaseModel):

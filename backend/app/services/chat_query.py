@@ -488,7 +488,7 @@ def _tool_search_obligations(
     waiting_trigger: bool = False,
 ) -> list[dict]:
     """Return obligation rows, optionally filtered by due window, status, doc hint, or date range."""
-    query = db.query(Obligation, Document).join(
+    query = db.query(Obligation, Document).outerjoin(
         Document, Document.id == Obligation.document_id
     ).filter(
         Obligation.tenant_id == tenant_id,
@@ -561,9 +561,9 @@ def _obligation_row(ob, doc) -> dict:
     """One obligation result dict — shared by retrieval + aggregate drill-down sources."""
     return {
         "type": "obligation",
-        "document_id": doc.id,
+        "document_id": doc.id if doc else ob.document_id,
         "obligation_id": ob.id,
-        "file_name": doc.file_name,
+        "file_name": doc.file_name if doc else None,
         "field_name": "due_date",
         "value": ob.due_date or ob.trigger_condition or "chờ sự kiện",
         "status": ob.status,
@@ -635,7 +635,7 @@ def _tool_aggregate_obligations(
 
     q = (
         db.query(Obligation, Document)
-        .join(Document, Document.id == Obligation.document_id)
+        .outerjoin(Document, Document.id == Obligation.document_id)
         .filter(Obligation.tenant_id == tenant_id)
     )
     if direction:
@@ -680,7 +680,8 @@ def _tool_aggregate_obligations(
 
     for ob, doc in pairs:
         rows.append(_obligation_row(ob, doc))
-        doc_ids.add(doc.id)
+        if doc is not None:
+            doc_ids.add(doc.id)
 
         urgency = _urgency_bucket(ob.due_date, ob.status, today_str, soon_cutoff)
         if urgency in status_breakdown:

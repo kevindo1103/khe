@@ -95,11 +95,31 @@ def rederive_document_directions(
     )
     updated = 0
     for ob in obligations:
-        if not ob.obligor or not self_strings:
-            new_dir = None
-        else:
-            new_dir = "nghĩa_vụ" if _norm(ob.obligor) in self_strings else "quyền_lợi"
+        new_dir = derive_obligation_direction_from_strings(ob.obligor, self_strings)
         if ob.direction != new_dir:
             ob.direction = new_dir
             updated += 1
     return updated
+
+
+def derive_obligation_direction_from_strings(
+    obligor: str | None, self_party_strings: set[str]
+) -> str | None:
+    """Return the direction for one obligor against the pre-built self-party set.
+
+    None when obligor is missing or the self-party set is empty.
+    """
+    if not obligor or not self_party_strings:
+        return None
+    return "nghĩa_vụ" if _norm(obligor) in self_party_strings else "quyền_lợi"
+
+
+def derive_obligation_direction(
+    db: Session, tenant_id: str, doc_id: int, obligor: str | None, legal_name: str | None
+) -> str | None:
+    """Derive direction for a single obligation using stored Party rows (D-13).
+
+    None when legal_name is unset, no self-party matches, or obligor is missing.
+    """
+    self_strings = _self_party_strings(db, tenant_id, doc_id, legal_name)
+    return derive_obligation_direction_from_strings(obligor, self_strings)
