@@ -1582,12 +1582,10 @@ function ClauseTreeItem({
   const displayContent = showOriginal && node.original_content ? node.original_content : node.content;
   const nodeRefs = (crossRefs ?? []).filter((r) => r.source_clause_id === node.id);
 
-  const rootCls = depth === 0
-    ? 'border border-border rounded-lg bg-surface mb-3 overflow-hidden'
-    : 'border-b border-border last:border-0';
+  const itemCls = 'border-b border-border last:border-0';
 
   return (
-    <div id={`clause-${node.id}`} className={rootCls}>
+    <div id={`clause-${node.id}`} className={itemCls}>
       <div style={{ paddingLeft: depth * 24 }}>
         <button
           className="w-full flex items-center justify-between py-3 px-4 text-left gap-2 hover:bg-surface-alt transition-colors"
@@ -1890,17 +1888,19 @@ function TabClauses({
         />
         <GlossarySection definitions={definitions} docId={docId} onSaved={onDefinitionSaved} />
         <div className="text-xs text-ink-muted mb-3">{total} điều khoản</div>
-        {roots.map((root) => (
-          <ClauseTreeItem
-            key={root.id}
-            node={root}
-            depth={0}
-            docId={docId}
-            onSaved={onClauseSaved}
-            crossRefs={crossRefs}
-            onNavigateDoc={onNavigateDoc}
-          />
-        ))}
+        <Card className="p-0">
+          {roots.map((root) => (
+            <ClauseTreeItem
+              key={root.id}
+              node={root}
+              depth={0}
+              docId={docId}
+              onSaved={onClauseSaved}
+              crossRefs={crossRefs}
+              onNavigateDoc={onNavigateDoc}
+            />
+          ))}
+        </Card>
       </div>
     );
   }
