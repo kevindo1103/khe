@@ -8,8 +8,8 @@
 
 | Mục | Nội dung |
 |---|---|
-| Phiên bản | v0.8 |
-| Trạng thái | Fold cycle 7 — DEC-055 tier + DEC-056 Obligation OS + Design System v1.1 |
+| Phiên bản | v0.9 |
+| Trạng thái | Fold cycle 8 — DEC-056 BA #493 + DEC-057/058/059 + CAIRN cherry-pick prep |
 | Owner | KHE_Docs |
 
 ---
@@ -22,6 +22,7 @@
 | v0.2 | 2026-06-18 | KHE_Docs | Fold DOCS_INBOX 13/14: add §G Strategy framework terms — Persona, JTBD, Golden Circle (Why-How-What), Dunford Positioning Thesis, B2B2B channel motion vs PLG, Obligation OS, Vertical wedge (DEC-018), Plan B contingency. |
 | v0.3 | 2026-06-19 | KHE_Docs | Cycle 3 fold. Add §H Backend M0 vocab — CANONICAL_FIELDS (7), DocType enum. Add §I Document relationships — amends vs references_framework, last_writer_wins, source_doc_chain. Update §C Extraction — `get_extraction_provider`, `ExtractionUnavailable`, `is_error` vs `needs_review`. Add §J Tenant quota — FR-TN-01..03, doc_quota nullable, calendar reset, hard block 429. |
 | v0.4 | 2026-06-19 | KHE_Docs | **DEC-026 fold (PRIORITY gate Backend #99 issue #100).** Add §A `Clause` entity — text nguyên gốc từ Document, distinct from Term/Field (structured). Per-tenant `clauses` table (SRS §5.9). Powers `search_clauses` tool (BRD FR-CQ-02). Rename old `Template / Clause` row → `Template (GĐ2)` to avoid name collision. |
+| v0.9 | 2026-07-06 | KHE_Docs | **Cycle 8 fold — DEC-056 BA #493 + DEC-057/058/059.** §N +Virtual Document (DEC-057) + Home 3-CTA (DEC-058) + Compliance wizard (DEC-059) + BA #493 6 sub-decisions expanded. §O +Rule pack v1 JSON fixture + rule_activations table + compliance profile fields (legal_form/has_employees/vat_period/fiscal_year_start) + Source enum `rule_pack` + source_rule_id + document_id nullable. §Q NEW CAIRN vocab: FM-16 role drift, FM-17 hallucinated artifact, P-10 post-claim verification, trust-done, scope-drift, partial-read discipline. |
 | v0.8 | 2026-07-03 | KHE_Docs | **Cycle 7 fold — DEC-055 + DEC-056 + DS v1.1.** §N NEW Servanda / Ledger tier / AI tier / per-doc quota / R-7 resolved / rule pack / compliance obligation / Obligation OS / D-16 no-paywall-safety / D-17 firm-confirms-compliance. §A Obligation `obligation_type` +`penalty`. §A Document +`may_have_unextracted_obligations`. §D Design System v1.1 (Lục Khế / border-strong / 13 badges / Hợp đồng A11y / elevation e0-e3 / done tokens). §L Karpathy 3 process additions cross-ref CLAUDE.md. §M ProcessingStage enum extension. §O NEW `is_garbled_vietnamese` + Two-Pass Skeleton/Fill + FallbackProvider warnings. |
 | v0.7 | 2026-06-29 | KHE_Docs | **Cycle 6 fold — DEC-049 hybrid OCR + DEC-050 R1-R10 EPIC #362 production.** §A NEW Definition entity (R9), CrossReference entity (R10), Lifecycle Status enum (R8). §A Document/Party/Clause entities expanded. §C +hybrid_ocr provider (DEC-049). §N NEW DEC-050 vocab section: title/contract_number, lifecycle_status state machine, clause_path hierarchy, party.is_self + aliases, annex relationship, Definition + CrossReference, signature flags, admin extraction metrics, processing pipeline stages. |
 | v0.6 | 2026-06-27 | KHE_Docs | **Cycle 5 fold — DEC-048 EPIC #300 production.** §A Obligation rewrite expanded (fulfilled_at G1 anchor, awaiting_confirmation, source_clause_num, derived_from, source P1). §A NEW ClauseEditEvent (§13 addendum) + Evidence Document. §M NEW Fulfillment + Cascade Chain section (DEC-048 vocab: fulfillment capture, propagate_obligation_done, cascade-past, awaiting_confirmation, anchor=fulfilled_at G1, P1 merge rule, derive delete path-2 guard, waiting_trigger + _detect_anchor_field, obligation_fulfillment purpose enum, evidence_attached). |
@@ -587,6 +588,86 @@ Semantic-element mandate + keyboard-operable + `LiveRegion` cho văn bản tự 
 Xưng "**bạn**". Tự gọi "**Servanda**" (không "Khế" trong copy user-facing). KHÔNG dấu chấm than. Dark mode = v2 (chưa design MVP).
 
 ---
+
+---
+
+## §N.2 Cycle 8 Strategy vocabulary (DEC-057/058/059 + BA #493)
+
+### Virtual Document (DEC-057)
+Placeholder Document entity với `type="rule_pack"` — no file bytes. Anchor cho compliance obligations while `Obligation.document_id` NOT NULL constraint vẫn active (interim pre-Track-2 migration). 1 Virtual Document per rule pack activation per tenant. UI filter `type != "rule_pack"` — không hiển thị trong document list.
+
+### Home 3-CTA (DEC-058)
+Landing `/admin/` layout: 3 primary CTAs — "Tải HĐ" · "Thêm HĐ thủ công" · "Rà soát tuân thủ". Balance discovery giữa 3 obligation entry points (contract upload / manual / compliance rule pack). D-16 no-paywall-safety preserved.
+
+### Compliance wizard `/admin/obligations/ra-soat` (DEC-059)
+Standalone route (không sub-route trong `/documents/`). 4 steps: (1) TenantProfile questionnaire, (2) rule pack match preview, (3) per-obligation activate/decline (D-02 confirm), (4) commit → obligations sinh + `rule_activations` row + Virtual Document.
+
+### Rule pack v1 JSON fixture (BA #493 §3)
+Rule packs lưu như JSON files trong repo: `rule_packs/thue_vat_quarterly.json`, `rule_packs/bhxh_monthly.json`, etc. Review-as-code — update via git commit + PR review. **NOT** DB table hoặc CMS. Format:
+```json
+{
+  "id": "thue_vat_quarterly",
+  "name": "Thuế VAT theo quý",
+  "version": "1.0",
+  "applies_when": {"legal_form": ["LLC", "JSC"], "vat_period": "quarter"},
+  "obligations": [
+    {"description": "Nộp tờ khai GTGT quý", "cadence": "quarterly", "due_expr": "quarter_end + 30", ...}
+  ]
+}
+```
+
+### `rule_activations` table (BA #493 §6)
+Per-tenant NEW table tracking rule-match user decisions (activate/decline/paused). Prevents re-suggest spam. Enables cascade cleanup + re-confirm flow when rule pack version changes (FR-OB-22).
+
+### Compliance profile (BA #493 §4)
+Extension trên `TenantProfile` (master.db, `master_005`): `legal_form` (`LLC`/`JSC`/`partnership`/...), `has_employees` (BOOL), `vat_period` (`month`/`quarter`), `fiscal_year_start` (DATE). Drive rule pack `applies_when` matching.
+
+### `source_rule_id`
+Obligation column NULLABLE. Format `<pack_id>:<obligation_index>` (vd `"thue_vat_quarterly:0"`). Trace về rule pack ID gốc khi `source="rule_pack"`. NULL cho obligations khác source.
+
+### `source` enum extended (cycle 8)
+Obligation `source` values: `ai_extracted` / `user_manual` / `ai_re_derived` / **`rule_pack`** (NEW cycle 8). Protection: `user_manual` protected from AI re-derive; `rule_pack` NOT protected same way (rule engine can regenerate on TenantProfile change) but re-confirm required per FR-OB-22.
+
+### `document_id` nullable Track 2
+Obligation column — was `NOT NULL`, `tenant_032` migration makes NULLABLE. Manual contracts vẫn giữ NOT NULL semantic ở API layer (validation). Compliance obligations (`source="rule_pack"`) sử dụng Virtual Document anchor (DEC-057) pre-migration, direct NULL post-migration.
+
+---
+
+## Q. CAIRN cherry-pick vocabulary (cycle 8 — Kevin ratified 2026-07-06)
+
+### CAIRN
+Framework tham chiếu external ([multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) fork) cho LLM-driven multi-role dev workflows. Servanda cherry-picks 5 items từ v0.7 (NO blind upgrade — Kevin ratified selective adoption).
+
+### FM-16 role drift
+Failure mode — session lead drifts từ role scope sang implement code directly (bypass dev). Symptom: lead PR chứa app code files. Fix: strict role boundaries + reject PR if role scope violated. Track qua CLAUDE.md §Lead/Dev workflow.
+
+### FM-17 hallucinated artifact
+Failure mode — LLM claims file/PR/commit exists khi thực tế không có. Symptom: reference tới `PR #999` không tồn tại, file path không tồn tại. Mitigation: **P-10 post-claim verification** — verify existence via `git log` / `ls` / GitHub API trước khi report done.
+
+### P-10 post-claim verification (CAIRN principle)
+Trước khi claim task done ("PR merged", "file created", "test passing"): **verify** claim via concrete evidence (`git log --oneline`, `ls path/`, `gh pr view #N`, test output). NOT just say-so. Prevents FM-17. **Note:** CAIRN P-10 numbering là internal CAIRN discipline framework, không collide với BRD §4 P-1..P-6 principles (different domain).
+
+### Trust-done anti-pattern
+Anti-pattern: session accepts dev "done" claim without verification. Fix: apply P-10 pre-merge review.
+
+### Scope-drift anti-pattern
+Anti-pattern: session takes on out-of-scope work under guise of "quick fix" during current task. Fix: file separate issue, do NOT bundle (DEC-047 PR scope-lock companion).
+
+### Partial-read discipline
+CLAUDE.md new section (cycle 8): guidance cho LLM sessions on partial file reads — nếu cần specific fact only, use `grep` / read specific line range instead of reading whole file. Preserves context window. Anti-pattern: reading full 2000-line file khi chỉ cần biết 1 config value.
+
+### Spawn templates (docs/spawn/)
+CAIRN cherry-pick: reusable session spawn prompts cho `SPAWN_LEAD.md` / `SPAWN_DEV.md` / `SPAWN_DOCS_EDITOR.md`. Skeleton files created cycle 8 fold — content TBD from CAIRN v0.7 spec (Kevin ratify + PM task-owner fill).
+
+### `.cairn-version` file
+Root-level version tracking file cho CAIRN framework alignment. Value = CAIRN spec version currently adopted (initial: `v0.7`). Enables future upgrade decisions to be explicit vs blind.
+
+### `docs/CAIRN.md`
+Documentation cho Servanda's CAIRN adoption: which items cherry-picked (FM-16/17, P-10, anti-patterns, partial-read, spawn templates), which items intentionally not adopted, rationale.
+
+---
+
+*Hết v0.9 — cycle 8 fold.*
 
 *Hết v0.8 — cycle 7 DEC-055/056 + DS v1.1 fold.*
 
