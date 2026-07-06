@@ -216,7 +216,7 @@ def test_status_breakdown(auth_client, db, monkeypatch):
     _wipe(db)
     doc = _doc(db)
     _ob(db, doc, due_date="2026-01-01", status="pending")     # overdue
-    _ob(db, doc, due_date="2026-07-01", status="pending")     # due_soon (<=30d from 06-23)
+    _ob(db, doc, due_date="2026-07-20", status="pending")     # due_soon (<=30d from today)
     _ob(db, doc, due_date="2026-12-31", status="pending")     # scheduled
     _ob(db, doc, status="waiting_trigger", due_date=None)     # waiting
     data = _ask(auth_client, monkeypatch, _agg_args(group_by="direction"))
