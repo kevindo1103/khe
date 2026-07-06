@@ -1050,13 +1050,13 @@ function DiffConfirmModal({
                 <div
                   key={`remove-${id}`}
                   className={`p-3 rounded-lg border mb-2 transition-colors ${
-                    selected ? 'border-red-200 bg-red-50' : 'border-border bg-surface-muted'
+                    selected ? 'border-danger/30 bg-danger-soft' : 'border-border bg-surface-muted'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-xs font-medium text-red-600">
+                        <span className="text-xs font-medium text-danger">
                           {actionLabel(diff.action)}
                         </span>
                         {diff.protected && (
@@ -1083,7 +1083,7 @@ function DiffConfirmModal({
                       <button
                         className={`flex-shrink-0 text-xs px-2 py-1 rounded border transition-colors ${
                           selected
-                            ? 'border-red-300 text-red-600 bg-red-50'
+                            ? 'border-danger/30 text-danger bg-danger-soft'
                             : 'border-border text-ink-muted'
                         }`}
                         onClick={() => toggleCancel(id)}
@@ -1126,9 +1126,9 @@ function DiffConfirmModal({
                 )}
                 {diff.old_value && diff.new_value && (
                   <div className="mt-1 flex gap-2 text-2xs flex-wrap">
-                    <span className="text-red-500 line-through">{diff.old_value}</span>
+                    <span className="text-danger line-through">{diff.old_value}</span>
                     <span>→</span>
-                    <span className="text-green-600">{diff.new_value}</span>
+                    <span className="text-done">{diff.new_value}</span>
                   </div>
                 )}
               </div>
@@ -1271,7 +1271,6 @@ function TabOverview({
       {doc.terms.length === 0 ? (
         <Card title="Thông tin trích xuất">
           <EmptyState
-            icon=""
             title="Chưa có thông tin"
             description="Tài liệu đang được xử lý. Quay lại sau vài phút."
           />
@@ -1324,7 +1323,6 @@ function TabObligations({
   if (doc.obligations.length === 0) {
     return (
       <EmptyState
-        icon=""
         title="Chưa có nghĩa vụ nào"
         description="Tài liệu chưa có nghĩa vụ được bóc tách."
       />
@@ -1864,7 +1862,6 @@ function TabClauses({
   if (error) {
     return (
       <EmptyState
-        icon=""
         title="Không tải được điều khoản"
         description="Đã xảy ra lỗi khi tải nội dung điều khoản."
         action={<Button size="sm" variant="ghost" onClick={onRetry}>Thử lại</Button>}
@@ -1874,7 +1871,6 @@ function TabClauses({
   if (clauses.length === 0) {
     return (
       <EmptyState
-        icon=""
         title="Chưa có nội dung điều khoản"
         description="Tài liệu này chưa được bóc tách nội dung điều khoản."
       />
@@ -1978,7 +1974,6 @@ function TabParties({ parties }: { parties?: PartyOut[] }) {
   if (!parties || parties.length === 0) {
     return (
       <EmptyState
-        icon=""
         title="Chưa có dữ liệu bên ký kết"
         description="Bên ký kết sẽ xuất hiện sau khi tài liệu được bóc tách."
       />
@@ -2422,7 +2417,7 @@ export default function DocumentDetail() {
   }
 
   if (error && !doc) {
-    return <EmptyState icon="" title="Không tìm thấy tài liệu" description={error} />;
+    return <EmptyState title="Không tìm thấy tài liệu" description={error} />;
   }
 
   return (
