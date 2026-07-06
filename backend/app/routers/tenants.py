@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_master_db
 from app.deps import get_current_user
 from app.models.master import Tenant, TenantProfile, TenantUser
+from app.schemas.tenants import ComplianceProfileIn, ComplianceProfileOut
 from app.services import tenant_journey
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
@@ -125,3 +126,38 @@ def update_legal_name(
         db.add(TenantProfile(tenant_id=user.tenant_id, legal_name=body.legal_name))
     db.commit()
     return {"ok": True, "legal_name": body.legal_name}
+
+
+@router.get("/me/compliance-profile", response_model=ComplianceProfileOut)
+def get_compliance_profile(
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_master_db),
+):
+    """Read the compliance profile for the current tenant (#495)."""
+    profile = db.query(TenantProfile).filter_by(tenant_id=user.tenant_id).first()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant profile not found",
+        )
+    return profile
+
+
+@router.put("/me/compliance-profile", response_model=ComplianceProfileOut)
+def update_compliance_profile(
+    body: ComplianceProfileIn,
+    user: TenantUser = Depends(get_current_user),
+    db: Session = Depends(get_master_db),
+):
+    """Update the compliance profile for the current tenant (#495)."""
+    profile = db.query(TenantProfile).filter_by(tenant_id=user.tenant_id).first()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant profile not found",
+        )
+    for field, val in body.model_dump(exclude_none=True).items():
+        setattr(profile, field, val)
+    db.commit()
+    db.refresh(profile)
+    return profile

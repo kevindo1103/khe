@@ -128,13 +128,47 @@ def get_master_db():
         db.close()
 
 
-def init_master_db():
-    """Create master tables if they don't exist."""
-    from app.models import master as _master_models  # noqa: F401
-    MasterBase.metadata.create_all(bind=master_engine)
-
-
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def _upgrade_master_alembic() -> None:
+    """Programmatically run alembic upgrade for the master DB.
+
+    Migrations are idempotent, so this safely upgrades legacy master.db files
+    that were bootstrapped via create_all() without an alembic_version stamp.
+    """
+    import alembic.config
+    from alembic import command
+    from sqlalchemy import create_engine, inspect
+
+    from app.core.config import settings
+
+    db_url = settings.MASTER_DB_URL
+    db_path = Path(db_url.replace("sqlite:///", ""))
+
+    # Baseline stamp: if DB has tables but no alembic_version, stamp 001
+    if db_path.exists():
+        tmp_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+        inspector = inspect(tmp_engine)
+        table_names = inspector.get_table_names()
+        tmp_engine.dispose()
+
+        if table_names and "alembic_version" not in table_names:
+            cfg = alembic.config.Config(str(_BACKEND_DIR / "alembic.ini"))
+            cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic"))
+            cfg.set_main_option("sqlalchemy.url", db_url)
+            command.stamp(cfg, "001")
+            print("  [alembic] master.db baseline-stamped 001")
+
+    cfg = alembic.config.Config(str(_BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(cfg, "head")
+
+
+def init_master_db():
+    """Create / upgrade master tables via Alembic (not create_all)."""
+    _upgrade_master_alembic()
 
 
 def _upgrade_tenant_alembic(tenant_id: str) -> None:

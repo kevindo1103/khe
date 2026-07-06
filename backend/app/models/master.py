@@ -99,11 +99,16 @@ class FirmTenantAccess(MasterBase):
 
 
 class TenantProfile(MasterBase):
-    """Operational profile for a tenant — legal name for auto-match (DEC-030)."""
+    """Operational profile for a tenant — legal name + compliance profile (DEC-030; #495)."""
     __tablename__ = "tenant_profiles"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), unique=True, nullable=False)
     legal_name = Column(String, nullable=True)
+    # ── #495 Track 2 compliance profile (rule-pack matching) ──
+    legal_form = Column(String, nullable=True)              # hộ KD / DN tư nhân / TNHH / CP / ...
+    has_employees = Column(Boolean, nullable=True)           # có sử dụng lao động
+    vat_period = Column(String, nullable=True)               # "month" | "quarter"
+    fiscal_year_start = Column(Date, nullable=True)          # ngày bắt đầu niên độ
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
