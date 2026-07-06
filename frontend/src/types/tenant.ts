@@ -9,7 +9,7 @@ export interface LegalNameIn {
 
 export interface LegalNameOut {
   ok: boolean;
-  legal_name: string;
+  legal_name: string | null;
 }
 
 // #213 — tenant journey state (GET /tenants/me) + forward-only advance.
