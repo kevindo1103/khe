@@ -30,22 +30,27 @@ from app.models.tenant import Clause, Event, Obligation
 # Normalized (case-fold + diacritics-stripped) matching against clause titles.
 # Conservative: only match patterns we're confident about (D-08 spirit).
 _STANDING_PATTERNS: list[tuple[list[str], str]] = [
-    # confidentiality / NDA
-    (["bao mat", "bao mật", "保密", "nda", "non-disclosure", "khong tiep lo"], "standing"),
+    # confidentiality / NDA — normalized-ASCII only; diacritics/CJK stripped by _norm()
+    (["bao mat", "nda", "non-disclosure", "khong tiet lo"], "standing"),
     # non-compete
-    (["khong canh tranh", "không cạnh tranh", "non-compete", "non compete"], "standing"),
-    # exclusivity
-    (["doc quyen", "độc quyền", "exclusiv"], "standing"),
-    # compliance / general standing commitments
-    (["tuan thu", "tuân thủ", "compliance", "dap ung"], "standing"),
-    # periodic reporting → "reporting" type
-    (["bao cao", "báo cáo", "reporting", "periodic report", "bao cao dinh ky"], "reporting"),
+    (["khong canh tranh", "non-compete", "non compete"], "standing"),
+    # exclusivity — "doc quyen" requires đ→d fix in _norm() for "độc quyền"
+    (["doc quyen", "exclusiv"], "standing"),
+    # compliance / general standing commitments — "dap ung" requires đ→d fix for "đáp ứng"
+    (["tuan thu", "compliance", "dap ung"], "standing"),
+    # periodic reporting — "dinh ky" requires đ→d fix for "định kỳ"
+    (["bao cao dinh ky", "bao cao", "reporting", "periodic report"], "reporting"),
 ]
 
 
 def _norm(s: str) -> str:
-    """Case-fold + strip diacritics for fuzzy Vietnamese comparison."""
+    """Case-fold + strip diacritics for fuzzy Vietnamese comparison.
+
+    đ/Đ (U+0111/U+0110, LATIN LETTER D WITH STROKE) has no NFD decomposition
+    and is silently dropped by encode("ascii","ignore"). Pre-replace before NFD.
+    """
     import unicodedata
+    s = s.replace("đ", "d").replace("Đ", "D")
     s = unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
     return " ".join(s.lower().split())
 
@@ -54,16 +59,16 @@ def _first_sentence(text: str) -> str:
     """Extract the first sentence from clause content (verbatim, D-06).
 
     Splits on Vietnamese sentence terminators: . ! ? 。
-    Returns the first non-empty sentence, stripped. If no terminator found,
-    returns the full text (short clauses).
+    Returns the first non-empty, non-list-marker sentence, stripped.
+    Skips pure digit segments that result from splitting "1. Bên A..." style
+    Vietnamese numbered clauses.
     """
     if not text:
         return ""
-    # Split on . ! ? 。 — common sentence terminators (VN + EN).
     parts = re.split(r'[.!?。]', text.strip())
     for part in parts:
         s = part.strip()
-        if s:
+        if s and not re.match(r'^\d+[)\.]?\s*$', s):
             return s
     return text.strip()
 
@@ -119,12 +124,13 @@ def derive_standing_obligations(
         return {"created": 0, "skipped": True, "reason": "No clauses found"}
 
     # Idempotency: clear existing standing-derived rows for this doc.
-    # Only delete rows with our source label — don't touch user_manual rows.
+    # D-15 guard: fulfilled obligations are audit records — never delete them.
     db.query(Obligation).filter(
         Obligation.tenant_id == tenant_id,
         Obligation.document_id == doc_id,
         Obligation.obligation_type.in_(["standing", "reporting"]),
         Obligation.source == source_label,
+        Obligation.fulfilled_at.is_(None),
     ).delete(synchronize_session=False)
 
     created = 0
@@ -161,7 +167,7 @@ def derive_standing_obligations(
             document_id=doc_id,
             description=description,
             obligation_type=obl_type,
-            recurrence="once",  # standing = ongoing, no cadence
+            recurrence="open_ended_review",  # standing = ongoing, reviewed continuously
             direction=None,     # rederived at confirm-time (D-13)
             obligor=None,
             due_date=None,      # standing = no due date
