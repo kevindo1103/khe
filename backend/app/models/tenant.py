@@ -108,7 +108,7 @@ class Obligation(TenantBase):
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)   # NULL for manual/rule-pack obligations without a contract (#494)
     description = Column(Text, nullable=False)
     recurrence = Column(String, default="once")          # cadence: "once" | "open_ended_review"
-    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "penalty" | "other" | "standing" | "reporting"
+    obligation_type = Column(String, default="other")    # category (DEC-027): "payment" | "expiration" | "renewal" | "review" | "warranty" | "penalty" | "standing" | "reporting" | "other"
     direction = Column(String, nullable=True)            # DEC-030: "nghĩa_vụ" | "quyền_lợi" | NULL (needs_review)
     obligor = Column(String, nullable=True)              # DEC-030: role_label from parties[]
     due_date = Column(String, nullable=True)
@@ -141,6 +141,8 @@ class Obligation(TenantBase):
     # Clause provenance (#303, DEC-048 §13): links obligation to the clause that drove it.
     source_clause_num = Column(String, nullable=True)  # FK-ish to Clause.clause_num in same doc
     derived_from = Column(String, nullable=True)       # "original" | "user_edit"
+    # ── tenant_032: legal citation for rule-pack obligations (#502) ──
+    legal_basis = Column(String, nullable=True)        # e.g. "Điều 15, NĐ 70/2025" — set by rule-pack flow
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

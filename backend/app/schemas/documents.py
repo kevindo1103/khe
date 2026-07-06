@@ -215,6 +215,8 @@ class DocumentDetailOut(BaseModel):
     signature_pages: list[int] | None = None
     # #276 honest completeness flag — null until verifier runs, True/False set by fast-follow CompletenessVerifier
     may_have_unextracted_obligations: bool | None = None
+    # #274 standing obligations count — "Cam kết đang hiệu lực" section
+    standing_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
     _parse_signature_pages = field_validator("signature_pages", mode="before")(_parse_json_list)

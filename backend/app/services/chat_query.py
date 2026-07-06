@@ -598,9 +598,13 @@ _DIRECTION_LABELS = {
 def _urgency_bucket(due_date: str | None, status: str | None, today_str: str, soon_cutoff: str) -> str:
     """Derive FE urgency from (due_date, status). 'overdue' is NOT a stored status
     (DEC-027) — it is past-due AND still active. Returns one of:
-    overdue | due_soon | waiting_trigger | scheduled | closed."""
+    overdue | due_soon | waiting_trigger | standing | scheduled | closed."""
     if status == "waiting_trigger":
         return "waiting_trigger"
+    if status == "in_progress" and not due_date:
+        # Only dateless in_progress rows are standing; dated in_progress fall through
+        # to the due_date comparison below (overdue/due_soon/scheduled).
+        return "standing"
     if status in _CLOSED_STATUSES:
         return "closed"
     if not due_date:
@@ -665,7 +669,14 @@ def _tool_aggregate_obligations(
 
     pairs = q.order_by(Obligation.due_date.asc()).all()
     # Mirror retrieval: drop malformed dateless non-event rows.
-    pairs = [(ob, doc) for ob, doc in pairs if ob.due_date or ob.status == "waiting_trigger"]
+    # Dateless in_progress is only valid for standing/reporting types; other types
+    # with no due_date are malformed and excluded to avoid polluting deadline views.
+    pairs = [
+        (ob, doc) for ob, doc in pairs
+        if ob.due_date
+        or ob.status == "waiting_trigger"
+        or (ob.status == "in_progress" and ob.obligation_type in {"standing", "reporting"})
+    ]
     if overdue_only:
         pairs = [
             (ob, doc) for ob, doc in pairs
@@ -674,7 +685,7 @@ def _tool_aggregate_obligations(
 
     # ── group by the requested axis ──
     groups: dict[str, dict] = {}
-    status_breakdown = {"waiting_trigger": 0, "overdue": 0, "due_soon": 0}
+    status_breakdown = {"waiting_trigger": 0, "overdue": 0, "due_soon": 0, "standing": 0}
     doc_ids: set[int] = set()
     rows: list[dict] = []
 

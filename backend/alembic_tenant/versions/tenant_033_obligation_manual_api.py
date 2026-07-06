@@ -1,4 +1,4 @@
-"""tenant_032: allow document_id NULL + add source_rule_id for manual/rule-pack obligations (#494).
+"""tenant_033: allow document_id NULL + add source_rule_id for manual/rule-pack obligations (#494).
 
 Makes Obligation.document_id nullable so Track-2 rule-pack obligations and
 true manual obligations can exist without a parent Document. Adds
@@ -12,8 +12,8 @@ from typing import Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "tenant_032"
-down_revision: Union[str, None] = "tenant_031"
+revision: str = "tenant_033"
+down_revision: Union[str, None] = "tenant_032"
 branch_labels = None
 depends_on = None
 

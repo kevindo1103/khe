@@ -173,6 +173,7 @@ def create_obligation(
         remind_before_days=body.remind_before_days,
         source=body.source,
         source_rule_id=body.source_rule_id,
+        legal_basis=body.legal_basis,
         milestone_trigger=body.milestone_trigger,
         trigger_condition=body.trigger_condition,
         trigger_delay_days=body.trigger_delay_days,

@@ -41,6 +41,8 @@ class ObligationOut(BaseModel):
     # Provenance (#494)
     source: str | None = None
     source_rule_id: str | None = None
+    # Legal citation (#502, tenant_032) — populated by rule-pack flow
+    legal_basis: str | None = None
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,6 +70,7 @@ class ObligationCreateIn(BaseModel):
     document_id: int | None = None
     source: str = "user_manual"
     source_rule_id: str | None = None
+    legal_basis: str | None = None
     milestone_trigger: str = "date"
     trigger_condition: str | None = None
     trigger_delay_days: int | None = None
@@ -127,7 +130,7 @@ class ObligationSummaryOut(BaseModel):
     total: int
     group_by: str
     groups: list[dict]              # [{key, label, count, nearest?}]
-    status_breakdown: dict          # {waiting_trigger, overdue, due_soon}
+    status_breakdown: dict          # {waiting_trigger, overdue, due_soon, standing}
     source: dict                    # {obligation_count, doc_count, label}
 
 

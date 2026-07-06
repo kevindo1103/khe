@@ -365,9 +365,18 @@ export default function Obligations() {
               </Button>
             </>
           ) : ob.status === 'waiting_trigger' ? (
-            <Button size="sm" onClick={() => setFulfillTarget(ob)} loading={isUpdating(ob.id)}>
+            // #502 Bug 1: force-closes via markStatus(id,'done') instead of the
+            // correct waiting_trigger → pending transition — disabled until #501
+            // (trigger-confirm API) ships. Button, not shared <Button>, since
+            // it doesn't forward a title/tooltip prop — matches DocumentDetail.tsx.
+            <button
+              type="button"
+              disabled
+              title="Chưa hỗ trợ — cần API xác nhận sự kiện kích hoạt (Backend kickoff riêng)"
+              className="border border-border-strong bg-surface text-ink-body px-3 py-1 rounded-md text-xs font-semibold h-8 opacity-50 cursor-not-allowed"
+            >
               Đánh dấu sự kiện đã xảy ra
-            </Button>
+            </button>
           ) : (
             <Badge kind={statusBadgeKind(ob.status)}>{statusLabel(ob.status)}</Badge>
           )}
