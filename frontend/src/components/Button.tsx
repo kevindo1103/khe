@@ -13,6 +13,7 @@ interface ButtonProps {
   type?: 'button' | 'submit';
   className?: string;
   testId?: string;
+  title?: string;
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -38,6 +39,7 @@ export function Button({
   type = 'button',
   className = '',
   testId,
+  title,
 }: ButtonProps) {
   const isOff = disabled || loading;
   return (
@@ -46,6 +48,7 @@ export function Button({
       onClick={isOff ? undefined : onClick}
       disabled={isOff}
       data-testid={testId}
+      title={title}
       className={`
         inline-flex items-center justify-center gap-2
         rounded-md font-semibold whitespace-nowrap
