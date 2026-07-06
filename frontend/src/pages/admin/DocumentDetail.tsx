@@ -25,7 +25,6 @@ import type {
   CrossRefResolveOut,
 } from '../../types/documents';
 import type { ObligationOut, ObligationPatchOut, BulkCompleteIn, BulkCompleteOut } from '../../types/obligations';
-import type { LegalNameOut } from '../../types/tenant';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
 import {
@@ -2044,8 +2043,7 @@ export default function DocumentDetail() {
   const [reReading, setReReading] = useState(false);
   const [reReadDiffs, setReReadDiffs] = useState<ReReadDiff[] | null>(null);
   const [applyingDiffs, setApplyingDiffs] = useState(false);
-  const [legalName, setLegalName] = useState<string>('');
-  const { refetch: refetchJourney } = useJourney();
+  const { legalName, refetch: refetchJourney } = useJourney();
 
   const showToast = (msg: string, kind: ToastKind = 'success') => {
     setToastKind(kind);
@@ -2120,12 +2118,6 @@ export default function DocumentDetail() {
   useEffect(() => {
     load();
   }, [load]);
-
-  useEffect(() => {
-    apiFetch<LegalNameOut>('/tenants/me/legal_name')
-      .then((res) => setLegalName(res.legal_name || ''))
-      .catch(() => {});
-  }, []);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -2585,7 +2577,7 @@ export default function DocumentDetail() {
                 onBulkComplete={bulkCompleteObligations}
                 bulkCompleting={bulkCompleting}
                 onJumpToClause={jumpToClause}
-                hasLegalName={legalName.trim().length > 0}
+                hasLegalName={!!legalName}
               />
             </>
           )}

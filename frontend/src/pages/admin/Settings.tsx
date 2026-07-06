@@ -74,7 +74,7 @@ export default function Settings() {
         method: 'PATCH',
         body: JSON.stringify({ legal_name: legalName.trim() } as LegalNameIn),
       });
-      setSavedName(res.legal_name);
+      setSavedName(res.legal_name || '');
       setToastMsg('Đã lưu tên pháp lý — tài liệu mới sẽ tự động đối chiếu.');
     } catch (err) {
       setError((err as ApiError).message || 'Lưu thất bại');
