@@ -43,6 +43,8 @@ export interface ObligationOut {
   fulfilled_by: string | null;
   // Clause provenance (#303, #472 — jump-to-clause link)
   source_clause_num: string | null;
+  // Legal citation (DEC-057 rule-pack obligations) — #502
+  legal_basis: string | null;
 }
 
 export interface ObligationListOut {

@@ -331,6 +331,12 @@ export default function Obligations() {
                 ? 'chờ sự kiện'
                 : `hạn ${formatDate(ob.due_date)}`}
             </span>
+            {ob.legal_basis && (
+              <>
+                <span>·</span>
+                <span className="text-ink-subtle">{ob.legal_basis}</span>
+              </>
+            )}
             {chips.map((c) => (
               <span key={c} className="text-ink-subtle">
                 · {c}
@@ -367,16 +373,14 @@ export default function Obligations() {
           ) : ob.status === 'waiting_trigger' ? (
             // #502 Bug 1: force-closes via markStatus(id,'done') instead of the
             // correct waiting_trigger → pending transition — disabled until #501
-            // (trigger-confirm API) ships. Button, not shared <Button>, since
-            // it doesn't forward a title/tooltip prop — matches DocumentDetail.tsx.
-            <button
-              type="button"
+            // (trigger-confirm API) ships.
+            <Button
+              size="sm"
               disabled
-              title="Chưa hỗ trợ — cần API xác nhận sự kiện kích hoạt (Backend kickoff riêng)"
-              className="border border-border-strong bg-surface text-ink-body px-3 py-1 rounded-md text-xs font-semibold h-8 opacity-50 cursor-not-allowed"
+              title="Chưa hỗ trợ — cần API xác nhận sự kiện kích hoạt"
             >
               Đánh dấu sự kiện đã xảy ra
-            </button>
+            </Button>
           ) : (
             <Badge kind={statusBadgeKind(ob.status)}>{statusLabel(ob.status)}</Badge>
           )}
