@@ -26,34 +26,11 @@
 
 ---
 
-## Partial-Read Discipline (CAIRN — cycle 8)
+## Partial-read discipline (BẮT BUỘC)
 
-**Preserve context window: read what you need, không read whole file khi 1 fact enough.**
-
-### Rules
-
-- **Config lookup?** Use `grep` for the specific key, KHÔNG `cat` full file.
-- **API contract?** `grep` for endpoint path + method, read ~10 surrounding lines. KHÔNG dump full router file.
-- **Schema check?** `grep` for column name, read table definition ~5 lines.
-- **Version check?** Read only header/changelog top ~10 lines.
-- **Bug pattern lookup?** `grep` in §Common Bug Patterns table with keyword.
-
-### When full read IS warranted
-
-- Writing PR review for the file (need full context)
-- Refactoring / renaming across whole file
-- First-time reading a small file (~<200 lines) to build mental model
-- File specifically flagged in task assignment
-
-### Anti-pattern
-
-Reading full 2000-line CLAUDE.md every session kickoff wastes ~10K tokens. Use Bước 0 session kickoff §Cross-session communication checklist which lists **which sections** to read (DEC-047 / D-rules / Multi-Tenant DB / Bug Patterns) — read only those sections.
-
-### Tooling
-
-- `Grep` tool with `output_mode: content` + `-C 3` for surrounding context
-- `Read` tool with `offset` + `limit` for specific ranges
-- Read file → Edit → Read specific range verify → commit (never full re-read)
+Canonical docs lớn — đọc theo section anchor (`§4.2`, `§3.1`), KHÔNG đọc full file.
+Không chắc section → đọc changelog/mục lục đầu file để locate.
+Full-file read chỉ khi file < 200 dòng.
 
 ---
 
@@ -255,8 +232,8 @@ Trước khi sửa: **biến task thành tiêu chí verify được**.
 | **Silent no-op stub in extraction runner** (cycle 7 PR #431) | `extraction_runner.py:275` was empty stub — Gemini extracted `defined_terms[]` nhưng runner never persisted → Điều 1 (ĐỊNH NGHĨA) empty in UI. | Idempotent delete + persist loop from `result.defined_terms` linking `source_clause_num` / `source_clause_id`. Add integration test covers persist path end-to-end. |
 | **Party.aliases NULL blocks D-13 alias-match** (cycle 7 PR #475 gap) | `_self_party_strings()` now unpacks aliases nhưng `PartyItem` LLM schema thiếu `aliases` field → aliases luôn NULL trừ khi user PATCH thủ công. Direction=NULL sai. | Fix source: thêm `aliases` vào `PartyItem` + prompt để LLM auto-populate. Interim: user PATCH `Party.aliases` manual. Filed relay cho KHE_AI. |
 | **`bg-success`/green-creep for done states** (DS v1.1 cycle 7 PR #488) | 4 components dùng `bg-success`/`text-success` cho "hoàn thành" → vi phạm DS principle "hoàn thành = xám lặng". User feel over-celebrated cho routine complete. | Migrate sang tokens `done #5A6660` / `done-soft #F0F0EB` (v1.1 tokens). ConfidenceMeter ≥80%, SignatureBadge "Đã ký", LifecycleBadge "active", AmountDisplay đều convert. |
-| **FM-16 role drift** (CAIRN cherry-pick cycle 8) | Session lead drifts từ role scope → implement code directly (bypass dev). Symptom: lead PR chứa app code files trong lane khác role's allowed paths. | Strict role boundaries per §PR Scope-Lock Enforcement DEC-047. Reject PR if role scope violated. Lead role = plan/review/coordinate, KHÔNG code (exception: emergency hotfix + PM approval). |
-| **FM-17 hallucinated artifact** (CAIRN cherry-pick cycle 8) | LLM session claims file/PR/commit exists khi thực tế không có. Symptom: reference tới `PR #999` không tồn tại, file path không tồn tại, "commit `abc123` merged" but `git log` empty. | Apply **P-10 post-claim verification** — verify existence via concrete evidence (`git log --oneline`, `ls path/`, `gh pr view #N`, test output) trước khi report done. Never claim done from LLM inference alone. |
+| **FM-16 Session tự mở rộng scope ngoài role** (CAIRN cherry-pick cycle 8) | Session nhận scope cụ thể (vd docs-editor `docs/**`) nhưng tự implement code backend/frontend thay vì file task-assignment issue | Hard scope-lock: chỉ sửa file trong scope. Ngoài scope → file issue `task-assignment` cho team đúng, KHÔNG tự làm. |
+| **FM-17 Session báo "committed/merged" với artifact không tồn tại** (CAIRN cherry-pick cycle 8) | Claim "committed `<hash>`" hoặc "merged PR #X" nhưng hash/PR không tồn tại trong repo. Che FM-16 (scope violation + fabricated evidence). | P-10: mọi claim done phải kèm `git log <hash> --oneline` hoặc PR URL. Orchestrator verify trước khi trust. |
 
 ---
 
@@ -425,8 +402,8 @@ Pattern (mirror Bingxue):
 - **(Karpathy — cycle 7) Delete-only-what-your-change-makes-dead:** khi sửa code chỉ xóa import/biến/hàm mà **chính thay đổi của mình** làm thừa. Dead code có sẵn từ trước — nêu ra trong PR description, KHÔNG tự xóa trừ khi được yêu cầu explicit.
 - **(DS v1.1 — cycle 7) Icon/emoji rời trong JSX:** KHÔNG dùng icon rời ngoài `IconButton` component (ngoại lệ duy nhất). Badge chỉ dùng text + color per 13-badge vocabulary.
 - **(DS v1.1 — cycle 7) Màu ngoài token:** KHÔNG dùng hex/rgb hard-code trong component. Chỉ dùng token từ `mockup_design_system_v1.1.jsx`. Viền `n-300`/`n-400` KHÔNG được dùng cho input/button/checkbox (dùng `border-strong` cho WCAG 3:1) — tránh lặp lại contrast gap đã fix v1.1.
-- **(CAIRN — cycle 8) Trust-done:** Session accepts "done" claim (từ dev, hoặc từ chính LLM output) không verify concrete evidence. Fix: apply **P-10 post-claim verification** — check `git log`, `ls`, `gh pr view`, test output. Không claim done từ inference alone.
-- **(CAIRN — cycle 8) Scope-drift:** Session takes on out-of-scope work under guise of "quick fix" during current task ("while I'm here, let me also..."). Fix: file separate issue, KHÔNG bundle (DEC-047 PR scope-lock companion). Current task boundary = task assignment scope, KHÔNG expand mid-session.
+- Trust "done" chưa verify artifact (FM-17 risk) — verify hash/PR URL trước
+- Session tự mở scope ngoài role (FM-16) — file issue cho team đúng, không tự làm
 - God files >500 lines → split
 - `console.log` trong production code
 - Direct SQL với f-string (use parameterized queries)
