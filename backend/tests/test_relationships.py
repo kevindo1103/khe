@@ -99,6 +99,10 @@ def _seed_term(db, document_id: int, field_name: str, field_value: str, needs_re
 
 class TestSuggestRelationships:
     def test_match_existing_document(self, tenant_db):
+        # Clean up stale docs with same filenames to avoid cross-run false matches
+        for fname in ("HD-001.pdf", "HD-002.pdf"):
+            tenant_db.query(Document).filter(Document.file_name == fname, Document.tenant_id == "rel-tenant").delete()
+        tenant_db.commit()
         parent = _seed_doc(tenant_db, "HD-001.pdf")
         child = _seed_doc(tenant_db, "HD-002.pdf")
         _seed_term(tenant_db, child.id, "dieu_khoan_gia_han", "Phụ lục HĐ số HD-001")
@@ -107,13 +111,17 @@ class TestSuggestRelationships:
         assert len(rels) >= 1
         matched = [r for r in rels if r.to_doc_id == parent.id]
         assert len(matched) == 1
-        assert matched[0].relationship_type == "amends"
+        # "Phụ lục HĐ số HD-001" (no sửa đổi/bổ sung keyword) → annex, not amends
+        assert matched[0].relationship_type == "annex"
         assert matched[0].status == "pending"
         assert matched[0].confirmed_by_sme is False
 
     def test_theo_reference_is_framework_not_amends(self, tenant_db):
         """"theo/căn cứ HĐ" is a framework/basis reference, not an amendment —
         so resolve_chain (amends-only) won't supersede its terms."""
+        for fname in ("HD-FW1.pdf", "DH-100.pdf"):
+            tenant_db.query(Document).filter(Document.file_name == fname, Document.tenant_id == "rel-tenant").delete()
+        tenant_db.commit()
         framework = _seed_doc(tenant_db, "HD-FW1.pdf")
         order = _seed_doc(tenant_db, "DH-100.pdf")
         _seed_term(tenant_db, order.id, "ghi_chu", "Căn cứ HĐ số HD-FW1")

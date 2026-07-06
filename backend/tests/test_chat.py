@@ -1075,6 +1075,8 @@ class TestObligationTypeDirectionFilter:
 
     def test_filter_by_obligation_type_payment(self, auth_client, db, monkeypatch):
         """search_obligations(obligation_type='payment') returns only payment obligations."""
+        db.query(Obligation).filter(Obligation.tenant_id == "chat-tenant").delete()
+        db.commit()
         doc = _seed(db)
         db.add_all([
             Obligation(
@@ -1400,6 +1402,8 @@ class TestDocTypeFilter:
 
     def test_search_terms_doc_type_filter(self, auth_client, db, monkeypatch):
         """search_terms(doc_type_filter='lao_dong') returns only docs with doc_type_group=lao_dong."""
+        db.query(Term).filter(Term.tenant_id == "chat-tenant", Term.field_name.in_(["doc_type_group", "ngay_het_han"])).delete()
+        db.commit()
         doc1 = _seed(db)
         doc2 = Document(tenant_id="chat-tenant", file_name="labor.pdf", file_path="x/y.pdf", status="extracted")
         db.add(doc2)
@@ -1741,8 +1745,9 @@ class TestChatTokenomics:
             db.commit()
         db.close()
 
-        # Seed a log row directly in the other tenant
+        # Seed a log row directly in the other tenant (clear first for isolation)
         odb = get_tenant_session("tokenomics-other")
+        odb.query(ChatQueryLog).filter(ChatQueryLog.tenant_id == "tokenomics-other").delete()
         odb.add(ChatQueryLog(tenant_id="tokenomics-other", question="other query", found=False, result_count=0, input_tokens=9999, output_tokens=9999, cost_vnd=999.0, llm_calls=99))
         odb.commit()
         odb.close()
