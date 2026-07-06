@@ -35,6 +35,8 @@ class ObligationOut(BaseModel):
     # Clause provenance (#303, DEC-048 §13)
     source_clause_num: str | None = None
     derived_from: str | None = None
+    # Legal citation (#502, tenant_032) — populated by rule-pack flow
+    legal_basis: str | None = None
     created_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 

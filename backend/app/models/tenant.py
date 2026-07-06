@@ -139,6 +139,8 @@ class Obligation(TenantBase):
     # Clause provenance (#303, DEC-048 §13): links obligation to the clause that drove it.
     source_clause_num = Column(String, nullable=True)  # FK-ish to Clause.clause_num in same doc
     derived_from = Column(String, nullable=True)       # "original" | "user_edit"
+    # ── tenant_032: legal citation for rule-pack obligations (#502) ──
+    legal_basis = Column(String, nullable=True)        # e.g. "Điều 15, NĐ 70/2025" — set by rule-pack flow
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
