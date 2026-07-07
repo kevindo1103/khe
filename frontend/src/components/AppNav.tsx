@@ -30,6 +30,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: 'home', label: 'Tổng quan', icon: '◎', to: '/admin', primary: true },
       { key: 'obligations', label: 'Nghĩa vụ & Quyền lợi', icon: '⏰', to: '/admin/obligations', primary: true },
+      { key: 'obligations/ra-soat', label: 'Rà soát tuân thủ', icon: '☑', to: '/admin/obligations/ra-soat' },
     ],
   },
   {
@@ -37,6 +38,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: 'docs', label: 'Hồ sơ hợp đồng', icon: '▤', to: '/admin/documents', primary: true },
       { key: 'upload', label: 'Tải lên', icon: '↑', to: '/admin/upload', primary: true, action: true },
+      { key: 'documents/new', label: 'Nhập tay', icon: '✎', to: '/admin/documents/new' },
     ],
   },
   {
@@ -59,7 +61,9 @@ const isLocked = (key: string, firstSession: boolean) =>
 function useActiveKey(): string {
   const { pathname } = useLocation();
   if (pathname === '/admin') return 'home';
+  if (pathname.startsWith('/admin/obligations/ra-soat')) return 'obligations/ra-soat';
   if (pathname.startsWith('/admin/obligations')) return 'obligations';
+  if (pathname.startsWith('/admin/documents/new')) return 'documents/new';
   if (pathname.startsWith('/admin/documents')) return 'docs';
   if (pathname.startsWith('/admin/upload')) return 'upload';
   if (pathname.startsWith('/admin/chat')) return 'chat';
