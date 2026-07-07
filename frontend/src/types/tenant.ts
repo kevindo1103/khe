@@ -30,3 +30,13 @@ export interface JourneyOut {
   journey_stage: string;
   is_first_session: boolean;
 }
+
+// #495 P2 — GET/PUT /tenants/me/compliance-profile
+export interface ComplianceProfileOut {
+  legal_form: string | null;
+  has_employees: boolean | null;
+  vat_period: string | null;        // "month" | "quarter"
+  fiscal_year_start: string | null; // ISO date "YYYY-MM-DD"
+}
+
+export type ComplianceProfileIn = ComplianceProfileOut;
