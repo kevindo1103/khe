@@ -332,3 +332,21 @@ class ChatSession(TenantBase):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     expires_at = Column(DateTime, nullable=True)
+
+
+class RuleActivation(TenantBase):
+    """Track 2 rule-pack activation state per tenant (#495).
+
+    Each row records whether a rule pack has been activated, declined, or paused,
+    plus the generated virtual document and obligation IDs for diff/re-confirm.
+    """
+    __tablename__ = "rule_activations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    rule_pack_id = Column(String, nullable=False, unique=True)
+    rule_pack_version = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="active")  # active | declined | paused
+    activated_at = Column(DateTime, nullable=True)
+    activated_by = Column(String, nullable=True)
+    obligation_ids = Column(Text, nullable=True)                 # JSON Text list[int]
+    virtual_document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
