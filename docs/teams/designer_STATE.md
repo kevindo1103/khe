@@ -5,7 +5,7 @@
 > Read-only on BRD/SRS — report DOCS_INBOX (#1) on spec gap, never edit canonical docs.
 > Branch: `claude/design-system-m0`.
 
-_Last updated: 2026-07-03 (#478 — Q1/Q1-ext ratified: success green removed at 4 spots, no new mockup needed)_
+_Last updated: 2026-07-06 (#312 F1 — audit drawer "Lịch sử chỉnh sửa" mockup delivered)_
 
 > Branch (current task): `claude/design-doc-detail-reread-305` (issues #281, #305).
 
@@ -325,6 +325,18 @@ Kevin ratified v1.1 "Sổ cái" on #467/#469 (2026-07-03) via comment relay (mes
 - **Sample data:** Công nghệ & IP contract ALPHATECH ↔ Cty TNHH Minh Phát — exercises all party states, hierarchical clauses (3 levels), payment table, image ref, signature/stamp, glossary, orphan ref
 - **Design tokens:** B&W minimalist (DS v0.2 direction). Color rationed: primary `#0F7A56`, amber `#D97706`, red `#DC2626`, muted `#6B7280`.
 - Awaiting Kevin review.
+
+## Issue #312 F1 — Audit drawer "Lịch sử chỉnh sửa" (D-07 blocking gap) — branch `claude/design-audit-drawer-312`
+F2 (sidebar badge) + F3 (H1 self-party) from #312 already baked into `mockup_obligation_tab_v3.jsx`/`mockup_document_detail_v4.jsx` in earlier work. This closes the remaining **F1 — audit trail drawer**, the one marked BLOCKING for #281 close.
+- **Delivered:** `mockup_document_audit_drawer_v1.jsx` — real import from v1.1 (`tokens, Button, Badge, EmptyState`), esbuild-clean, all token references audited against real v1.1 exports (no typos).
+- **NOT a speculative-API mockup:** research (Explore agent) confirmed a real read endpoint already exists — `GET /documents/{doc_id}/events` (routers/documents.py:1663-1716), real `Event` model (tenant.py:168-184: generic `entity_type`+`entity_id`, free-form `event_type`, `actor`, `payload` JSON blob with no fixed schema, `created_at`).
+- **Critical gap found and flagged (not silently worked around):** the endpoint only returns `entity_type="document"` and `entity_type="obligation"` rows — **excludes `term` and `party`**, even though both ARE real, confirmed Event writes (documents.py:1117 term edit, documents.py:1229 party edit). D-07 is honored at the write layer, broken at the read layer. Flagged as **Q-Audit-Scope**, default-off toggle demoing the fix — but real fix is a Backend filter change (documents.py:1693-1699), not UI.
+- **`event_type` disambiguation:** `"updated"` is reused across term/obligation/relationship edits — built `EVENT_LABELS` keyed on `(entity_type, event_type)` tuple, not `event_type` alone. `obligation:updated` further special-cased via `describeObligationUpdate()` to distinguish D-14 fulfillment / D-15 revert / plain status change (same event_type, 3 real meanings, disambiguated by payload).
+- **Payload has no fixed schema** (research confirmed "shape varies per call site") — `PayloadDiff` recognizes the 2 real key-pairs seen in code (`old_value`/`new_value`, `old_content`/`new_content`), falls back to flat key:value listing otherwise. Sample payload key names are illustrative, not verified 1:1 per call site.
+- **No pagination UI** — matches house pattern (#481 research: app has no page-number UI anywhere) — uses "Tải thêm (N còn lại)" matching the real `limit`/`offset` API params.
+- **`AuditDrawer` is a new local component** (v1.1 has no Drawer export) — built from real tokens only (overlay color from Modal's pattern, elevation e3, motion tokens), same precedent as LifecycleBadge/ConfidenceMeter in prior mockups.
+- **Zero existing frontend pattern to mirror** — confirmed via grep, this is the first Event-list UI in the app.
+- Awaiting Kevin/PM review + Q-Audit-Scope ratify.
 
 ## Issue #481 — Document list v3 on DS v1.1 (rollout gap 3/3) — branch `claude/design-documents-list-v1.1-481`
 QC filed #481: after PR #476 shipped DS v1.1 only for the obligation tab, the other 3 screens felt visually inconsistent. Gap 1+2 (doc-detail Tổng quan + Nội dung hợp đồng tabs) closed by `mockup_document_detail_v4.jsx` — **PR #480 MERGED** (QC re-verified all 3 fixes correct, approved as-is). This closes **gap 3/3: document list page** (`/admin/documents`) — **PR #483**.
