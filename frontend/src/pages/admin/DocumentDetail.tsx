@@ -1076,16 +1076,19 @@ function AuditDrawer({ docId, open, onClose }: { docId: number; open: boolean; o
 
   useEffect(() => {
     if (!open) return;
-    if (offset === 0) {
-      load();
-    } else {
-      setOffset(0);
-    }
-  }, [open, load]);
+    setOffset(0);
+  }, [open]);
 
   useEffect(() => {
-    load();
-  }, [offset, load]);
+    if (open) load();
+  }, [open, offset, load]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   const hasMore = items.length < total;
   const loadMore = () => setOffset((prev) => prev + limit);
