@@ -1,0 +1,37 @@
+name: Project Automation
+
+on:
+  issues:
+    types: [opened, reopened, closed, labeled]
+  pull_request:
+    types: [opened, reopened, closed]
+
+jobs:
+  add-to-project:
+    name: Add to Project Board
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add issue/PR to project board
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          PROJECT_NUMBER: 2
+          REPO_OWNER: kevindo1103
+          ITEM_ID: ${{ github.event.issue.node_id || github.event.pull_request.node_id }}
+        run: |
+          DATA=$(gh api graphql -f query='
+            query($owner: String!, $num: Int!) {
+              user(login: $owner) {
+                projectV2(number: $num) { id }
+              }
+            }' -f owner="$REPO_OWNER" -F num="$PROJECT_NUMBER")
+
+          PROJECT_ID=$(echo "$DATA" | jq -r '.data.user.projectV2.id')
+
+          gh api graphql -f query='
+            mutation($proj: ID!, $item: ID!) {
+              addProjectV2ItemById(input: {projectId: $proj, contentId: $item}) {
+                item { id }
+              }
+            }' -f proj="$PROJECT_ID" -f item="$ITEM_ID"
+
+          echo "✅ Added to project board"
