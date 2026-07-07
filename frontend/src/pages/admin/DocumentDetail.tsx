@@ -507,9 +507,13 @@ function SeriesCard({
 function WaitingTriggerRow({
   ob,
   onJumpToClause,
+  onConfirmTrigger,
+  confirming,
 }: {
   ob: ObligationOut;
   onJumpToClause: (clauseNum: string) => void;
+  onConfirmTrigger: (obligationId: number) => void;
+  confirming: boolean;
 }) {
   const amount = formatCurrency(ob.amount_raw);
   return (
@@ -531,11 +535,11 @@ function WaitingTriggerRow({
       </div>
       <button
         type="button"
-        disabled
-        title="Chưa hỗ trợ — cần API xác nhận sự kiện kích hoạt (Backend kickoff riêng)"
-        className="border border-border-strong bg-surface text-ink-body px-3 py-1 rounded-md text-2xs font-semibold shrink-0 opacity-50 cursor-not-allowed"
+        onClick={() => onConfirmTrigger(ob.id)}
+        disabled={confirming}
+        className="border border-border-strong bg-surface text-ink-body px-3 py-1 rounded-md text-2xs font-semibold shrink-0 hover:bg-surface-alt disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        Sự kiện đã xảy ra
+        {confirming ? 'Đang xử lý…' : 'Sự kiện đã xảy ra'}
       </button>
     </div>
   );
@@ -1497,6 +1501,8 @@ function TabObligations({
   bulkCompleting,
   onJumpToClause,
   hasLegalName,
+  onConfirmTrigger,
+  confirmingTriggerId,
 }: {
   doc: DocumentDetailOut;
   onFulfill: (ob: ObligationOut) => void;
@@ -1504,6 +1510,8 @@ function TabObligations({
   bulkCompleting: boolean;
   onJumpToClause: (clauseNum: string) => void;
   hasLegalName: boolean;
+  onConfirmTrigger: (obligationId: number) => void;
+  confirmingTriggerId: number | null;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showDone, setShowDone] = useState(false);
@@ -1650,7 +1658,13 @@ function TabObligations({
           {showWaiting && (
             <div className="border border-border rounded-lg overflow-hidden">
               {waiting.map((ob) => (
-                <WaitingTriggerRow key={ob.id} ob={ob} onJumpToClause={onJumpToClause} />
+                <WaitingTriggerRow
+                  key={ob.id}
+                  ob={ob}
+                  onJumpToClause={onJumpToClause}
+                  onConfirmTrigger={onConfirmTrigger}
+                  confirming={confirmingTriggerId === ob.id}
+                />
               ))}
             </div>
           )}
@@ -2211,6 +2225,7 @@ export default function DocumentDetail() {
   const [confirmingDoc, setConfirmingDoc] = useState(false);
   const [pendingClauseJump, setPendingClauseJump] = useState<string | null>(null);
   const [bulkCompleting, setBulkCompleting] = useState(false);
+  const [confirmingTriggerId, setConfirmingTriggerId] = useState<number | null>(null);
   const [clauses, setClauses] = useState<ClauseOut[]>([]);
   const [clausesLoading, setClausesLoading] = useState(false);
   const [clausesLoaded, setClausesLoaded] = useState(false);
@@ -2410,6 +2425,22 @@ export default function DocumentDetail() {
       setBulkCompleting(false);
     }
     await load();
+  };
+
+  const confirmTrigger = async (obligationId: number) => {
+    setConfirmingTriggerId(obligationId);
+    try {
+      await apiFetch(`/obligations/${obligationId}/confirm-trigger`, {
+        method: 'POST',
+        body: JSON.stringify({ event_date: new Date().toISOString().slice(0, 10) }),
+      });
+      showToast('Đã xác nhận sự kiện — nghĩa vụ chuyển sang trạng thái chờ thực hiện.');
+      await load();
+    } catch (err) {
+      showToast((err as ApiError).message || 'Không thể xác nhận sự kiện', 'error');
+    } finally {
+      setConfirmingTriggerId(null);
+    }
   };
 
   const confirmDocument = async () => {
@@ -2768,6 +2799,8 @@ export default function DocumentDetail() {
                 bulkCompleting={bulkCompleting}
                 onJumpToClause={jumpToClause}
                 hasLegalName={!!legalName}
+                onConfirmTrigger={confirmTrigger}
+                confirmingTriggerId={confirmingTriggerId}
               />
             </>
           )}

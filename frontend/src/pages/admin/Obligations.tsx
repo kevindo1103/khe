@@ -284,6 +284,27 @@ export default function Obligations() {
     setFulfillTarget(null);
   };
 
+  const confirmTrigger = async (id: number) => {
+    setUpdatingId(id);
+    setError('');
+    try {
+      const res = await apiFetch<ObligationOut>(`/obligations/${id}/confirm-trigger`, {
+        method: 'POST',
+        body: JSON.stringify({ event_date: new Date().toISOString().slice(0, 10) }),
+      });
+      setData((prev) =>
+        prev
+          ? { ...prev, items: prev.items.map((o) => (o.id === id ? res : o)) }
+          : prev
+      );
+      setToastMsg('Đã xác nhận sự kiện — nghĩa vụ chuyển sang trạng thái chờ thực hiện.');
+    } catch (err) {
+      setError((err as ApiError).message || 'Không thể xác nhận sự kiện');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const isUpdating = (id: number) => updatingId === id;
 
   const renderChips = (ob: ObligationOut) => {
@@ -371,15 +392,8 @@ export default function Obligations() {
               </Button>
             </>
           ) : ob.status === 'waiting_trigger' ? (
-            // #502 Bug 1: force-closes via markStatus(id,'done') instead of the
-            // correct waiting_trigger → pending transition — disabled until #501
-            // (trigger-confirm API) ships.
-            <Button
-              size="sm"
-              disabled
-              title="Chưa hỗ trợ — cần API xác nhận sự kiện kích hoạt"
-            >
-              Đánh dấu sự kiện đã xảy ra
+            <Button size="sm" onClick={() => confirmTrigger(ob.id)} loading={isUpdating(ob.id)}>
+              Sự kiện đã xảy ra
             </Button>
           ) : (
             <Badge kind={statusBadgeKind(ob.status)}>{statusLabel(ob.status)}</Badge>
