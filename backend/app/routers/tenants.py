@@ -133,13 +133,10 @@ def get_compliance_profile(
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_master_db),
 ):
-    """Read the compliance profile for the current tenant (#495)."""
+    """Read the compliance profile for the current tenant (#495, #529 upsert)."""
     profile = db.query(TenantProfile).filter_by(tenant_id=user.tenant_id).first()
     if profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant profile not found",
-        )
+        return ComplianceProfileOut()
     return profile
 
 
@@ -149,13 +146,11 @@ def update_compliance_profile(
     user: TenantUser = Depends(get_current_user),
     db: Session = Depends(get_master_db),
 ):
-    """Update the compliance profile for the current tenant (#495)."""
+    """Update the compliance profile for the current tenant (#495, #529 upsert)."""
     profile = db.query(TenantProfile).filter_by(tenant_id=user.tenant_id).first()
     if profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant profile not found",
-        )
+        profile = TenantProfile(tenant_id=user.tenant_id)
+        db.add(profile)
     for field, val in body.model_dump(exclude_none=True).items():
         setattr(profile, field, val)
     db.commit()
