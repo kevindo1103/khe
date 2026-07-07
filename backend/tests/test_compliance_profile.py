@@ -69,6 +69,15 @@ def test_get_compliance_profile_returns_all_none(auth_client, test_tenant):
     assert data["fiscal_year_start"] is None
 
 
+def test_get_compliance_profile_no_profile_row_returns_defaults(auth_client):
+    """GET returns empty defaults (not 404) when no TenantProfile row exists (#529)."""
+    r = auth_client.get("/tenants/me/compliance-profile")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["legal_form"] is None
+    assert data["has_employees"] is None
+
+
 # ── PUT /tenants/me/compliance-profile ───────────────────────────────────────
 
 
@@ -109,6 +118,19 @@ def test_put_compliance_profile_invalid_vat_period(auth_client, test_tenant):
 # ── Tenant isolation ───────────────────────────────────────────────────────
 
 
+def test_put_compliance_profile_upsert_no_profile_row(auth_client):
+    """PUT creates TenantProfile if missing — first-time tenant (#529)."""
+    r = auth_client.put(
+        "/tenants/me/compliance-profile",
+        json={"legal_form": "TNHH", "has_employees": True, "vat_period": "quarter"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["legal_form"] == "TNHH"
+    assert data["has_employees"] is True
+    assert data["vat_period"] == "quarter"
+
+
 def test_get_compliance_profile_is_tenant_isolated(auth_client, test_tenant):
     _ensure_profile(test_tenant)
     auth_client.put(
@@ -118,5 +140,5 @@ def test_get_compliance_profile_is_tenant_isolated(auth_client, test_tenant):
 
     other = _other_tenant_client()
     r = other.get("/tenants/me/compliance-profile")
-    # Other tenant has no TenantProfile row, so it should 404.
-    assert r.status_code == 404
+    assert r.status_code == 200
+    assert r.json()["legal_form"] is None
