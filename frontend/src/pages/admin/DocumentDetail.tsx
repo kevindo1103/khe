@@ -218,7 +218,11 @@ function ObligationCheckbox({
         ${checked ? 'border-primary bg-primary' : 'border-border-strong bg-surface'}
         ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
     >
-      {checked && <span className="text-white text-[11px] font-bold leading-none">✓</span>}
+      {checked && (
+        <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="2 6 5 9 10 3" />
+        </svg>
+      )}
     </button>
   );
 }
@@ -332,7 +336,7 @@ function FulfillModal({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full px-3 py-2 rounded-md border border-border-strong bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
         <div>
@@ -898,7 +902,7 @@ function ClauseItem({
           {editing ? (
             <div className="flex flex-col gap-2">
               <textarea
-                className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[8rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full text-sm border border-border-strong rounded p-2 leading-relaxed resize-y min-h-[8rem] focus:outline-none focus:ring-1 focus:ring-primary"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 autoFocus
@@ -1090,7 +1094,7 @@ function DiffConfirmModal({
                         className={`flex-shrink-0 text-xs px-2 py-1 rounded border transition-colors ${
                           selected
                             ? 'border-danger/30 text-danger bg-danger-soft'
-                            : 'border-border text-ink-muted'
+                            : 'border-border-strong text-ink-muted'
                         }`}
                         onClick={() => toggleCancel(id)}
                         disabled={submitting}
@@ -1239,7 +1243,7 @@ function TabOverview({
                   const v = e.target.value;
                   if (v && v !== docTypeGroupTerm.field_value) onSetPendingType(v);
                 }}
-                className="w-full px-3 py-2 rounded-md border border-border bg-surface text-sm text-ink disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3 py-2 rounded-md border border-border-strong bg-surface text-sm text-ink disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
                 {DOC_TYPE_GROUPS.map((t) => (
                   <option key={t} value={t}>
@@ -1627,7 +1631,7 @@ function ClauseTreeItem({
             {editing ? (
               <div className="flex flex-col gap-2">
                 <textarea
-                  className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[8rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full text-sm border border-border-strong rounded p-2 leading-relaxed resize-y min-h-[8rem] focus:outline-none focus:ring-1 focus:ring-primary"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   autoFocus
@@ -1745,7 +1749,7 @@ function DefinitionRow({
           {editing ? (
             <div className="flex flex-col gap-2">
               <textarea
-                className="w-full text-sm border border-border rounded p-2 leading-relaxed resize-y min-h-[5rem] focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full text-sm border border-border-strong rounded p-2 leading-relaxed resize-y min-h-[5rem] focus:outline-none focus:ring-1 focus:ring-primary"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 autoFocus
