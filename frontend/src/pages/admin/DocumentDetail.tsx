@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -24,6 +24,7 @@ import type {
   CrossRefListOut,
   CrossRefResolveOut,
 } from '../../types/documents';
+import type { EventOut, EventListOut } from '../../types/events';
 import type { ObligationOut, ObligationPatchOut, BulkCompleteIn, BulkCompleteOut } from '../../types/obligations';
 import type { ApiError } from '../../lib/api';
 import { useJourney } from '../../contexts/JourneyContext';
@@ -974,6 +975,188 @@ function StaleEditBanner({ onGoToClauses }: { onGoToClauses: () => void }) {
       <button className="text-2xs text-warning underline" onClick={onGoToClauses}>
         Xem điều khoản →
       </button>
+    </div>
+  );
+}
+
+// ── #312 D-07 audit drawer: slide-in event history ───────────────────────────
+
+const EVENT_LABELS: Record<string, string> = {
+  'document:document_uploaded': 'Tải lên tài liệu',
+  'document:document_field_edited': 'Sửa trường tài liệu',
+  'document:clause_edited': 'Sửa điều khoản',
+  'document:self_party_confirmed': 'Xác nhận bên mình',
+  'document:document_confirmed_by_user': 'Xác nhận tài liệu',
+  'document:doc_type_corrected': 'Sửa loại hợp đồng',
+  'document:clause_re_derived': 'Đọc lại điều khoản',
+  'document:extraction_retriggered': 'Trích xuất lại',
+  'document:re_read_triggered': 'Kích hoạt đọc lại',
+  'document:extraction_performed': 'Trích xuất hoàn tất',
+  'document:extraction_failed': 'Trích xuất lỗi',
+  'document:extraction_two_pass_completed': 'Trích xuất 2 lượt hoàn tất',
+  'document:definition_edited': 'Sửa định nghĩa',
+  'document:definition_deleted': 'Xóa định nghĩa',
+  'obligation:updated': 'Cập nhật nghĩa vụ',
+  'obligation:evidence_attached': 'Đính kèm minh chứng',
+  'obligation:reminder_snoozed': 'Hoãn nhắc',
+};
+
+function eventLabel(ev: EventOut): string {
+  const key = `${ev.entity_type}:${ev.event_type}`;
+  if (ev.entity_type === 'obligation' && ev.event_type === 'updated') {
+    return describeObligationUpdate(ev.payload);
+  }
+  return EVENT_LABELS[key] || `${ev.entity_type}:${ev.event_type}`;
+}
+
+function describeObligationUpdate(payload: Record<string, unknown> | null): string {
+  if (!payload) return 'Cập nhật nghĩa vụ';
+  const newStatus = payload.new_status as string | undefined;
+  const oldStatus = payload.old_status as string | undefined;
+  if (newStatus === 'done' && payload.fulfilled_at) return 'Hoàn thành nghĩa vụ';
+  if (oldStatus === 'done' && newStatus !== 'done') return 'Hoàn tác hoàn thành';
+  if (newStatus) return `Đổi trạng thái → ${newStatus}`;
+  return 'Cập nhật nghĩa vụ';
+}
+
+function formatEventTime(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function PayloadDiff({ payload }: { payload: Record<string, unknown> | null }) {
+  if (!payload || typeof payload !== 'object') return null;
+  const entries = Object.entries(payload);
+  const oldNew = entries.find(([k]) => k === 'old_value' || k === 'old_content');
+  const newVal = entries.find(([k]) => k === 'new_value' || k === 'new_content');
+  if (oldNew && newVal) {
+    return (
+      <div className="text-xs mt-1">
+        <span className="text-danger line-through">{String(oldNew[1] ?? '')}</span>
+        <span className="text-ink-muted mx-1">→</span>
+        <span className="text-done">{String(newVal[1] ?? '')}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="text-xs text-ink-muted mt-1">
+      {entries.map(([k, v]) => (
+        <div key={k}>
+          <span className="font-medium">{k}:</span> {String(v ?? '')}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AuditDrawer({ docId, open, onClose }: { docId: number; open: boolean; onClose: () => void }) {
+  const [items, setItems] = useState<EventOut[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const limit = 50;
+
+  const load = useCallback(async () => {
+    if (!open || !docId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiFetch<EventListOut>(`/documents/${docId}/events?limit=${limit}&offset=${offset}`);
+      setItems((prev) => (offset === 0 ? res.items : [...prev, ...res.items]));
+      setTotal(res.total);
+    } catch (err) {
+      setError((err as ApiError).message || 'Không thể tải lịch sử chỉnh sửa');
+    } finally {
+      setLoading(false);
+    }
+  }, [open, docId, offset]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (offset === 0) {
+      load();
+    } else {
+      setOffset(0);
+    }
+  }, [open, load]);
+
+  useEffect(() => {
+    load();
+  }, [offset, load]);
+
+  const hasMore = items.length < total;
+  const loadMore = () => setOffset((prev) => prev + limit);
+
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  return (
+    <div
+      className={`fixed inset-0 z-modal transition-opacity duration-200 ${open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+      onClick={handleBackdropClick}
+      aria-hidden={!open}
+    >
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className={`absolute top-0 right-0 h-full w-[420px] max-w-full bg-surface shadow-xl border-l border-border flex flex-col transition-transform duration-200 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="audit-drawer-title"
+      >
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
+          <div>
+            <h2 id="audit-drawer-title" className="text-lg font-semibold text-ink">Lịch sử chỉnh sửa</h2>
+            <p className="text-2xs text-ink-muted">{total} sự kiện</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-md text-sm font-semibold text-ink-body border border-border-strong hover:bg-surface-alt"
+          >
+            Đóng
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {error && <Toast kind="error" className="mb-4">{error}</Toast>}
+
+          {items.length === 0 && !loading && !error && (
+            <div className="text-sm text-ink-muted text-center py-8">Chưa có sự kiện nào</div>
+          )}
+
+          <div className="space-y-3">
+            {items.map((ev) => (
+              <div key={ev.id} className="rounded-lg border border-border p-3">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-ink">{eventLabel(ev)}</span>
+                  <span className="text-2xs text-ink-muted shrink-0">{formatEventTime(ev.created_at)}</span>
+                </div>
+                <div className="text-2xs text-ink-muted mt-1">
+                  Bởi {ev.actor === 'system' ? 'Hệ thống' : (ev.actor ?? 'không rõ')}
+                </div>
+                <PayloadDiff payload={ev.payload} />
+              </div>
+            ))}
+          </div>
+
+          {hasMore && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loading}
+                className="px-4 py-2 rounded-md text-sm font-semibold border border-border-strong text-ink-body hover:bg-surface-alt disabled:opacity-50"
+              >
+                {loading ? 'Đang tải…' : 'Tải thêm'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2036,6 +2219,7 @@ export default function DocumentDetail() {
   const [reReading, setReReading] = useState(false);
   const [reReadDiffs, setReReadDiffs] = useState<ReReadDiff[] | null>(null);
   const [applyingDiffs, setApplyingDiffs] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { legalName, refetch: refetchJourney } = useJourney();
 
   const showToast = (msg: string, kind: ToastKind = 'success') => {
@@ -2482,6 +2666,13 @@ export default function DocumentDetail() {
                   Tải bản gốc
                 </a>
               )}
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                className="text-sm text-primary hover:underline flex-shrink-0"
+              >
+                Lịch sử chỉnh sửa
+              </button>
             </div>
           </div>
 
@@ -2683,6 +2874,15 @@ export default function DocumentDetail() {
         </span>
         . Các trường theo loại cũ sẽ bị thay thế. Tiếp tục?
       </Modal>
+
+      {/* D-07 audit drawer */}
+      {docId > 0 && (
+        <AuditDrawer
+          docId={docId}
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+        />
+      )}
 
       {/* Toast */}
       {toastMsg && (
